@@ -1,0 +1,19 @@
+[root]
+name = "regex_test"
+version = "0.0.1"
+dependencies = [
+ "dfagen 0.0.1",
+ "regex_dfa 0.0.1",
+]
+
+[[package]]
+name = "dfagen"
+version = "0.0.1"
+dependencies = [
+ "regex_dfa 0.0.1",
+]
+
+[[package]]
+name = "regex_dfa"
+version = "0.0.1"
+

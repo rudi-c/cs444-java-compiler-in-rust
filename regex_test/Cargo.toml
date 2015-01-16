@@ -1,0 +1,13 @@
+[package]
+
+name = "regex_test"
+version = "0.0.1"
+authors = ["Geoffry Song <goffrie@gmail.com>"]
+
+[dependencies.regex_dfa]
+
+path = "../regex_dfa"
+
+[dependencies.dfagen]
+
+path = "../dfagen"
