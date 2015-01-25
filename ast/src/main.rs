@@ -19,38 +19,117 @@ mod tokenizer;
 parser! parse {
     Token;
 
+    // Compilation unit ($7.3)
     root : CompilationUnit {
-        packageDeclarations[pkgs] importDeclarations[imports] typeDeclarations[types] =>
-            CompilationUnit { packages: pkgs.toVec(),
-                              imports: imports.toVec(),
-                              types: types.toVec() },
+        packageDeclaration[pkg] importDeclarations[imports] typeDeclarations[types] =>
+            CompilationUnit { packages: pkg,
+                              imports: imports.toVecReverse(),
+                              types: types.toVecReverse() },
     }
 
-    packageDeclaration : PackageDeclaration {
-        PACKAGE Identifier[path] Semicolon => PackageDeclaration::Path(0),
+    // Package declarations ($7.4)
+    packageDeclaration : QualifiedIdentifier {
+        PACKAGE qualifiedIdentifier[ident] Semicolon => ident,
     }
 
+    // Import declarations ($7.5)
     importDeclaration : ImportDeclaration {
-        IMPORT Identifier[path] Semicolon => ImportDeclaration::Path(1),
-    }
-
-    typeDeclaration : TypeDeclaration {
-        BREAK Identifier[path] Semicolon => TypeDeclaration::Path(2),
-    }
-
-    packageDeclarations : List<PackageDeclaration> {
-        packageDeclaration[dcl] => Cons(dcl, box Empty),
-        packageDeclarations[dcls] packageDeclaration[dcl] => Cons(dcl, box dcls),
+        IMPORT qualifiedIdentifier[ident] Semicolon => ImportDeclaration::SingleType(ident),
+        // TODO: Currently causes a shift-reduce conflict, but I don't think that it should.
+        // IMPORT qualifiedIdentifier[ident] Dot Star Semicolon => ident,
     }
 
     importDeclarations : List<ImportDeclaration> {
-        importDeclaration[dcl] => Cons(dcl, box Empty),
+        => Empty,
         importDeclarations[dcls] importDeclaration[dcl] => Cons(dcl, box dcls),
     }
 
+    // Top-level type declarations ($7.6)
+    typeDeclaration : TypeDeclaration {
+        classDeclaration[class] => TypeDeclaration::Class(class),
+        interfaceDeclaration[interface] => TypeDeclaration::Interface(interface),
+    }
+
     typeDeclarations : List<TypeDeclaration> {
-        typeDeclaration[dcl] => Cons(dcl, box Empty),
+        => Empty,
         typeDeclarations[dcls] typeDeclaration[dcl] => Cons(dcl, box dcls),
+    }
+
+    // Identifiers ($6.7)
+    qualifiedIdentifier : QualifiedIdentifier {
+        qualifiedIdentifierHelper[list] => QualifiedIdentifier { parts: list.toVecReverse() }
+    }
+
+    qualifiedIdentifierHelper : List<String> {
+        // Helper to avoid have to use .toVecReverse everytime qualified identifier are
+        // used, which is quite often.
+        Identifier[i] => match i {
+            Identifier(ident) => Cons(ident, box Empty),
+            _ => unreachable!(),
+        },
+        qualifiedIdentifierHelper[list] Dot Identifier[i] => match i {
+            Identifier(ident) => Cons(ident, box list),
+            _ => unreachable!(),
+        },
+    }
+
+    qualifiedIdentifierList : List<QualifiedIdentifier> {
+        qualifiedIdentifier[i] => Cons(i, box Empty),
+        qualifiedIdentifierList[list] Comma qualifiedIdentifier[i] => Cons(i, box list),
+    }
+
+    // Classes ($8.1)
+    classDeclaration : Class {
+        CLASS Identifier[name] superType[s] interfaceImplementations[impls] classBody[x] =>
+            match name {
+                Identifier(ident) => Class { name: ident, extends: s, implements: impls },
+                _ => unreachable!(),
+            }
+    }
+
+    superType : Option<QualifiedIdentifier> {
+        => None,
+        EXTENDS qualifiedIdentifier[extension] => Some(extension)
+    }
+
+    interfaceImplementations : Vec<QualifiedIdentifier> {
+        => vec![],
+        IMPLEMENTS interfaceImplementationList[impls] => impls.toVecReverse(),
+    }
+
+    interfaceImplementationList : List<QualifiedIdentifier> {
+        qualifiedIdentifier[i] => Cons(i, box Empty),
+        interfaceImplementationList[impls] Comma qualifiedIdentifier[i] => Cons(i, box impls),
+    }
+
+    // Class body ($8.1.5)
+    classBody : i32 {
+        LBrace RBrace => 0
+    }
+
+    // Interfaces ($9.1)
+    interfaceDeclaration : Interface {
+        INTERFACE Identifier[name] interfaceExtensions[exts] interfaceBody[x] =>
+            match name {
+                Identifier(ident) => Interface { name: ident, extends: exts },
+                _ => unreachable!()
+            }
+    }
+
+    interfaceExtensions : Vec<QualifiedIdentifier> {
+        => vec![],
+        EXTENDS interfaceExtensionList[impls] => impls.toVecReverse(),
+    }
+
+    // TODO: Can we get merge this rule with the one for classes?
+    interfaceExtensionList : List<QualifiedIdentifier> {
+        qualifiedIdentifier[i] => Cons(i, box Empty),
+        interfaceExtensionList[impls] Comma qualifiedIdentifier[i] => Cons(i, box impls),
+    }
+
+    // Interface body ($9.1.3)
+    interfaceBody : i32 {
+        LBrace RBrace => 0
     }
 }
 

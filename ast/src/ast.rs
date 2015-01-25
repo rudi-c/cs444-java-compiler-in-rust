@@ -32,27 +32,48 @@ impl <T> List<T> {
         }
         vec
     }
-}
 
-#[derive(Show)]
-pub enum PackageDeclaration {
-    Path(i32)
+    pub fn toVecReverse(self) -> Vec<T> {
+        let mut vec = self.toVec();
+        vec.reverse();
+        vec
+    }
 }
 
 #[derive(Show)]
 pub enum ImportDeclaration {
-    Path(i32)
+    SingleType(QualifiedIdentifier),
+    OnDemand(QualifiedIdentifier),
 }
 
 #[derive(Show)]
 pub enum TypeDeclaration {
-    Path(i32)
+    Class(Class),
+    Interface(Interface),
 }
 
 #[derive(Show)]
 pub struct CompilationUnit {
-    pub packages: Vec<PackageDeclaration>,
+    pub packages: QualifiedIdentifier,
     pub imports : Vec<ImportDeclaration>,
     pub types   : Vec<TypeDeclaration>,
+}
+
+#[derive(Show)]
+pub struct Class {
+    pub name : String,
+    pub extends : Option<QualifiedIdentifier>,
+    pub implements : Vec<QualifiedIdentifier>,
+}
+
+#[derive(Show)]
+pub struct Interface {
+    pub name : String,
+    pub extends : Vec<QualifiedIdentifier>,
+}
+
+#[derive(Show)]
+pub struct QualifiedIdentifier {
+    pub parts : Vec<String>,
 }
 
