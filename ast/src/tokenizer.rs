@@ -115,7 +115,7 @@ scanner! {
     // Comments defined in $3.7
     // TODO: Make /* */ work for multi-line comments.
     r#"/[*](.|\n)*[*]/"# => (Token::Comment, text),
-    r#"//.*\n"# => (Token::Comment, text),
+    r#"//[^\n]*"# => (Token::Comment, text),
 
     // Keywords defined in $3.8.
     // Has precedence over identifiers.
