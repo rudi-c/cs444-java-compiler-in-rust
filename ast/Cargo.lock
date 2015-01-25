@@ -1,0 +1,30 @@
+[root]
+name = "ast"
+version = "0.0.1"
+dependencies = [
+ "dfagen 0.0.1",
+ "lalrgen 0.0.1",
+]
+
+[[package]]
+name = "dfagen"
+version = "0.0.1"
+dependencies = [
+ "regex_dfa 0.0.1",
+]
+
+[[package]]
+name = "lalr"
+version = "0.0.1"
+
+[[package]]
+name = "lalrgen"
+version = "0.0.1"
+dependencies = [
+ "lalr 0.0.1",
+]
+
+[[package]]
+name = "regex_dfa"
+version = "0.0.1"
+

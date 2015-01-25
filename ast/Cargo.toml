@@ -1,0 +1,13 @@
+[package]
+
+name = "ast"
+version = "0.0.1"
+authors = ["Geoffry Song <goffrie@gmail.com>"]
+
+[dependencies.dfagen]
+
+path = "../dfagen"
+
+[dependencies.lalrgen]
+
+path = "../lalrgen"
