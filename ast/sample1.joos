@@ -1,0 +1,13 @@
+/*
+ * Comment
+ */
+package java;
+import java;
+import java.util;
+// import java.util.*;
+
+interface Apple extends Magic {
+}
+
+class Banana extends Fruit implements Yellow, Boomerang {
+}
