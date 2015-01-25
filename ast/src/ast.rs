@@ -22,6 +22,18 @@ pub enum List<T> {
     Empty
 }
 
+impl <T> List<T> {
+    pub fn toVec(self) -> Vec<T> {
+        let mut node = self;
+        let mut vec = vec![];
+        while let List::Cons(first, rest) = node {
+            vec.push(first);
+            node = *rest;
+        }
+        vec
+    }
+}
+
 #[derive(Show)]
 pub enum PackageDeclaration {
     Path(i32)
@@ -38,9 +50,9 @@ pub enum TypeDeclaration {
 }
 
 #[derive(Show)]
-pub enum CompilationUnit {
-    Declarations(List<PackageDeclaration>,
-                 List<ImportDeclaration>,
-                 List<TypeDeclaration>)
+pub struct CompilationUnit {
+    pub packages: Vec<PackageDeclaration>,
+    pub imports : Vec<ImportDeclaration>,
+    pub types   : Vec<TypeDeclaration>,
 }
 

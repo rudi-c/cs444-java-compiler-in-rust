@@ -21,7 +21,9 @@ parser! parse {
 
     root : CompilationUnit {
         packageDeclarations[pkgs] importDeclarations[imports] typeDeclarations[types] =>
-            CompilationUnit::Declarations(pkgs, imports, types)
+            CompilationUnit { packages: pkgs.toVec(),
+                              imports: imports.toVec(),
+                              types: types.toVec() },
     }
 
     packageDeclaration : PackageDeclaration {
