@@ -219,7 +219,6 @@ scanner! {
     r#"!"# => (Token::Bang, text),
 
     r#"="# => (Token::Equals, text),
-    r#"\*"# => (Token::Star, text),
     r#"."# => (Token::Other, text),
 }
 
