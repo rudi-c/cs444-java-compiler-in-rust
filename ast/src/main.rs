@@ -3,16 +3,20 @@
 
 #[no_link] #[plugin] extern crate lalrgen;
 
+use std::os;
+
 use ast::*;
 use ast::List::*;
 use parser::make_cst;
 use tokenizer::Token;
 use tokenizer::Token::*;
 use tokenizer::get_tokens;
+use weed::weed;
 
 mod ast;
 mod parser;
 mod tokenizer;
+mod weed;
 
 // See Chapter 18 for full grammar (p.449) (pdf p.475)
 
@@ -45,6 +49,8 @@ parser! parse {
     }
 
     // Top-level type declarations ($7.6)
+    // Note that Joos 1W only supports one of these per file, but I leave that to the
+    // weeding phase so it's easier to output a clearer error message.
     typeDeclaration : TypeDeclaration {
         classDeclaration[class] => TypeDeclaration::Class(class),
         interfaceDeclaration[interface] => TypeDeclaration::Interface(interface),
@@ -138,7 +144,13 @@ fn main() {
         let mut to_scan = input.as_slice();
         let tokens = get_tokens(&mut to_scan);
         let ast = parse(tokens.into_iter());
-
         println!("{:?}", ast);
+
+        if let Ok(result) = ast {
+            let found_error = weed(result);
+            if found_error {
+                os::set_exit_status(42);
+            }
+        }
     }
 }
