@@ -2,6 +2,7 @@
 #![allow(unstable)]
 
 #[no_link] #[plugin] extern crate lalrgen;
+#[no_link] #[plugin] extern crate dfagen;
 
 use std::os;
 

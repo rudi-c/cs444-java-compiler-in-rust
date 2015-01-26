@@ -1,7 +1,3 @@
-#![feature(plugin, box_syntax)]
-#![feature(macro_rules)]
-#![allow(unstable)]
-
 use ast::*;
 
 // http://stackoverflow.com/questions/27588416/how-to-send-output-to-stderr

@@ -1,8 +1,3 @@
-#![feature(plugin, box_syntax)]
-#![allow(unstable)]
-
-#[no_link] #[plugin] extern crate lalrgen;
-
 use ast::*;
 use tokenizer::*;
 use tokenizer::Token::*;

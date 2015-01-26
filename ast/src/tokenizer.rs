@@ -1,8 +1,3 @@
-#![feature(plugin, box_syntax)]
-#![allow(unstable)]
-
-#[no_link] #[plugin] extern crate dfagen;
-
 #[derive(Show)]
 pub enum Token {
     Identifier(String),

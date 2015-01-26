@@ -1,6 +1,3 @@
-#![feature(plugin, box_syntax)]
-#![allow(unstable)]
-
 #[derive(Show)]
 pub enum Ast {
     Assign(Lhs, Rhs),
