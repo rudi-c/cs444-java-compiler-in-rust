@@ -107,7 +107,7 @@ scanner! {
     r#"[ \t\n][ \t\n]*"# => (Token::Whitespace, text),
 
     // Comments defined in $3.7
-    r#"/[*](.|\n)*[*]/"# => (Token::Comment, text),
+    r#"/[*](~(.*[*]/.*))[*]/"# => (Token::Comment, text),
     r#"//[^\n]*"# => (Token::Comment, text),
 
     // Keywords defined in $3.8.
