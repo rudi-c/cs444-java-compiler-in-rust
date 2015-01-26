@@ -181,8 +181,8 @@ scanner! {
     //     bitwise ops, increment/decrement, assignment ops,
     //     unary plus, choice (?:), bit shift
     r#"="# => (Token::Assignment, text),
-    r#"||"# => (Token::OrOr, text),
-    r#"&&"# => (Token::AndAnd, text),
+    r#"\|\|"# => (Token::OrOr, text),
+    r#"\&\&"# => (Token::AndAnd, text),
     r#"=="# => (Token::Equals, text),
     r#"!="# => (Token::NotEquals, text),
     r#"<"# => (Token::LessThan, text),
@@ -200,22 +200,26 @@ scanner! {
     r#"."# => (Token::Other, text),
 }
 
-pub fn get_tokens<'l>(input: &'l mut &str) -> Vec<Token> {
-    let mut tokens = vec![];
-    while input.len() > 0 {
-        match next_token(input) {
-            Some(c) => {
-                println!("{:?}", c);
-                if token_filter(&c.0) {
-                    tokens.push(c.0);
+pub struct Tokenizer<'a> {
+    slice: &'a str
+}
+
+impl<'a> Iterator for Tokenizer<'a> {
+    type Item = Token;
+
+    fn next(&mut self) -> Option<Token> {
+        loop {
+            match next_token(&mut self.slice) {
+                Some(c) => {
+                    println!("{:?}", c);
+                    if token_filter(&c.0) {
+                        return Some(c.0);
+                    }
                 }
-            }
-            None => {
-                break;
+                None => return None,
             }
         }
     }
-    tokens
 }
 
 fn token_filter(token: &Token) -> bool {
@@ -224,4 +228,8 @@ fn token_filter(token: &Token) -> bool {
         Token::Comment => false,
         _ => true
     }
+}
+
+pub fn tokenizer<'a>(s: &'a str) -> Tokenizer<'a> {
+    Tokenizer { slice: s }
 }

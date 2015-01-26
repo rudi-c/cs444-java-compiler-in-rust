@@ -8,9 +8,8 @@ use std::os;
 
 use ast::*;
 use parser::make_cst;
-use tokenizer::Token;
+use tokenizer::{Token, tokenizer};
 use tokenizer::Token::*;
-use tokenizer::get_tokens;
 use weed::weed;
 
 mod ast;
@@ -153,9 +152,7 @@ parser! parse {
 
 fn main() {
     if let Ok(input) = std::io::stdio::stdin().read_to_string() {
-        let mut to_scan = input.as_slice();
-        let tokens = get_tokens(&mut to_scan);
-        let ast = parse(tokens.into_iter());
+        let ast = parse(tokenizer(&*input));
         println!("{:?}", ast);
 
         if let Ok(result) = ast {
