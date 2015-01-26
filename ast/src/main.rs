@@ -38,8 +38,8 @@ parser! parse {
     // Import declarations ($7.5)
     importDeclaration: ImportDeclaration {
         IMPORT qualifiedIdentifier[ident] Semicolon => ImportDeclaration::SingleType(ident),
-        // TODO: Currently causes a shift-reduce conflict, but I don't think that it should.
-        // IMPORT qualifiedIdentifier[ident] Dot Star Semicolon => ident,
+        IMPORT qualifiedIdentifierHelperDot[ident] Star Semicolon => 
+            ImportDeclaration::OnDemand(QualifiedIdentifier { parts: ident }),
     }
 
     importDeclarations: Vec<ImportDeclaration> {
@@ -81,19 +81,16 @@ parser! parse {
         qualifiedIdentifierHelper[list] => QualifiedIdentifier { parts: list }
     }
 
+    qualifiedIdentifierHelperDot: Vec<String> {
+        qualifiedIdentifierHelper[list] Dot => list,
+    }
+
     qualifiedIdentifierHelper: Vec<String> {
-        // Helper to avoid have to use .toVecReverse everytime qualified identifier are
-        // used, which is quite often.
         Identifier(ident) => vec![ident],
-        qualifiedIdentifierHelper[mut list] Dot Identifier(ident) => {
+        qualifiedIdentifierHelperDot[mut list] Identifier(ident) => {
             list.push(ident);
             list
         }
-    }
-
-    qualifiedIdentifierList: Vec<QualifiedIdentifier> {
-        qualifiedIdentifier[i] => vec![i],
-        qualifiedIdentifierList[mut list] Comma qualifiedIdentifier[i] => { list.push(i); list },
     }
 
     // Classes ($8.1)
