@@ -68,14 +68,11 @@ parser! parse {
     qualifiedIdentifierHelper: Vec<String> {
         // Helper to avoid have to use .toVecReverse everytime qualified identifier are
         // used, which is quite often.
-        Identifier[i] => match i {
-            Identifier(ident) => vec![ident],
-            _ => unreachable!(),
-        },
-        qualifiedIdentifierHelper[mut list] Dot Identifier[i] => match i {
-            Identifier(ident) => { list.push(ident); list },
-            _ => unreachable!(),
-        },
+        Identifier(ident) => vec![ident],
+        qualifiedIdentifierHelper[mut list] Dot Identifier(ident) => {
+            list.push(ident);
+            list
+        }
     }
 
     qualifiedIdentifierList: Vec<QualifiedIdentifier> {
@@ -84,14 +81,15 @@ parser! parse {
     }
 
     // Classes ($8.1)
-    classDeclaration: Class {
-        modifierList[mods] CLASS Identifier[name] superType[s]
+    classDeclaration : Class {
+        modifierList[mods] CLASS Identifier(ident) superType[s]
                 interfaceImplementations[impls] classBody[x] =>
-            match name {
-                Identifier(ident) => Class { name: ident, modifiers: mods,
-                                             extends: s, implements: impls },
-                _ => unreachable!(),
-            }
+            Class {
+                name: ident,
+                modifiers: mods,
+                extends: s,
+                implements: impls,
+            },
     }
 
     superType: Option<QualifiedIdentifier> {
@@ -111,14 +109,13 @@ parser! parse {
 
     // Interfaces ($9.1)
     interfaceDeclaration: Interface {
-        modifierList[mods] INTERFACE Identifier[name]
+        modifierList[mods] INTERFACE Identifier(ident)
                 interfaceExtensions[exts] interfaceBody[x] =>
-            match name {
-                Identifier(ident) => Interface { name: ident,
-                                                 modifiers: mods,
-                                                 extends: exts },
-                _ => unreachable!()
-            }
+            Interface {
+                name: ident,
+                modifiers: mods,
+                extends: exts,
+            },
     }
 
     interfaceExtensions: Vec<QualifiedIdentifier> {
