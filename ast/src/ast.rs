@@ -17,30 +17,6 @@ pub enum Rhs {
 }
 
 #[derive(Show)]
-pub enum List<T> {
-    Cons(T, Box<List<T>>),
-    Empty
-}
-
-impl <T> List<T> {
-    pub fn toVec(self) -> Vec<T> {
-        let mut node = self;
-        let mut vec = vec![];
-        while let List::Cons(first, rest) = node {
-            vec.push(first);
-            node = *rest;
-        }
-        vec
-    }
-
-    pub fn toVecReverse(self) -> Vec<T> {
-        let mut vec = self.toVec();
-        vec.reverse();
-        vec
-    }
-}
-
-#[derive(Show)]
 pub enum ImportDeclaration {
     SingleType(QualifiedIdentifier),
     OnDemand(QualifiedIdentifier),

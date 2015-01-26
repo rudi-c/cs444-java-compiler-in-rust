@@ -6,7 +6,6 @@
 use std::os;
 
 use ast::*;
-use ast::List::*;
 use parser::make_cst;
 use tokenizer::Token;
 use tokenizer::Token::*;
@@ -27,8 +26,8 @@ parser! parse {
     root: CompilationUnit {
         packageDeclaration[pkg] importDeclarations[imports] typeDeclarations[types] =>
             CompilationUnit { packages: pkg,
-                              imports: imports.toVecReverse(),
-                              types: types.toVecReverse() },
+                              imports: imports,
+                              types: types },
     }
 
     // Package declarations ($7.4)
@@ -43,9 +42,9 @@ parser! parse {
         // IMPORT qualifiedIdentifier[ident] Dot Star Semicolon => ident,
     }
 
-    importDeclarations: List<ImportDeclaration> {
-        => Empty,
-        importDeclarations[dcls] importDeclaration[dcl] => Cons(dcl, box dcls),
+    importDeclarations: Vec<ImportDeclaration> {
+        => vec![],
+        importDeclarations[mut dcls] importDeclaration[dcl] => { dcls.push(dcl); dcls }
     }
 
     // Top-level type declarations ($7.6)
@@ -56,32 +55,32 @@ parser! parse {
         interfaceDeclaration[interface] => TypeDeclaration::Interface(interface),
     }
 
-    typeDeclarations: List<TypeDeclaration> {
-        => Empty,
-        typeDeclarations[dcls] typeDeclaration[dcl] => Cons(dcl, box dcls),
+    typeDeclarations: Vec<TypeDeclaration> {
+        => vec![],
+        typeDeclarations[mut dcls] typeDeclaration[dcl] => { dcls.push(dcl); dcls }
     }
 
     // Identifiers ($6.7)
     qualifiedIdentifier: QualifiedIdentifier {
-        qualifiedIdentifierHelper[list] => QualifiedIdentifier { parts: list.toVecReverse() }
+        qualifiedIdentifierHelper[list] => QualifiedIdentifier { parts: list }
     }
 
-    qualifiedIdentifierHelper: List<String> {
+    qualifiedIdentifierHelper: Vec<String> {
         // Helper to avoid have to use .toVecReverse everytime qualified identifier are
         // used, which is quite often.
         Identifier[i] => match i {
-            Identifier(ident) => Cons(ident, box Empty),
+            Identifier(ident) => vec![ident],
             _ => unreachable!(),
         },
-        qualifiedIdentifierHelper[list] Dot Identifier[i] => match i {
-            Identifier(ident) => Cons(ident, box list),
+        qualifiedIdentifierHelper[mut list] Dot Identifier[i] => match i {
+            Identifier(ident) => { list.push(ident); list },
             _ => unreachable!(),
         },
     }
 
-    qualifiedIdentifierList: List<QualifiedIdentifier> {
-        qualifiedIdentifier[i] => Cons(i, box Empty),
-        qualifiedIdentifierList[list] Comma qualifiedIdentifier[i] => Cons(i, box list),
+    qualifiedIdentifierList: Vec<QualifiedIdentifier> {
+        qualifiedIdentifier[i] => vec![i],
+        qualifiedIdentifierList[mut list] Comma qualifiedIdentifier[i] => { list.push(i); list },
     }
 
     // Classes ($8.1)
@@ -89,7 +88,7 @@ parser! parse {
         modifierList[mods] CLASS Identifier[name] superType[s]
                 interfaceImplementations[impls] classBody[x] =>
             match name {
-                Identifier(ident) => Class { name: ident, modifiers: mods.toVecReverse(),
+                Identifier(ident) => Class { name: ident, modifiers: mods,
                                              extends: s, implements: impls },
                 _ => unreachable!(),
             }
@@ -102,7 +101,7 @@ parser! parse {
 
     interfaceImplementations: Vec<QualifiedIdentifier> {
         => vec![],
-        IMPLEMENTS interfaceList[impls] => impls.toVecReverse(),
+        IMPLEMENTS interfaceList[impls] => impls,
     }
 
     // Class body ($8.1.5)
@@ -116,7 +115,7 @@ parser! parse {
                 interfaceExtensions[exts] interfaceBody[x] =>
             match name {
                 Identifier(ident) => Interface { name: ident,
-                                                 modifiers: mods.toVecReverse(),
+                                                 modifiers: mods,
                                                  extends: exts },
                 _ => unreachable!()
             }
@@ -124,19 +123,19 @@ parser! parse {
 
     interfaceExtensions: Vec<QualifiedIdentifier> {
         => vec![],
-        EXTENDS interfaceList[impls] => impls.toVecReverse(),
+        EXTENDS interfaceList[impls] => impls,
     }
 
     // Common to classes and interfaces
 
-    interfaceList: List<QualifiedIdentifier> {
-        qualifiedIdentifier[i] => Cons(i, box Empty),
-        interfaceList[impls] Comma qualifiedIdentifier[i] => Cons(i, box impls),
+    interfaceList: Vec<QualifiedIdentifier> {
+        qualifiedIdentifier[i] => vec![i],
+        interfaceList[mut impls] Comma qualifiedIdentifier[i] => { impls.push(i); impls }
     }
 
-    modifierList: List<Modifier> {
-        => Empty,
-        modifierList[list] modifier[m] => Cons(m, box list),
+    modifierList: Vec<Modifier> {
+        => vec![],
+        modifierList[mut list] modifier[m] => { list.push(m); list }
     }
 
     modifier: Modifier {
