@@ -205,7 +205,7 @@ scanner! {
     r#"."# => (Token::Other, text),
 }
 
-pub fn get_tokens<'l>(input : &'l mut &str) -> Vec<Token> {
+pub fn get_tokens<'l>(input: &'l mut &str) -> Vec<Token> {
     let mut tokens = vec![];
     while input.len() > 0 {
         match next_token(input) {
@@ -223,7 +223,7 @@ pub fn get_tokens<'l>(input : &'l mut &str) -> Vec<Token> {
     tokens
 }
 
-fn token_filter(token : &Token) -> bool {
+fn token_filter(token: &Token) -> bool {
     match *token {
         Token::Whitespace => false,
         Token::Comment => false,

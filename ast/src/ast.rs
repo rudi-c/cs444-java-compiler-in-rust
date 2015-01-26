@@ -55,23 +55,23 @@ pub enum TypeDeclaration {
 #[derive(Show)]
 pub struct CompilationUnit {
     pub packages: QualifiedIdentifier,
-    pub imports : Vec<ImportDeclaration>,
-    pub types   : Vec<TypeDeclaration>,
+    pub imports: Vec<ImportDeclaration>,
+    pub types: Vec<TypeDeclaration>,
 }
 
 #[derive(Show)]
 pub struct Class {
-    pub name : String,
-    pub modifiers : Vec<Modifier>,
-    pub extends : Option<QualifiedIdentifier>,
-    pub implements : Vec<QualifiedIdentifier>,
+    pub name: String,
+    pub modifiers: Vec<Modifier>,
+    pub extends: Option<QualifiedIdentifier>,
+    pub implements: Vec<QualifiedIdentifier>,
 }
 
 #[derive(Show)]
 pub struct Interface {
-    pub name : String,
-    pub modifiers : Vec<Modifier>,
-    pub extends : Vec<QualifiedIdentifier>,
+    pub name: String,
+    pub modifiers: Vec<Modifier>,
+    pub extends: Vec<QualifiedIdentifier>,
 }
 
 #[derive(Show)]
@@ -86,6 +86,6 @@ pub enum Modifier {
 
 #[derive(Show)]
 pub struct QualifiedIdentifier {
-    pub parts : Vec<String>,
+    pub parts: Vec<String>,
 }
 

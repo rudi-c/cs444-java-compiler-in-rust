@@ -24,7 +24,7 @@ parser! parse {
     Token;
 
     // Compilation unit ($7.3)
-    root : CompilationUnit {
+    root: CompilationUnit {
         packageDeclaration[pkg] importDeclarations[imports] typeDeclarations[types] =>
             CompilationUnit { packages: pkg,
                               imports: imports.toVecReverse(),
@@ -32,18 +32,18 @@ parser! parse {
     }
 
     // Package declarations ($7.4)
-    packageDeclaration : QualifiedIdentifier {
+    packageDeclaration: QualifiedIdentifier {
         PACKAGE qualifiedIdentifier[ident] Semicolon => ident,
     }
 
     // Import declarations ($7.5)
-    importDeclaration : ImportDeclaration {
+    importDeclaration: ImportDeclaration {
         IMPORT qualifiedIdentifier[ident] Semicolon => ImportDeclaration::SingleType(ident),
         // TODO: Currently causes a shift-reduce conflict, but I don't think that it should.
         // IMPORT qualifiedIdentifier[ident] Dot Star Semicolon => ident,
     }
 
-    importDeclarations : List<ImportDeclaration> {
+    importDeclarations: List<ImportDeclaration> {
         => Empty,
         importDeclarations[dcls] importDeclaration[dcl] => Cons(dcl, box dcls),
     }
@@ -51,22 +51,22 @@ parser! parse {
     // Top-level type declarations ($7.6)
     // Note that Joos 1W only supports one of these per file, but I leave that to the
     // weeding phase so it's easier to output a clearer error message.
-    typeDeclaration : TypeDeclaration {
+    typeDeclaration: TypeDeclaration {
         classDeclaration[class] => TypeDeclaration::Class(class),
         interfaceDeclaration[interface] => TypeDeclaration::Interface(interface),
     }
 
-    typeDeclarations : List<TypeDeclaration> {
+    typeDeclarations: List<TypeDeclaration> {
         => Empty,
         typeDeclarations[dcls] typeDeclaration[dcl] => Cons(dcl, box dcls),
     }
 
     // Identifiers ($6.7)
-    qualifiedIdentifier : QualifiedIdentifier {
+    qualifiedIdentifier: QualifiedIdentifier {
         qualifiedIdentifierHelper[list] => QualifiedIdentifier { parts: list.toVecReverse() }
     }
 
-    qualifiedIdentifierHelper : List<String> {
+    qualifiedIdentifierHelper: List<String> {
         // Helper to avoid have to use .toVecReverse everytime qualified identifier are
         // used, which is quite often.
         Identifier[i] => match i {
@@ -79,13 +79,13 @@ parser! parse {
         },
     }
 
-    qualifiedIdentifierList : List<QualifiedIdentifier> {
+    qualifiedIdentifierList: List<QualifiedIdentifier> {
         qualifiedIdentifier[i] => Cons(i, box Empty),
         qualifiedIdentifierList[list] Comma qualifiedIdentifier[i] => Cons(i, box list),
     }
 
     // Classes ($8.1)
-    classDeclaration : Class {
+    classDeclaration: Class {
         modifierList[mods] CLASS Identifier[name] superType[s]
                 interfaceImplementations[impls] classBody[x] =>
             match name {
@@ -95,23 +95,23 @@ parser! parse {
             }
     }
 
-    superType : Option<QualifiedIdentifier> {
+    superType: Option<QualifiedIdentifier> {
         => None,
         EXTENDS qualifiedIdentifier[extension] => Some(extension)
     }
 
-    interfaceImplementations : Vec<QualifiedIdentifier> {
+    interfaceImplementations: Vec<QualifiedIdentifier> {
         => vec![],
         IMPLEMENTS interfaceList[impls] => impls.toVecReverse(),
     }
 
     // Class body ($8.1.5)
-    classBody : i32 {
+    classBody: i32 {
         LBrace RBrace => 0
     }
 
     // Interfaces ($9.1)
-    interfaceDeclaration : Interface {
+    interfaceDeclaration: Interface {
         modifierList[mods] INTERFACE Identifier[name]
                 interfaceExtensions[exts] interfaceBody[x] =>
             match name {
@@ -122,24 +122,24 @@ parser! parse {
             }
     }
 
-    interfaceExtensions : Vec<QualifiedIdentifier> {
+    interfaceExtensions: Vec<QualifiedIdentifier> {
         => vec![],
         EXTENDS interfaceList[impls] => impls.toVecReverse(),
     }
 
     // Common to classes and interfaces
 
-    interfaceList : List<QualifiedIdentifier> {
+    interfaceList: List<QualifiedIdentifier> {
         qualifiedIdentifier[i] => Cons(i, box Empty),
         interfaceList[impls] Comma qualifiedIdentifier[i] => Cons(i, box impls),
     }
 
-    modifierList : List<Modifier> {
+    modifierList: List<Modifier> {
         => Empty,
         modifierList[list] modifier[m] => Cons(m, box list),
     }
 
-    modifier : Modifier {
+    modifier: Modifier {
         PUBLIC[_] => Modifier::Public,
         PROTECTED[_] => Modifier::Protected,
         PRIVATE[_] => Modifier::Private,
@@ -149,7 +149,7 @@ parser! parse {
     }
 
     // Interface body ($9.1.3)
-    interfaceBody : i32 {
+    interfaceBody: i32 {
         LBrace RBrace => 0
     }
 }
