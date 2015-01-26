@@ -112,7 +112,6 @@ scanner! {
     r#"[ \t\n][ \t\n]*"# => (Token::Whitespace, text),
 
     // Comments defined in $3.7
-    // TODO: Make /* */ work for multi-line comments.
     r#"/[*](.|\n)*[*]/"# => (Token::Comment, text),
     r#"//[^\n]*"# => (Token::Comment, text),
 
@@ -159,7 +158,8 @@ scanner! {
     // String literals
     // TODO: Character escapes. Note that Unicode escapes are not required.
     r#""([^"]|\\.)*""# => (Token::StringLiteral(text[1..text.len()-1].to_string()), text),
-    r#""([^"]|\\.)*"# => (Token::Error, text), // TODO: What is this for?
+    // Check for unterminated string constants.
+    r#""([^"]|\\.)*"# => (Token::Error, text),
     // TODO: Character literals.
 
 
