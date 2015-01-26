@@ -86,9 +86,11 @@ parser! parse {
 
     // Classes ($8.1)
     classDeclaration : Class {
-        CLASS Identifier[name] superType[s] interfaceImplementations[impls] classBody[x] =>
+        modifierList[mods] CLASS Identifier[name] superType[s]
+                interfaceImplementations[impls] classBody[x] =>
             match name {
-                Identifier(ident) => Class { name: ident, extends: s, implements: impls },
+                Identifier(ident) => Class { name: ident, modifiers: mods.toVecReverse(),
+                                             extends: s, implements: impls },
                 _ => unreachable!(),
             }
     }
@@ -100,12 +102,7 @@ parser! parse {
 
     interfaceImplementations : Vec<QualifiedIdentifier> {
         => vec![],
-        IMPLEMENTS interfaceImplementationList[impls] => impls.toVecReverse(),
-    }
-
-    interfaceImplementationList : List<QualifiedIdentifier> {
-        qualifiedIdentifier[i] => Cons(i, box Empty),
-        interfaceImplementationList[impls] Comma qualifiedIdentifier[i] => Cons(i, box impls),
+        IMPLEMENTS interfaceList[impls] => impls.toVecReverse(),
     }
 
     // Class body ($8.1.5)
@@ -115,22 +112,40 @@ parser! parse {
 
     // Interfaces ($9.1)
     interfaceDeclaration : Interface {
-        INTERFACE Identifier[name] interfaceExtensions[exts] interfaceBody[x] =>
+        modifierList[mods] INTERFACE Identifier[name]
+                interfaceExtensions[exts] interfaceBody[x] =>
             match name {
-                Identifier(ident) => Interface { name: ident, extends: exts },
+                Identifier(ident) => Interface { name: ident,
+                                                 modifiers: mods.toVecReverse(),
+                                                 extends: exts },
                 _ => unreachable!()
             }
     }
 
     interfaceExtensions : Vec<QualifiedIdentifier> {
         => vec![],
-        EXTENDS interfaceExtensionList[impls] => impls.toVecReverse(),
+        EXTENDS interfaceList[impls] => impls.toVecReverse(),
     }
 
-    // TODO: Can we get merge this rule with the one for classes?
-    interfaceExtensionList : List<QualifiedIdentifier> {
+    // Common to classes and interfaces
+
+    interfaceList : List<QualifiedIdentifier> {
         qualifiedIdentifier[i] => Cons(i, box Empty),
-        interfaceExtensionList[impls] Comma qualifiedIdentifier[i] => Cons(i, box impls),
+        interfaceList[impls] Comma qualifiedIdentifier[i] => Cons(i, box impls),
+    }
+
+    modifierList : List<Modifier> {
+        => Empty,
+        modifierList[list] modifier[m] => Cons(m, box list),
+    }
+
+    modifier : Modifier {
+        PUBLIC[_] => Modifier::Public,
+        PROTECTED[_] => Modifier::Protected,
+        PRIVATE[_] => Modifier::Private,
+        ABSTRACT[_] => Modifier::Abstract,
+        STATIC[_] => Modifier::Static,
+        FINAL[_] => Modifier::Final,
     }
 
     // Interface body ($9.1.3)

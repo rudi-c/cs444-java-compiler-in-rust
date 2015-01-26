@@ -62,6 +62,7 @@ pub struct CompilationUnit {
 #[derive(Show)]
 pub struct Class {
     pub name : String,
+    pub modifiers : Vec<Modifier>,
     pub extends : Option<QualifiedIdentifier>,
     pub implements : Vec<QualifiedIdentifier>,
 }
@@ -69,7 +70,18 @@ pub struct Class {
 #[derive(Show)]
 pub struct Interface {
     pub name : String,
+    pub modifiers : Vec<Modifier>,
     pub extends : Vec<QualifiedIdentifier>,
+}
+
+#[derive(Show)]
+pub enum Modifier {
+    Public,
+    Protected,
+    Private,
+    Abstract,
+    Static,
+    Final,
 }
 
 #[derive(Show)]
