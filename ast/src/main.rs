@@ -60,6 +60,22 @@ parser! parse {
         typeDeclarations[mut dcls] typeDeclaration[dcl] => { dcls.push(dcl); dcls }
     }
 
+    // Types ($4.1) ($4.3)
+    // Since type is a Rust keyword, use the term jType.
+    jType: Type {
+        simpleType[t] => Type::SimpleType(t),
+        simpleType[t] LBracket RBracket => Type::ArrayType(t),
+    }
+
+    simpleType: SimpleType {
+        BOOLEAN => SimpleType::Boolean,
+        INT => SimpleType::Int,
+        SHORT => SimpleType::Short,
+        CHAR => SimpleType::Char,
+        BYTE => SimpleType::Byte,
+        qualifiedIdentifier[q] => SimpleType::Other(q),
+    }
+
     // Identifiers ($6.7)
     qualifiedIdentifier: QualifiedIdentifier {
         qualifiedIdentifierHelper[list] => QualifiedIdentifier { parts: list }
@@ -83,12 +99,13 @@ parser! parse {
     // Classes ($8.1)
     classDeclaration : Class {
         modifierList[mods] CLASS Identifier(ident) superType[s]
-                interfaceImplementations[impls] classBody[x] =>
+                interfaceImplementations[impls] classBody[body] =>
             Class {
                 name: ident,
                 modifiers: mods,
                 extends: s,
                 implements: impls,
+                body: body,
             },
     }
 
@@ -103,8 +120,42 @@ parser! parse {
     }
 
     // Class body ($8.1.5)
-    classBody: i32 {
-        LBrace RBrace => 0
+    classBody: Vec<ClassBodyDeclaration> {
+        LBrace classBodyDeclarations[body] RBrace => body
+    }
+
+    classBodyDeclarations: Vec<ClassBodyDeclaration> {
+        => vec![],
+        classBodyDeclarations[mut dcls] classBodyDeclaration[dcl] => { dcls.push(dcl); dcls },
+    }
+
+    classBodyDeclaration: ClassBodyDeclaration {
+        fieldDeclaration[dcl] => ClassBodyDeclaration::FieldDeclaration(dcl),
+        methodDeclaration[dcl] => ClassBodyDeclaration::MethodDeclaration(dcl),
+        constructorDeclaration[dcl] => ClassBodyDeclaration::ConstructorDeclaration(dcl),
+    }
+
+    // Field declaration ($8.3)
+    // Multiple fields per declarations not required.
+    // TODO: Check if array initializers should be allowed, currently pending on Piazza.
+    fieldDeclaration: Field {
+        modifierList[mods] jType[t] Identifier(name) Assignment expression[expr] Semicolon =>
+            Field { name: name, modifiers: mods, jType: t, initializer: expr }
+    }
+
+    methodDeclaration: Method {
+        modifierList[mods] VOID Identifier(name)
+                LParen parameterList[params] RParen block[b] =>
+            Method { name: name, modifiers: mods, params: params, returnType: None, body: b },
+        modifierList[mods] jType[t] Identifier(name)
+                LParen parameterList[params] RParen block[b] =>
+            Method { name: name, modifiers: mods, params: params, returnType: Some(t), body: b }
+    }
+
+    // Class constructor ($8.8)
+    constructorDeclaration: Constructor {
+        modifierList[mods] Identifier(name) LParen parameterList[params] RParen block[b] =>
+            Constructor { name: name, modifiers: mods, params: params, body: b }
     }
 
     // Interfaces ($9.1)
@@ -146,6 +197,27 @@ parser! parse {
 
     // Interface body ($9.1.3)
     interfaceBody: i32 {
+        LBrace RBrace => 0
+    }
+
+    // For array types ($8.3)
+    variableDeclaration: VariableDeclaration {
+        jType[t] Identifier(name) => VariableDeclaration { jType: t, name: name }
+    }
+
+    // Method parameters ($8.4.1). The reference refers to them as formal parameters.
+    parameterList: Vec<VariableDeclaration> {
+        => vec![],
+        variableDeclaration[p] => vec![p],
+        parameterList[mut list] Comma variableDeclaration[p] => { list.push(p); list },
+    }
+
+    expression: Expression {
+        => Expression::NothingYet,
+    }
+
+    // Block
+    block: i32 {
         LBrace RBrace => 0
     }
 }

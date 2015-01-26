@@ -38,6 +38,42 @@ pub struct Class {
     pub modifiers: Vec<Modifier>,
     pub extends: Option<QualifiedIdentifier>,
     pub implements: Vec<QualifiedIdentifier>,
+    pub body: Vec<ClassBodyDeclaration>,
+}
+
+#[derive(Show)]
+pub enum ClassBodyDeclaration {
+    FieldDeclaration(Field),
+    MethodDeclaration(Method),
+    ConstructorDeclaration(Constructor),
+
+    // Not in Joos: InstanceInitializer, StaticInitializer
+}
+
+#[derive(Show)]
+pub struct Constructor {
+    pub name: String,
+    pub modifiers: Vec<Modifier>,
+    pub params: Vec<VariableDeclaration>,
+    pub body: i32
+}
+
+#[derive(Show)]
+pub struct Method {
+    pub name: String,
+    pub modifiers: Vec<Modifier>,
+    pub params: Vec<VariableDeclaration>,
+    // Void == None
+    pub returnType: Option<Type>,
+    pub body: i32
+}
+
+#[derive(Show)]
+pub struct Field {
+    pub name: String,
+    pub modifiers: Vec<Modifier>,
+    pub jType: Type,
+    pub initializer: Expression,
 }
 
 #[derive(Show)]
@@ -58,7 +94,33 @@ pub enum Modifier {
 }
 
 #[derive(Show)]
+pub struct VariableDeclaration {
+    pub jType: Type,
+    pub name: String,
+}
+
+#[derive(Show)]
 pub struct QualifiedIdentifier {
     pub parts: Vec<String>,
 }
 
+#[derive(Show)]
+pub enum Type {
+    SimpleType(SimpleType),
+    ArrayType(SimpleType)
+}
+
+#[derive(Show)]
+pub enum SimpleType {
+    Boolean,
+    Int,
+    Short,
+    Char,
+    Byte,
+    Other(QualifiedIdentifier),
+}
+
+#[derive(Show)]
+pub enum Expression {
+    NothingYet
+}
