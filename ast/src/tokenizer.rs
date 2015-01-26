@@ -209,14 +209,27 @@ impl<'a> Iterator for Tokenizer<'a> {
 
     fn next(&mut self) -> Option<Token> {
         loop {
+            if self.slice.is_empty() {
+                return None;
+            }
             match next_token(&mut self.slice) {
-                Some(c) => {
-                    println!("{:?}", c);
-                    if token_filter(&c.0) {
-                        return Some(c.0);
+                Some((token, text)) => {
+                    if let &Token::Error = &token {
+                        // TODO: report error here and below
+                        println!("invalid token: {}", text);
+                        return None;
+                    }
+                    if token_filter(&token) {
+                        // XXX: the "{:?}" formatter doesn't seem to accept
+                        // alignment
+                        println!("{:<25} {:?}", format!("{:?}", token), text);
+                        return Some(token);
                     }
                 }
-                None => return None,
+                None => {
+                    println!("invalid token");
+                    return None;
+                }
             }
         }
     }
