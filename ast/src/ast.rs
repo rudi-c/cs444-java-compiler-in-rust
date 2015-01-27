@@ -55,7 +55,7 @@ pub struct Constructor {
     pub name: String,
     pub modifiers: Vec<Modifier>,
     pub params: Vec<VariableDeclaration>,
-    pub body: i32
+    pub body: Vec<BlockStatement>
 }
 
 #[derive(Show)]
@@ -65,7 +65,7 @@ pub struct Method {
     pub params: Vec<VariableDeclaration>,
     // Void == None
     pub returnType: Option<Type>,
-    pub body: i32
+    pub body: Vec<BlockStatement>,
 }
 
 #[derive(Show)]
@@ -73,7 +73,7 @@ pub struct Field {
     pub name: String,
     pub modifiers: Vec<Modifier>,
     pub jType: Type,
-    pub initializer: Expression,
+    pub initializer: Option<VariableInitializer>,
 }
 
 #[derive(Show)]
@@ -118,6 +118,30 @@ pub enum SimpleType {
     Char,
     Byte,
     Other(QualifiedIdentifier),
+}
+
+#[derive(Show)]
+pub enum BlockStatement {
+    LocalVariable(LocalVariable),
+    LocalClass(Class),
+    Statement(Statement),
+}
+
+#[derive(Show)]
+pub struct LocalVariable {
+    pub variable: VariableDeclaration,
+    pub initializer: VariableInitializer,
+}
+
+#[derive(Show)]
+pub enum VariableInitializer {
+    Expression(Expression),
+    Array(Vec<VariableInitializer>),
+}
+
+#[derive(Show)]
+pub struct Statement {
+    pub temp: i32,
 }
 
 #[derive(Show)]

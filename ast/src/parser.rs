@@ -119,10 +119,16 @@ parser! parse {
 
     // Field declaration ($8.3)
     // Multiple fields per declarations not required.
-    // TODO: Check if array initializers should be allowed, currently pending on Piazza.
     fieldDeclaration: Field {
-        modifierList[mods] jType[t] Identifier(name) Assignment expression[expr] Semicolon =>
+        modifierList[mods] jType[t] variableDeclarator[v] Semicolon => {
+            let (name, expr) = v;
             Field { name: name, modifiers: mods, jType: t, initializer: expr }
+        }
+    }
+
+    variableDeclarator: (String, Option<VariableInitializer>) {
+        Identifier(name) => (name, None),
+        Identifier(name) Assignment variableInitializer[init] => (name, Some(init)),
     }
 
     methodDeclaration: Method {
@@ -137,7 +143,7 @@ parser! parse {
     // Class constructor ($8.8)
     constructorDeclaration: Constructor {
         modifierList[mods] Identifier(name) LParen parameterList[params] RParen block[b] =>
-            Constructor { name: name, modifiers: mods, params: params, body: b }
+            Constructor { name: name, modifiers: mods, params: params, body: b },
     }
 
     // Interfaces ($9.1)
@@ -182,6 +188,7 @@ parser! parse {
         LBrace RBrace => 0
     }
 
+    // TODO: Check this comment.
     // For array types ($8.3)
     variableDeclaration: VariableDeclaration {
         jType[t] Identifier(name) => VariableDeclaration { jType: t, name: name }
@@ -194,13 +201,49 @@ parser! parse {
         parameterList[mut list] Comma variableDeclaration[p] => { list.push(p); list },
     }
 
-    expression: Expression {
-        => Expression::NothingYet,
+    // Variable initializers ($8.3)
+    variableInitializer: VariableInitializer {
+        expression[expr] => VariableInitializer::Expression(expr),
+        arrayInitializer[init] => VariableInitializer::Array(init),
     }
 
-    // Block
-    block: i32 {
-        LBrace RBrace => 0
+    // Array initializers ($10.6)
+    // TODO: Will want test cases in regards to the last comma.
+    arrayInitializer: Vec<VariableInitializer> {
+        LBrace RBrace => vec![],
+        LBrace variableInitializers[inits] RBrace => inits,
+        LBrace variableInitializers[inits] Comma RBrace => inits,
+    }
+
+    variableInitializers: Vec<VariableInitializer> {
+        variableInitializer[init] => vec![init],
+        variableInitializers[mut inits] Comma variableInitializer[init] =>
+            { inits.push(init); inits }
+    }
+
+    expression: Expression {
+        IntegerLiteral(i) => Expression::NothingYet,
+    }
+
+    // Block ($14.2)
+    block: Vec<BlockStatement> {
+        LBrace blockStatements[stmts] RBrace => stmts
+    }
+
+    blockStatements : Vec<BlockStatement> {
+        => vec![],
+        blockStatements[mut stmts] blockStatement[stmt] => { stmts.push(stmt); stmts }
+    }
+
+    blockStatement : BlockStatement {
+        localVariableDeclaration[local] => BlockStatement::LocalVariable(local),
+        classDeclaration[c] => BlockStatement::LocalClass(c),
+    }
+
+    // Local declarations ($14.4)
+    localVariableDeclaration : LocalVariable {
+        variableDeclaration[var] Assignment variableInitializer[init] Semicolon =>
+            LocalVariable { variable: var, initializer: init }
     }
 }
 

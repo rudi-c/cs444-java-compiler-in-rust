@@ -240,6 +240,7 @@ fn unescape(mut s: &str) -> String {
     }
     assert!(s.is_empty());
     r
+    r#"."# => (Token::Other, text),
 }
 
 pub struct Tokenizer<'a> {
