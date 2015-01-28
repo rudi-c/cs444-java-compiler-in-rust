@@ -16,10 +16,21 @@ enum Token {
     Error,
     Equals,
     Star,
+    IF,
+    ELSE,
+    SEMI,
+    LEFT,
+    RIGHT,
 }
 
 scanner! {
     next_token(text: 'a) -> (Token, &'a str);
+
+    "if" => (IF, text),
+    "else" => (ELSE, text),
+    ";" => (SEMI, text),
+    r"\(" => (LEFT, text),
+    r"\)" => (RIGHT, text),
 
     r#"[a-zA-Z_][a-zA-Z0-9_]*"# => (Token::Ident(text.to_string()), text),
     r#""([^"]|\\.)*""# => (Token::StringLit(text[1..text.len()-1].to_string()), text),
@@ -50,21 +61,15 @@ enum Rhs {
 parser! parse {
     Token;
 
-    stmt: Ast {
-        lhs[l] Equals rhs[r] => Ast::Assign(l, r),
-        rhs[x] => Ast::Expr(x),
+    stmt: () {
+        expr SEMI => (),
+        #[no_reduce(ELSE)]
+        IF LEFT expr RIGHT stmt => (),
+        IF LEFT expr RIGHT stmt ELSE stmt => (),
     }
 
-    lhs: Lhs {
-        Star rhs[v] => Lhs::Deref(v),
-        Ident[i] => match i {
-            Ident(s) => Lhs::Var(s),
-            _ => unreachable!(),
-        },
-    }
-
-    rhs: Rhs {
-        lhs[v] => Rhs::Lhs(box v),
+    expr: () {
+        Ident => (),
     }
 }
 
