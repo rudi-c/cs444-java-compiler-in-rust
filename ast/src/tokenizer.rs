@@ -1,9 +1,12 @@
+use std::num::FromStrRadix;
+use std::char;
+
 #[derive(Show)]
 pub enum Token {
     Identifier(String),
 
     // Literals. Note that FloatingPointLiteral not required in Joos
-    IntegerLiteral(i64),
+    IntegerLiteral(u64),
     BooleanLiteral(bool),
     CharacterLiteral(char),
     StringLiteral(String),
@@ -88,7 +91,7 @@ pub enum Token {
     Minus,
     Star,
     Slash,
-    Percentage,
+    Percent,
     Bang,
 
     Whitespace,
@@ -110,7 +113,7 @@ scanner! {
     r#"/[*](~(.*[*]/.*))[*]/"# => (Token::Comment, text),
     r#"//[^\n]*"# => (Token::Comment, text),
 
-    // Keywords defined in $3.8.
+    // Keywords defined in $3.9.
     // Has precedence over identifiers.
     r#"abstract"# => (Token::ABSTRACT, text),
     r#"boolean"# => (Token::BOOLEAN, text),
@@ -147,15 +150,21 @@ scanner! {
 
     // Literals defined in $3.10
     // Note that Octal, Hex and Long literals are not required in Joos.
-    // TODO: Check that the minus sign should indeed be part of the literal
-    // and not a unary op.
-    r#"(|-)0|[1-9][0-9]*"# => (Token::IntegerLiteral(text.parse().unwrap()), text),
+    // Negative literals do not exist: the minus sign is a unary operator.
+    r#"0|[1-9][0-9]*"# => (Token::IntegerLiteral(text.parse().unwrap()), text),
     // String literals
-    // TODO: Character escapes. Note that Unicode escapes are not required.
-    r#""([^"]|\\.)*""# => (Token::StringLiteral(text[1..text.len()-1].to_string()), text),
+    // Note that Unicode escapes are not required.
+    r#""([^"]|\\.)*""# => (Token::StringLiteral(unescape(&text[1..text.len()-1])), text),
     // Check for unterminated string constants.
     r#""([^"]|\\.)*"# => (Token::Error, text),
     // TODO: Character literals.
+    r#"'[^'\\]'"# => (Token::CharacterLiteral(text.char_at(1)), text),
+    r#"'\\[0-7]'"# => (Token::CharacterLiteral(unescape(&text[1..text.len()-1]).char_at(0)), text),
+    r#"'\\[0-7][0-7]'"# => (Token::CharacterLiteral(unescape(&text[1..text.len()-1]).char_at(0)), text),
+    r#"'\\[0-3][0-7][0-7]'"# => (Token::CharacterLiteral(unescape(&text[1..text.len()-1]).char_at(0)), text),
+    r#"'\\.'"# => (Token::CharacterLiteral(unescape(&text[1..text.len()-1]).char_at(0)), text),
+    r#"'.'"# => panic!("invalid character literal: {}", text),
+    r#"'"# => panic!("invalid character literal"),
 
 
     // Identifiers defined in $3.8
@@ -193,11 +202,44 @@ scanner! {
     r#"-"# => (Token::Minus, text),
     r#"\*"# => (Token::Star, text),
     r#"/"# => (Token::Slash, text),
-    r#"%"# => (Token::Percentage, text),
+    r#"%"# => (Token::Percent, text),
     r#"!"# => (Token::Bang, text),
 
-    r#"="# => (Token::Equals, text),
-    r#"."# => (Token::Other, text),
+    r#"."# => {
+        panic!("invalid input: {}", text)
+    }
+}
+
+fn octal(s: &str) -> char {
+    char::from_u32(FromStrRadix::from_str_radix(s, 8).unwrap()).unwrap()
+}
+
+scanner! {
+    unescape_c(text) -> char;
+
+    r"\\[0-3][0-7][0-7]" => octal(&text[1..]),
+    r"\\[0-7][0-7]" => octal(&text[1..]),
+    r"\\[0-7]" => octal(&text[1..]),
+    r"\\b" => '\u{0008}',
+    r"\\t" => '\t',
+    r"\\n" => '\n',
+    r"\\f" => '\u{000c}',
+    r"\\r" => '\r',
+    r#"\\""# => '"',
+    r"\\'" => '\'',
+    r"\\\\" => '\\',
+    r"\\." => panic!("bad escape sequence: {}", text),
+    r"\\" => panic!("unterminated escape sequence"),
+    r"[^\\]" => text.char_at(0),
+}
+
+fn unescape(mut s: &str) -> String {
+    let mut r = String::with_capacity(s.len());
+    while let Some(c) = unescape_c(&mut s) {
+        r.push(c);
+    }
+    assert!(s.is_empty());
+    r
 }
 
 pub struct Tokenizer<'a> {
