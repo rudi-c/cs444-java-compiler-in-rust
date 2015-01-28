@@ -79,6 +79,9 @@ pub enum Token {
 
     // Operators ($3.12)
     Assignment,
+    Xor,
+    Or,
+    And,
     OrOr,
     AndAnd,
     Equals,
@@ -190,6 +193,9 @@ scanner! {
     //     bitwise ops, increment/decrement, assignment ops,
     //     unary plus, choice (?:), bit shift
     r#"="# => (Token::Assignment, text),
+    r#"\^"# => (Token::Xor, text),
+    r#"\|"# => (Token::Or, text),
+    r#"\&"# => (Token::And, text),
     r#"\|\|"# => (Token::OrOr, text),
     r#"\&\&"# => (Token::AndAnd, text),
     r#"=="# => (Token::Equals, text),

@@ -146,5 +146,58 @@ pub struct Statement {
 
 #[derive(Show)]
 pub enum Expression {
-    NothingYet
+    Literal(Literal),
+    ClassLiteral(Option<Type>),
+    This,
+    QualifiedThis(QualifiedIdentifier),
+    NewStaticClass(QualifiedIdentifier, Vec<Expression>,
+                   Option<Vec<ClassBodyDeclaration>>),
+    NewDynamicClass(Box<Expression>, Vec<Expression>,
+                    Option<Vec<ClassBodyDeclaration>>),
+    NewArray(SimpleType, Box<Expression>),
+    NewArrayInit(SimpleType, Vec<VariableInitializer>),
+    FieldAccess(Box<Expression>, String),
+    MethodInvocation(Option<Box<Expression>>, String, Vec<Expression>),
+    ArrayAccess(Box<Expression>, Box<Expression>),
+    Name(QualifiedIdentifier),
+    Assignment(Box<Expression>, Box<Expression>),
+    InstanceOf(Box<Expression>, Type),
+    Prefix(PrefixOperator, Box<Expression>),
+    Infix(InfixOperator, Box<Expression>, Box<Expression>),
+    Cast(Type, Box<Expression>),
+}
+
+#[derive(Show)]
+pub enum Literal {
+    Integer(i64),
+    Boolean(bool),
+    Character(char),
+    String(String),
+    Null,
+}
+
+#[derive(Show)]
+pub enum InfixOperator {
+    Xor,
+    EagerOr,
+    EagerAnd,
+    LazyOr,
+    LazyAnd,
+    Equals,
+    NotEquals,
+    LessThan,
+    GreaterThan,
+    LessEqual,
+    GreaterEqual,
+    Plus,
+    Minus,
+    Mult,
+    Div,
+    Modulo,
+}
+
+#[derive(Show)]
+pub enum PrefixOperator {
+    Minus,
+    Not,
 }
