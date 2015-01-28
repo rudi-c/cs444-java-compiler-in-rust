@@ -337,8 +337,8 @@ parser! parse {
 
     // Array access expressions ($15.13)
     arrayAccess: Expression {
-        expressionName[name] LBracket expression[expr] RBracket =>
-            Expression::ArrayAccess(box name, box expr),
+        qualifiedIdentifier[name] LBracket expression[expr] RBracket =>
+            Expression::ArrayAccess(box Expression::Name(name), box expr),
         primaryNoNewArray[primary] LBracket expression[expr] RBracket =>
             Expression::ArrayAccess(box primary, box expr),
     }
@@ -371,8 +371,10 @@ parser! parse {
     castExpression: Expression {
         LParen primitiveType[t] RParen unaryExpression[expr] =>
             Expression::Cast(Type::SimpleType(t), box expr),
-        LParen referenceType[t] RParen unaryExpressionNotPlusMinus[expr] =>
-            Expression::Cast(t, box expr),
+        LParen arrayType[t] RParen unaryExpressionNotPlusMinus[expr] =>
+            Expression::Cast(Type::ArrayType(t), box expr),
+        LParen qualifiedIdentifier[q] RParen unaryExpressionNotPlusMinus[expr] =>
+            Expression::Cast(Type::SimpleType(SimpleType::Other(q)), box expr),
     }
 
     // Multiplicative expressions ($15.17)
