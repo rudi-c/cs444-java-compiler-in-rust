@@ -343,15 +343,23 @@ parser! parse {
             Expression::ArrayAccess(box primary, box expr),
     }
 
+    // Postfix expression (%15.14)
+    // No -- or ++ in Joss 1W
+    postfixExpression: Expression {
+        primary[expr] => expr,
+        expressionName[expr] => expr,
+    }
+
     // Unary operators ($15.15)
     unaryExpression: Expression {
-        Minus expression[expr] => Expression::Prefix(PrefixOperator::Minus, box expr),
+        Minus unaryExpression[expr] => Expression::Prefix(PrefixOperator::Minus, box expr),
         unaryExpressionNotPlusMinus[expr] => expr
     }
 
     // Separate rule due to casting rules.
     unaryExpressionNotPlusMinus: Expression {
         castExpression[expr] => expr,
+        postfixExpression[expr] => expr,
         Bang unaryExpression[expr] => Expression::Prefix(PrefixOperator::Not, box expr),
     }
 
