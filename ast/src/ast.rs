@@ -14,7 +14,7 @@ pub enum TypeDeclaration {
 
 #[derive(Show)]
 pub struct CompilationUnit {
-    pub packages: QualifiedIdentifier,
+    pub package: Option<QualifiedIdentifier>,
     pub imports: Vec<ImportDeclaration>,
     pub types: Vec<TypeDeclaration>,
 }

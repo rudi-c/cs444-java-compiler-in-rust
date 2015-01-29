@@ -16,15 +16,19 @@ mod tokenizer;
 mod weed;
 
 fn main() {
-    if let Ok(input) = std::io::stdio::stdin().read_to_string() {
-        let ast = make_ast(tokenizer(&*input));
-        println!("{:?}", ast);
+    let input = std::io::stdio::stdin().read_to_string().unwrap();
+    let ast = make_ast(tokenizer(&*input));
+    println!("{:?}", ast);
 
-        if let Ok(result) = ast {
+    match ast {
+        Ok(result) => {
             let found_error = weed(result);
             if found_error {
                 os::set_exit_status(42);
             }
+        },
+        Err(e) => {
+            os::set_exit_status(42);
         }
     }
 }

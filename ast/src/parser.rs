@@ -10,14 +10,15 @@ parser! parse {
     // Compilation unit ($7.3)
     root: CompilationUnit {
         packageDeclaration[pkg] importDeclarations[imports] typeDeclarations[types] =>
-            CompilationUnit { packages: pkg,
+            CompilationUnit { package: pkg,
                               imports: imports,
                               types: types },
     }
 
     // Package declarations ($7.4)
-    packageDeclaration: QualifiedIdentifier {
-        PACKAGE qualifiedIdentifier[ident] Semicolon => ident,
+    packageDeclaration: Option<QualifiedIdentifier> {
+        => None,
+        PACKAGE qualifiedIdentifier[ident] Semicolon => Some(ident),
     }
 
     // Import declarations ($7.5)
@@ -156,8 +157,7 @@ parser! parse {
     // Field declaration ($8.3)
     // Multiple fields per declarations not required.
     fieldDeclaration: Field {
-        modifierList[mods] ty[t] variableDeclarator[v] Semicolon => {
-            let (name, expr) = v;
+        modifierList[mods] ty[t] variableDeclarator[(name, expr)] Semicolon => {
             Field { name: name, modifiers: mods, ty: t, initializer: expr }
         }
     }
