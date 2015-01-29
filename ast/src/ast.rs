@@ -1,3 +1,5 @@
+pub type Ident = String;
+
 #[derive(Show)]
 pub enum ImportDeclaration {
     SingleType(QualifiedIdentifier),
@@ -19,7 +21,7 @@ pub struct CompilationUnit {
 
 #[derive(Show)]
 pub struct Class {
-    pub name: String,
+    pub name: Ident,
     pub modifiers: Vec<Modifier>,
     pub extends: Option<QualifiedIdentifier>,
     pub implements: Vec<QualifiedIdentifier>,
@@ -37,7 +39,7 @@ pub enum ClassBodyDeclaration {
 
 #[derive(Show)]
 pub struct Constructor {
-    pub name: String,
+    pub name: Ident,
     pub modifiers: Vec<Modifier>,
     pub params: Vec<VariableDeclaration>,
     pub body: Vec<BlockStatement>
@@ -45,25 +47,25 @@ pub struct Constructor {
 
 #[derive(Show)]
 pub struct Method {
-    pub name: String,
+    pub name: Ident,
     pub modifiers: Vec<Modifier>,
     pub params: Vec<VariableDeclaration>,
     // Void == None
-    pub returnType: Option<Type>,
+    pub return_type: Option<Type>,
     pub body: Vec<BlockStatement>,
 }
 
 #[derive(Show)]
 pub struct Field {
-    pub name: String,
+    pub name: Ident,
     pub modifiers: Vec<Modifier>,
-    pub jType: Type,
+    pub ty: Type,
     pub initializer: Option<VariableInitializer>,
 }
 
 #[derive(Show)]
 pub struct Interface {
-    pub name: String,
+    pub name: Ident,
     pub modifiers: Vec<Modifier>,
     pub extends: Vec<QualifiedIdentifier>,
 }
@@ -80,13 +82,13 @@ pub enum Modifier {
 
 #[derive(Show)]
 pub struct VariableDeclaration {
-    pub jType: Type,
-    pub name: String,
+    pub ty: Type,
+    pub name: Ident,
 }
 
 #[derive(Show)]
 pub struct QualifiedIdentifier {
-    pub parts: Vec<String>,
+    pub parts: Vec<Ident>,
 }
 
 #[derive(Show)]
@@ -137,12 +139,12 @@ pub enum Expression {
     QualifiedThis(QualifiedIdentifier),
     NewStaticClass(QualifiedIdentifier, Vec<Expression>,
                    Option<Vec<ClassBodyDeclaration>>),
-    NewDynamicClass(Box<Expression>, Vec<Expression>,
+    NewDynamicClass(Box<Expression>, Ident, Vec<Expression>,
                     Option<Vec<ClassBodyDeclaration>>),
     NewArray(SimpleType, Box<Expression>),
-    NewArrayInit(SimpleType, Vec<VariableInitializer>),
-    FieldAccess(Box<Expression>, String),
-    MethodInvocation(Option<Box<Expression>>, String, Vec<Expression>),
+    NewArrayInit(SimpleType, Box<Expression>, Vec<VariableInitializer>),
+    FieldAccess(Box<Expression>, Ident),
+    MethodInvocation(Option<Box<Expression>>, Ident, Vec<Expression>),
     ArrayAccess(Box<Expression>, Box<Expression>),
     Name(QualifiedIdentifier),
     Assignment(Box<Expression>, Box<Expression>),

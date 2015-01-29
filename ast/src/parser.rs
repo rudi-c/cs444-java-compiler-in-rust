@@ -55,9 +55,9 @@ parser! parse {
     }
 
     // Types ($4.1 - $4.3)
-    // Since type is a Rust keyword, use the term jType.
+    // Since type is a Rust keyword, use the term ty.
     // Note that multidimensional arrays are not in Joos 1W.
-    jType: Type {
+    ty: Type {
         primitiveType[t] => Type::SimpleType(t),
         referenceType[t] => t,
     }
@@ -87,7 +87,7 @@ parser! parse {
     // Needed to resolve shift-reduce conflicts due of the Type Dot Something
     // because Type can be a qualifiedIdentifier
     // TODO: Remove
-    // jTypeDot: Type {
+    // tyDot: Type {
     //     primitiveType[t] Dot => Type::SimpleType(t),
     //     arrayType[t] Dot => Type::ArrayType(t),
     //     qualifiedIdentifierHelperDot[q] => {
@@ -156,9 +156,9 @@ parser! parse {
     // Field declaration ($8.3)
     // Multiple fields per declarations not required.
     fieldDeclaration: Field {
-        modifierList[mods] jType[t] variableDeclarator[v] Semicolon => {
+        modifierList[mods] ty[t] variableDeclarator[v] Semicolon => {
             let (name, expr) = v;
-            Field { name: name, modifiers: mods, jType: t, initializer: expr }
+            Field { name: name, modifiers: mods, ty: t, initializer: expr }
         }
     }
 
@@ -170,10 +170,10 @@ parser! parse {
     methodDeclaration: Method {
         modifierList[mods] VOID Identifier(name)
                 LParen parameterList[params] RParen block[b] =>
-            Method { name: name, modifiers: mods, params: params, returnType: None, body: b },
-        modifierList[mods] jType[t] Identifier(name)
+            Method { name: name, modifiers: mods, params: params, return_type: None, body: b },
+        modifierList[mods] ty[t] Identifier(name)
                 LParen parameterList[params] RParen block[b] =>
-            Method { name: name, modifiers: mods, params: params, returnType: Some(t), body: b }
+            Method { name: name, modifiers: mods, params: params, return_type: Some(t), body: b }
     }
 
     // Class constructor ($8.8)
@@ -227,7 +227,7 @@ parser! parse {
     // TODO: Check this comment.
     // For array types ($8.3)
     variableDeclaration: VariableDeclaration {
-        jType[t] Identifier(name) => VariableDeclaration { jType: t, name: name }
+        ty[t] Identifier(name) => VariableDeclaration { ty: t, name: name }
     }
 
     // Method parameters ($8.4.1). The reference refers to them as formal parameters.
@@ -294,7 +294,7 @@ parser! parse {
         NEW qualifiedIdentifier[q] LParen argumentList[args] RParen =>
             Expression::NewStaticClass(q, args, None),
         primary[expr] Dot NEW Identifier(ident) LParen argumentList[args] RParen =>
-            Expression::NewDynamicClass(box expr, args, None),
+            Expression::NewDynamicClass(box expr, ident, args, None),
         // TODO: Confirm that anonymous classes count as nested types.
         // NEW qualifiedIdentifier[q] LParen argumentList[args] RParen classBody[body] =>
         //     Expression::NewStaticClass(q, args, Some(body)), // "Somebody har har har"
@@ -317,9 +317,9 @@ parser! parse {
         NEW typeName[t] LBracket expression[expr] RBracket =>
             Expression::NewArray(t, box expr),
         NEW primitiveType[t] LBracket expression[expr] RBracket arrayInitializer[init] =>
-            Expression::NewArrayInit(t, init),
+            Expression::NewArrayInit(t, box expr, init),
         NEW typeName[t] LBracket expression[expr] RBracket arrayInitializer[init] =>
-            Expression::NewArrayInit(t, init),
+            Expression::NewArrayInit(t, box expr, init),
     }
 
     // Field access expressions ($15.11)
