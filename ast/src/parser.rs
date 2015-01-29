@@ -170,10 +170,16 @@ parser! parse {
     methodDeclaration: Method {
         modifierList[mods] VOID Identifier(name)
                 LParen parameterList[params] RParen block[b] =>
-            Method { name: name, modifiers: mods, params: params, return_type: None, body: b },
+            Method { name: name, modifiers: mods, params: params, return_type: None, body: Some(b) },
         modifierList[mods] ty[t] Identifier(name)
                 LParen parameterList[params] RParen block[b] =>
-            Method { name: name, modifiers: mods, params: params, return_type: Some(t), body: b }
+            Method { name: name, modifiers: mods, params: params, return_type: Some(t), body: Some(b) },
+        modifierList[mods] VOID Identifier(name)
+                LParen parameterList[params] RParen Semicolon =>
+            Method { name: name, modifiers: mods, params: params, return_type: None, body: None },
+        modifierList[mods] ty[t] Identifier(name)
+                LParen parameterList[params] RParen Semicolon =>
+            Method { name: name, modifiers: mods, params: params, return_type: Some(t), body: None },
     }
 
     // Class constructor ($8.8)
@@ -217,6 +223,7 @@ parser! parse {
         ABSTRACT[_] => Modifier::Abstract,
         STATIC[_] => Modifier::Static,
         FINAL[_] => Modifier::Final,
+        NATIVE[_] => Modifier::Native,
     }
 
     // Interface body ($9.1.3)
@@ -330,8 +337,13 @@ parser! parse {
 
     // Method invocation expressions ($15.12)
     methodInvocation: Expression {
-        Identifier(ident) LParen argumentList[args] RParen =>
-            Expression::MethodInvocation(None, ident, args),
+        expressionNameOrType[ExpressionOrType::Name(mut ids)] LParen argumentList[args] RParen => {
+            let name = ids.parts.pop().unwrap();
+            match ids.parts.len() {
+                0 => Expression::MethodInvocation(None, name, args),
+                _ => Expression::MethodInvocation(Some(box Expression::Name(ids)), name, args),
+            }
+        }
         primary[expr] Dot Identifier(ident) LParen argumentList[args] RParen =>
             Expression::MethodInvocation(Some(box expr), ident, args),
     }
@@ -533,14 +545,14 @@ parser! parse {
     }
 
     blockStatement: BlockStatement {
-        localVariableDeclaration[local] => BlockStatement::LocalVariable(local),
+        localVariableDeclaration[local] Semicolon => BlockStatement::LocalVariable(local),
         classDeclaration[c] => BlockStatement::LocalClass(c),
         statement[s] => BlockStatement::Statement(s),
     }
 
     // Local declarations ($14.4)
     localVariableDeclaration: LocalVariable {
-        variableDeclaration[var] Assignment variableInitializer[init] Semicolon =>
+        variableDeclaration[var] Assignment variableInitializer[init] =>
             LocalVariable { variable: var, initializer: init }
     }
 
@@ -554,13 +566,29 @@ parser! parse {
             Statement::If(test, box s1, Some(box s2)),
         WHILE LParen expression[test] RParen statement[body] =>
             Statement::While(test, box body),
-        // FIXME: This is wrong
-        FOR LParen expression[f1] Semicolon expression[f2] Semicolon expression[f3] RParen statement[body] =>
+        FOR LParen maybeStatementExpression[f1] Semicolon maybeExpression[f2] Semicolon maybeStatementExpression[f3] RParen statement[body] =>
             Statement::For(f1, f2, f3, box body),
+        FOR LParen localVariableDeclaration[f1] Semicolon maybeExpression[f2] Semicolon maybeStatementExpression[f3] RParen statement[body] =>
+            Statement::ForDecl(f1, f2, f3, box body),
         Semicolon => Statement::Empty,
-        // FIXME: Not all expressions are allowed as statements in Java
-        expression[expr] Semicolon => Statement::Expression(expr),
+        statementExpression[expr] Semicolon => Statement::Expression(expr),
         RETURN expression[expr] Semicolon => Statement::Return(expr),
+    }
+
+    statementExpression: Expression {
+        assignment[e] => e,
+        methodInvocation[e] => e,
+        classInstanceCreationExpression[e] => e,
+    }
+
+    maybeStatementExpression: Option<Expression> {
+        statementExpression[e] => Some(e),
+        => None,
+    }
+
+    maybeExpression: Option<Expression> {
+        expression[e] => Some(e),
+        => None,
     }
 }
 

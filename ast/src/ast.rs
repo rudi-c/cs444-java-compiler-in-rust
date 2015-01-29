@@ -52,7 +52,7 @@ pub struct Method {
     pub params: Vec<VariableDeclaration>,
     // `void` == None
     pub return_type: Option<Type>,
-    pub body: Block,
+    pub body: Option<Block>,
 }
 
 #[derive(Show)]
@@ -78,6 +78,7 @@ pub enum Modifier {
     Abstract,
     Static,
     Final,
+    Native,
 }
 
 #[derive(Show)]
@@ -138,7 +139,8 @@ pub enum Statement {
     If(Expression, Box<Statement>, Option<Box<Statement>>),
     While(Expression, Box<Statement>),
     // FIXME
-    For(Expression, Expression, Expression, Box<Statement>),
+    For(Option<Expression>, Option<Expression>, Option<Expression>, Box<Statement>),
+    ForDecl(LocalVariable, Option<Expression>, Option<Expression>, Box<Statement>),
     Empty,
     Return(Expression),
     Block(Block),

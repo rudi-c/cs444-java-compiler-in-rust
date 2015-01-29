@@ -157,9 +157,9 @@ scanner! {
     r#"0|[1-9][0-9]*"# => (Token::IntegerLiteral(text.parse().unwrap()), text),
     // String literals
     // Note that Unicode escapes are not required.
-    r#""([^"]|\\.)*""# => (Token::StringLiteral(unescape(&text[1..text.len()-1])), text),
+    r#""([^"\\]|\\.)*""# => (Token::StringLiteral(unescape(&text[1..text.len()-1])), text),
     // Check for unterminated string constants.
-    r#""([^"]|\\.)*"# => (Token::Error, text),
+    r#""([^"\\]|\\.)*"# => (Token::Error, text),
     // TODO: Character literals.
     r#"'[^'\\]'"# => (Token::CharacterLiteral(text.char_at(1)), text),
     r#"'\\[0-7]'"# => (Token::CharacterLiteral(unescape(&text[1..text.len()-1]).char_at(0)), text),
