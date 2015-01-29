@@ -523,24 +523,44 @@ parser! parse {
     }
 
     // Block ($14.2)
-    block: Vec<BlockStatement> {
-        LBrace blockStatements[stmts] RBrace => stmts
+    block: Block {
+        LBrace blockStatements[stmts] RBrace => Block { stmts: stmts }
     }
 
-    blockStatements : Vec<BlockStatement> {
+    blockStatements: Vec<BlockStatement> {
         => vec![],
         blockStatements[mut stmts] blockStatement[stmt] => { stmts.push(stmt); stmts }
     }
 
-    blockStatement : BlockStatement {
+    blockStatement: BlockStatement {
         localVariableDeclaration[local] => BlockStatement::LocalVariable(local),
         classDeclaration[c] => BlockStatement::LocalClass(c),
+        statement[s] => BlockStatement::Statement(s),
     }
 
     // Local declarations ($14.4)
-    localVariableDeclaration : LocalVariable {
+    localVariableDeclaration: LocalVariable {
         variableDeclaration[var] Assignment variableInitializer[init] Semicolon =>
             LocalVariable { variable: var, initializer: init }
+    }
+
+    // Statements ($14.5)
+    statement: Statement {
+        block[b] => Statement::Block(b),
+        #[no_reduce(ELSE)]
+        IF LParen expression[test] RParen statement[s1] =>
+            Statement::If(test, box s1, None),
+        IF LParen expression[test] RParen statement[s1] ELSE statement[s2] =>
+            Statement::If(test, box s1, Some(box s2)),
+        WHILE LParen expression[test] RParen statement[body] =>
+            Statement::While(test, box body),
+        // FIXME: This is wrong
+        FOR LParen expression[f1] Semicolon expression[f2] Semicolon expression[f3] RParen statement[body] =>
+            Statement::For(f1, f2, f3, box body),
+        Semicolon => Statement::Empty,
+        // FIXME: Not all expressions are allowed as statements in Java
+        expression[expr] Semicolon => Statement::Expression(expr),
+        RETURN expression[expr] Semicolon => Statement::Return(expr),
     }
 }
 

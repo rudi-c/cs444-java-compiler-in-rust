@@ -11,6 +11,14 @@ class Apple extends Magic {
     public static void foo() {
         int x = (Type) (thing) + (thang) * (thing + thang);
         Type2 y = (Element[]) (array[(Elem[]) 3]);
+        x = y;
+        x = x * 3;
+        if (x) if (y); else z = 3;
+        while (foo) {
+            for (x = 1; x < 10; x = x + x) {
+            }
+        }
+        return (x) + y;
     }
 
     private int[] foo(int x, Java.Magic[] bla) {

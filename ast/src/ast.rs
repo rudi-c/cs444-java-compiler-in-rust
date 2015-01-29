@@ -42,7 +42,7 @@ pub struct Constructor {
     pub name: Ident,
     pub modifiers: Vec<Modifier>,
     pub params: Vec<VariableDeclaration>,
-    pub body: Vec<BlockStatement>
+    pub body: Block,
 }
 
 #[derive(Show)]
@@ -50,9 +50,9 @@ pub struct Method {
     pub name: Ident,
     pub modifiers: Vec<Modifier>,
     pub params: Vec<VariableDeclaration>,
-    // Void == None
+    // `void` == None
     pub return_type: Option<Type>,
-    pub body: Vec<BlockStatement>,
+    pub body: Block,
 }
 
 #[derive(Show)]
@@ -115,6 +115,11 @@ pub enum BlockStatement {
 }
 
 #[derive(Show)]
+pub struct Block {
+    pub stmts: Vec<BlockStatement>,
+}
+
+#[derive(Show)]
 pub struct LocalVariable {
     pub variable: VariableDeclaration,
     pub initializer: VariableInitializer,
@@ -127,8 +132,16 @@ pub enum VariableInitializer {
 }
 
 #[derive(Show)]
-pub struct Statement {
-    pub temp: i32,
+pub enum Statement {
+    // FIXME
+    Expression(Expression),
+    If(Expression, Box<Statement>, Option<Box<Statement>>),
+    While(Expression, Box<Statement>),
+    // FIXME
+    For(Expression, Expression, Expression, Box<Statement>),
+    Empty,
+    Return(Expression),
+    Block(Block),
 }
 
 #[derive(Show)]
