@@ -21,6 +21,8 @@ enum Token {
     SEMI,
     LEFT,
     RIGHT,
+    LB,
+    RB,
 }
 
 scanner! {
@@ -31,6 +33,8 @@ scanner! {
     ";" => (SEMI, text),
     r"\(" => (LEFT, text),
     r"\)" => (RIGHT, text),
+    r"\[" => (LB, text),
+    r"\]" => (RB, text),
 
     r#"[a-zA-Z_][a-zA-Z0-9_]*"# => (Token::Ident(text.to_string()), text),
     r#""([^"]|\\.)*""# => (Token::StringLit(text[1..text.len()-1].to_string()), text),
@@ -44,32 +48,77 @@ scanner! {
 
 
 #[derive(Show)]
-enum Ast {
-    Assign(Lhs, Rhs),
-    Expr(Rhs),
+enum Stmt {
+    Expr(Expr),
+    If(Expr, Box<Stmt>, Option<Box<Stmt>>),
 }
+
 #[derive(Show)]
-enum Lhs {
-    Deref(Rhs),
-    Var(String),
+enum Ty {
+    Id(String),
+    Arr(Box<Ty>),
 }
+
 #[derive(Show)]
-enum Rhs {
-    Lhs(Box<Lhs>),
+enum Expr {
+    Id(String),
+    Cast(Ty, Box<Expr>),
+    Ix(Box<Expr>, Box<Expr>),
+}
+
+#[derive(Show)]
+enum TyExpr {
+    Id(String),
+}
+
+impl TyExpr {
+    fn into_expr(self) -> Expr {
+        match self {
+            TyExpr::Id(id) => Expr::Id(id),
+        }
+    }
+    fn into_ty(self) -> Ty {
+        match self {
+            TyExpr::Id(id) => Ty::Id(id),
+        }
+    }
 }
 
 parser! parse {
     Token;
 
-    stmt: () {
-        expr SEMI => (),
+    stmt: Stmt {
+        expr[x] SEMI => Stmt::Expr(x),
         #[no_reduce(ELSE)]
-        IF LEFT expr RIGHT stmt => (),
-        IF LEFT expr RIGHT stmt ELSE stmt => (),
+        IF LEFT expr[x] RIGHT stmt[t] => Stmt::If(x, box t, None),
+        IF LEFT expr[x] RIGHT stmt[t] ELSE stmt[f] => Stmt::If(x, box t, Some(box f)),
     }
 
-    expr: () {
-        Ident => (),
+    ty: Ty {
+        Ident(n) => Ty::Id(n),
+        ty_and_not_expr[t] => t,
+    }
+
+    ty_and_not_expr: Ty {
+        ty_arr[t] => Ty::Arr(box t),
+        ty_and_not_expr[t] LB RB => Ty::Arr(box t),
+    }
+
+    ty_arr: Ty {
+        Ident(n) LB RB => Ty::Arr(box Ty::Id(n)),
+    }
+
+    expr_and_not_ty: Expr {
+        LEFT ty_and_not_expr[t] RIGHT expr[x] => Expr::Cast(t, box x),
+        LEFT Ident(t) RIGHT expr[x] => Expr::Cast(Ty::Id(t), box x),
+        LEFT Ident(x) RIGHT => Expr::Id(x),
+        LEFT expr_and_not_ty[x] RIGHT => x,
+        Ident(x) LB expr[y] RB => Expr::Ix(box Expr::Id(x), box y),
+    }
+
+    expr: Expr {
+        Ident(x) => Expr::Id(x),
+        expr_and_not_ty[x] => x,
     }
 }
 

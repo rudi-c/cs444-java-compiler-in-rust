@@ -1,19 +1,4 @@
 #[derive(Show)]
-pub enum Ast {
-    Assign(Lhs, Rhs),
-    Expr(Rhs),
-}
-#[derive(Show)]
-pub enum Lhs {
-    Deref(Rhs),
-    Var(String),
-}
-#[derive(Show)]
-pub enum Rhs {
-    Lhs(Box<Lhs>),
-}
-
-#[derive(Show)]
 pub enum ImportDeclaration {
     SingleType(QualifiedIdentifier),
     OnDemand(QualifiedIdentifier),
@@ -169,7 +154,7 @@ pub enum Expression {
 
 #[derive(Show)]
 pub enum Literal {
-    Integer(i64),
+    Integer(u64),
     Boolean(bool),
     Character(char),
     String(String),

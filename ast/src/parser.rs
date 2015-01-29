@@ -77,7 +77,7 @@ parser! parse {
 
     arrayType: SimpleType {
         primitiveType[t] LBracket RBracket => t,
-        qualifiedIdentifier[q] LBracket RBracket => SimpleType::Other(q),
+        expressionNameOrType[q] LBracket RBracket => q.into(),
     }
 
     typeName: SimpleType {
@@ -263,8 +263,8 @@ parser! parse {
     //
     // Expressions ($15)
     //
-    expressionName: Expression {
-        qualifiedIdentifier[q] => Expression::Name(q),
+    expressionNameOrType: ExpressionOrType {
+        qualifiedIdentifier[q] => ExpressionOrType::Name(q),
     }
 
     // Primary expression ($15.8)
@@ -281,7 +281,8 @@ parser! parse {
             let ident = QualifiedIdentifier { parts: q };
             Expression::QualifiedThis(ident)
         },
-        LParen expression[expr] RParen => expr,
+        LParen expressionNameOrType[expr] RParen => expr.into(),
+        LParen expressionNotName[expr] RParen => expr,
         classInstanceCreationExpression[expr] => expr,
         fieldAccess[expr] => expr,
         methodInvocation[expr] => expr,
@@ -337,8 +338,8 @@ parser! parse {
 
     // Array access expressions ($15.13)
     arrayAccess: Expression {
-        qualifiedIdentifier[name] LBracket expression[expr] RBracket =>
-            Expression::ArrayAccess(box Expression::Name(name), box expr),
+        expressionNameOrType[name] LBracket expression[expr] RBracket =>
+            Expression::ArrayAccess(box name.into(), box expr),
         primaryNoNewArray[primary] LBracket expression[expr] RBracket =>
             Expression::ArrayAccess(box primary, box expr),
     }
@@ -347,7 +348,7 @@ parser! parse {
     // No -- or ++ in Joss 1W
     postfixExpression: Expression {
         primary[expr] => expr,
-        expressionName[expr] => expr,
+        expressionNameOrType[expr] => expr.into(),
     }
 
     // Unary operators ($15.15)
@@ -373,8 +374,8 @@ parser! parse {
             Expression::Cast(Type::SimpleType(t), box expr),
         LParen arrayType[t] RParen unaryExpressionNotPlusMinus[expr] =>
             Expression::Cast(Type::ArrayType(t), box expr),
-        LParen qualifiedIdentifier[q] RParen unaryExpressionNotPlusMinus[expr] =>
-            Expression::Cast(Type::SimpleType(SimpleType::Other(q)), box expr),
+        LParen expressionNameOrType[q] RParen unaryExpressionNotPlusMinus[expr] =>
+            Expression::Cast(q.into(), box expr),
     }
 
     // Multiplicative expressions ($15.17)
@@ -385,7 +386,7 @@ parser! parse {
             Expression::Infix(InfixOperator::Mult, box expr1, box expr2),
         multiplicativeExpression[expr1] Slash unaryExpression[expr2] =>
             Expression::Infix(InfixOperator::Div, box expr1, box expr2),
-        multiplicativeExpression[expr1] Percentage unaryExpression[expr2] =>
+        multiplicativeExpression[expr1] Percent unaryExpression[expr2] =>
             Expression::Infix(InfixOperator::Modulo, box expr1, box expr2),
     }
 
@@ -469,7 +470,7 @@ parser! parse {
 
     assignment: Expression {
         leftHandSide[lhs] Assignment conditionalOrExpression[expr] =>
-            Expression::Assignment(lhs, box expr),
+            Expression::Assignment(box lhs, box expr),
     }
 
     leftHandSide: Expression {
@@ -481,6 +482,44 @@ parser! parse {
     // Expressions:
     expression: Expression {
         assignmentExpression[expr] => expr,
+    }
+    // Same as `expression`, but can't expand into just `expressionName`.
+    // All the rules are inlined.
+    expressionNotName: Expression {
+        Minus unaryExpression[expr] => Expression::Prefix(PrefixOperator::Minus, box expr),
+        castExpression[expr] => expr,
+        primary[expr] => expr,
+        Bang unaryExpression[expr] => Expression::Prefix(PrefixOperator::Not, box expr),
+
+        multiplicativeExpression[expr1] Star unaryExpression[expr2] =>
+            Expression::Infix(InfixOperator::Mult, box expr1, box expr2),
+        multiplicativeExpression[expr1] Slash unaryExpression[expr2] =>
+            Expression::Infix(InfixOperator::Div, box expr1, box expr2),
+        multiplicativeExpression[expr1] Percent unaryExpression[expr2] =>
+            Expression::Infix(InfixOperator::Modulo, box expr1, box expr2),
+        additiveExpression[expr1] Plus multiplicativeExpression[expr2] =>
+            Expression::Infix(InfixOperator::Plus, box expr1, box expr2),
+        additiveExpression[expr1] Minus multiplicativeExpression[expr2] =>
+            Expression::Infix(InfixOperator::Minus, box expr1, box expr2),
+        relationalExpression[expr1] comparisonOperator[op] additiveExpression[expr2] =>
+            Expression::Infix(op, box expr1, box expr2),
+        relationalExpression[expr] INSTANCEOF referenceType[t] =>
+            Expression::InstanceOf(box expr, t),
+        equalityExpression[expr1] Equals relationalExpression[expr2] =>
+            Expression::Infix(InfixOperator::Equals, box expr1, box expr2),
+        equalityExpression[expr1] NotEquals relationalExpression[expr2] =>
+            Expression::Infix(InfixOperator::NotEquals, box expr1, box expr2),
+        andExpression[expr1] And equalityExpression[expr2] =>
+            Expression::Infix(InfixOperator::EagerAnd, box expr1, box expr2),
+        exclusiveOrExpression[expr1] Xor andExpression[expr2] =>
+            Expression::Infix(InfixOperator::Xor, box expr1, box expr2),
+        inclusiveOrExpression[expr1] Or exclusiveOrExpression[expr2] =>
+            Expression::Infix(InfixOperator::EagerOr, box expr1, box expr2),
+        conditionalAndExpression[expr1] AndAnd inclusiveOrExpression[expr2] =>
+            Expression::Infix(InfixOperator::LazyAnd, box expr1, box expr2),
+        conditionalOrExpression[expr1] OrOr conditionalAndExpression[expr2] =>
+            Expression::Infix(InfixOperator::LazyOr, box expr1, box expr2),
+        assignment[a] => a,
     }
 
     // Block ($14.2)
@@ -510,3 +549,35 @@ pub fn make_ast<I: Iterator<Item=Token>>(tokens: I)
     parse(tokens)
 }
 
+// An intermediate type for parsing. Represents syntax that can be interpreted as
+// either an expression or a type.
+#[derive(Show)]
+pub enum ExpressionOrType {
+    Name(QualifiedIdentifier),
+}
+
+pub trait IsExpressionOrType {
+    fn convert(ExpressionOrType) -> Self;
+}
+impl IsExpressionOrType for Expression {
+    fn convert(x: ExpressionOrType) -> Expression {
+        match x {
+            ExpressionOrType::Name(n) => Expression::Name(n),
+        }
+    }
+}
+impl IsExpressionOrType for SimpleType {
+    fn convert(x: ExpressionOrType) -> SimpleType {
+        match x {
+            ExpressionOrType::Name(n) => SimpleType::Other(n),
+        }
+    }
+}
+impl IsExpressionOrType for Type {
+    fn convert(x: ExpressionOrType) -> Type {
+        Type::SimpleType(x.into())
+    }
+}
+impl ExpressionOrType {
+    pub fn into<T: IsExpressionOrType>(self) -> T { IsExpressionOrType::convert(self) }
+}

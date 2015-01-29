@@ -7,7 +7,7 @@
 use std::os;
 
 use parser::make_ast;
-use tokenizer::{Token, tokenizer};
+use tokenizer::tokenizer;
 use weed::weed;
 
 mod ast;
