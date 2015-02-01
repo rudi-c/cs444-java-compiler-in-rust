@@ -99,7 +99,6 @@ pub enum Token {
 
     Whitespace,
     Comment,
-    Other,
     Error,
 }
 

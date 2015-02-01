@@ -27,7 +27,7 @@ fn main() {
                 os::set_exit_status(42);
             }
         },
-        Err(e) => {
+        Err(_) => {
             os::set_exit_status(42);
         }
     }

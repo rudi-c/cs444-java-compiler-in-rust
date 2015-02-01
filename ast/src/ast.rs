@@ -150,7 +150,6 @@ pub enum Statement {
 #[derive(Show)]
 pub enum Expression {
     Literal(Literal),
-    ClassLiteral(Option<Type>),
     This,
     QualifiedThis(QualifiedIdentifier),
     NewStaticClass(QualifiedIdentifier, Vec<Expression>,
