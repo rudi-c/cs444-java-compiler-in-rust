@@ -47,8 +47,7 @@ pub fn weed_class_field(field: &Field) -> bool {
 
     // Assignment specs: "No field can be final."
     let allowed_modifiers: HashSet<Modifier> =
-        vec![Modifier::Public, Modifier::Protected, Modifier::Private,
-             Modifier::Static]
+        vec![Modifier::Public, Modifier::Protected, Modifier::Static]
         .into_iter().collect();
 
     error |= ensure_valid_modifiers(&allowed_modifiers, &field.modifiers,
@@ -61,8 +60,8 @@ pub fn weed_class_method(method: &Method) -> bool {
     let mut error = false;
 
     let allowed_modifiers: HashSet<Modifier> =
-        vec![Modifier::Public, Modifier::Protected, Modifier::Private,
-             Modifier::Abstract, Modifier::Static, Modifier::Final, Modifier::Native]
+        vec![Modifier::Public, Modifier::Protected, Modifier::Abstract,
+             Modifier::Static, Modifier::Final, Modifier::Native]
         .into_iter().collect();
 
     error |= ensure_valid_modifiers(&allowed_modifiers, &method.modifiers,
@@ -115,8 +114,7 @@ pub fn weed_interface_method(method: &Method) -> bool {
 
     // Assignment specs: "An interface method cannot be static, final or native.
     let allowed_modifiers: HashSet<Modifier> =
-        vec![Modifier::Public, Modifier::Protected, Modifier::Private,
-             Modifier::Abstract]
+        vec![Modifier::Public, Modifier::Protected, Modifier::Abstract]
         .into_iter().collect();
 
     error |= ensure_valid_modifiers(&allowed_modifiers, &method.modifiers,
