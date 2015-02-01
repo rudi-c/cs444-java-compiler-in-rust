@@ -178,6 +178,7 @@ parser! parse {
         methodDeclarationNoBody[dcl] => dcl,
     }
 
+    // Method declaration ($8.4)
     methodDeclarationNoBody: Method {
         modifierList[mods] VOID Identifier(name)
                 LParen parameterList[params] RParen Semicolon =>

@@ -33,6 +33,12 @@ pub fn ensure_valid_modifiers(allowed_modifiers: &HashSet<Modifier>,
         modifier_set.insert(modifier);
     }
 
+    // This should universally hold for anything that needs modifiers.
+    if modifiers.contains(&Modifier::Public) && modifiers.contains(&Modifier::Protected) {
+        println_err!("Both modifiers Public and Protected appear for {}.", modifier_target);
+        error = true;
+    }
+
     return error;
 }
 
@@ -83,10 +89,18 @@ pub fn weed_class_method(method: &Method) -> bool {
         error = true;
     }
 
-    // Assignment specs: "A native method must be static.""
+    // Assignment specs: "A native method must be static."
     if method.modifiers.contains(&Modifier::Native) &&
        !method.modifiers.contains(&Modifier::Static) {
         println_err!("Native method `{}` must also be static.", method.name);
+        error = true;
+    }
+
+    // Methods must have an access modifier. I'm not sure where this is specified,
+    // but the test case Je_1_Methods_MissingAccessModifier.java seems to require it.
+    if !(method.modifiers.contains(&Modifier::Public) ^
+         method.modifiers.contains(&Modifier::Protected)) {
+        println_err!("Method `{}` must have exactly one access modifier.", method.name);
         error = true;
     }
 
