@@ -68,6 +68,7 @@ pub struct Interface {
     pub name: Ident,
     pub modifiers: Vec<Modifier>,
     pub extends: Vec<QualifiedIdentifier>,
+    pub body: Vec<Method>,
 }
 
 #[derive(Show, Hash, PartialEq, Eq)]

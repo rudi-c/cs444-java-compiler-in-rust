@@ -145,6 +145,7 @@ parser! parse {
 
     classBodyDeclarations: Vec<ClassBodyDeclaration> {
         => vec![],
+        classBodyDeclarations[dcls] Semicolon => { dcls }
         classBodyDeclarations[mut dcls] classBodyDeclaration[dcl] => { dcls.push(dcl); dcls },
     }
 
@@ -174,6 +175,10 @@ parser! parse {
         modifierList[mods] ty[t] Identifier(name)
                 LParen parameterList[params] RParen block[b] =>
             Method { name: name, modifiers: mods, params: params, return_type: Some(t), body: Some(b) },
+        methodDeclarationNoBody[dcl] => dcl,
+    }
+
+    methodDeclarationNoBody: Method {
         modifierList[mods] VOID Identifier(name)
                 LParen parameterList[params] RParen Semicolon =>
             Method { name: name, modifiers: mods, params: params, return_type: None, body: None },
@@ -191,17 +196,33 @@ parser! parse {
     // Interfaces ($9.1)
     interfaceDeclaration: Interface {
         modifierList[mods] INTERFACE Identifier(ident)
-                interfaceExtensions[exts] interfaceBody[x] =>
+                interfaceExtensions[exts] interfaceBody[body] =>
             Interface {
                 name: ident,
                 modifiers: mods,
                 extends: exts,
+                body: body,
             },
     }
 
     interfaceExtensions: Vec<QualifiedIdentifier> {
         => vec![],
         EXTENDS interfaceList[impls] => impls,
+    }
+
+    // Interface body ($9.1.3)
+    interfaceBody: Vec<Method> {
+        LBrace interfaceMemberDeclarations[dcls] RBrace => dcls
+    }
+
+    interfaceMemberDeclarations: Vec<Method> {
+        => vec![],
+        interfaceMemberDeclarations[dcls] Semicolon => dcls,
+
+        // Since we're not supposed to support nested type nor interface constants
+        // in Joos 1W, there's only one type of interface member.
+        interfaceMemberDeclarations[mut dcls] methodDeclarationNoBody[dcl] =>
+            { dcls.push(dcl); dcls },
     }
 
     // Common to classes and interfaces
@@ -224,11 +245,6 @@ parser! parse {
         STATIC[_] => Modifier::Static,
         FINAL[_] => Modifier::Final,
         NATIVE[_] => Modifier::Native,
-    }
-
-    // Interface body ($9.1.3)
-    interfaceBody: i32 {
-        LBrace RBrace => 0
     }
 
     // TODO: Check this comment.
