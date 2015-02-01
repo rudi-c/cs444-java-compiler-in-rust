@@ -60,7 +60,7 @@ pub struct Field {
     pub name: Ident,
     pub modifiers: Vec<Modifier>,
     pub ty: Type,
-    pub initializer: Option<VariableInitializer>,
+    pub initializer: Option<Expression>,
 }
 
 #[derive(Show)]
@@ -124,13 +124,7 @@ pub struct Block {
 #[derive(Show)]
 pub struct LocalVariable {
     pub variable: VariableDeclaration,
-    pub initializer: VariableInitializer,
-}
-
-#[derive(Show)]
-pub enum VariableInitializer {
-    Expression(Expression),
-    Array(Vec<VariableInitializer>),
+    pub initializer: Expression,
 }
 
 #[derive(Show)]
@@ -157,7 +151,6 @@ pub enum Expression {
     NewDynamicClass(Box<Expression>, Ident, Vec<Expression>,
                     Option<Vec<ClassBodyDeclaration>>),
     NewArray(SimpleType, Box<Expression>),
-    NewArrayInit(SimpleType, Box<Expression>, Vec<VariableInitializer>),
     FieldAccess(Box<Expression>, Ident),
     MethodInvocation(Option<Box<Expression>>, Ident, Vec<Expression>),
     ArrayAccess(Box<Expression>, Box<Expression>),

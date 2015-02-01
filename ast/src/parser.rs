@@ -163,7 +163,7 @@ parser! parse {
         }
     }
 
-    variableDeclarator: (String, Option<VariableInitializer>) {
+    variableDeclarator: (String, Option<Expression>) {
         Identifier(name) => (name, None),
         Identifier(name) Assignment variableInitializer[init] => (name, Some(init)),
     }
@@ -263,8 +263,8 @@ parser! parse {
 
     // Variable initializers ($8.3)
     // Note that array initializers ("array data expressions") not in Joos 1W.
-    variableInitializer: VariableInitializer {
-        expression[expr] => VariableInitializer::Expression(expr),
+    variableInitializer: Expression {
+        expression[expr] => expr,
     }
 
     //

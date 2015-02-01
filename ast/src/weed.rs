@@ -42,8 +42,138 @@ pub fn ensure_valid_modifiers(allowed_modifiers: &HashSet<Modifier>,
     return error;
 }
 
+pub fn weed_expression(expression: &Expression) -> bool {
+    let mut error = false;
+
+    match expression {
+        // ($3.10.1) Special rule for integers that are operands of unary minus.
+        // Yup, all this work just to weed that one edge case.
+
+        // TODO: This doesn't work if there are parentheses.
+        // -(2147483648) is not valid.
+        &Expression::Prefix(PrefixOperator::Minus,
+                            box Expression::Literal(Literal::Integer(i))) => {
+            if i > 2147483648 {
+                println_err!("Integer {} exceeds maximum value of integer literal \
+                              in unary minus.", i);
+                error = true;
+            }
+        }
+
+        &Expression::Literal(Literal::Integer(i)) => {
+            if i > 2147483647 {
+                println_err!("Integer {} exceeds maximum value of integer literal.", i);
+                error = true;
+            }
+        },
+
+        &Expression::Literal(_) => {},
+        &Expression::This => {},
+        &Expression::QualifiedThis(_) => {},
+
+        &Expression::NewDynamicClass(box ref expr, _, ref exprs, _)
+        | &Expression::MethodInvocation(Some(box ref expr), _, ref exprs) => {
+            error |= weed_expression(expr);
+            error |= weed_expressions(exprs);
+        },
+
+        &Expression::NewStaticClass(_, ref exprs, _)
+        | &Expression::MethodInvocation(_, _, ref exprs) => {
+            error |= weed_expressions(exprs);
+        },
+
+        &Expression::NewArray(_, box ref expr)
+        | &Expression::FieldAccess(box ref expr, _)
+        | &Expression::Prefix(_, box ref expr)
+        | &Expression::Cast(_, box ref expr) => {
+            error |= weed_expression(expr);
+        },
+
+        &Expression::ArrayAccess(box ref expr1, box ref expr2)
+        | &Expression::Assignment(box ref expr1, box ref expr2)
+        | &Expression::Infix(_, box ref expr1, box ref expr2) => {
+            error |= weed_expression(expr1);
+            error |= weed_expression(expr2);
+        }
+
+        &Expression::Name(_) => {},
+        // TODO: Deal with instanceOf null
+        &Expression::InstanceOf(box ref expr, _) => {
+            weed_expression(expr);
+        },
+    }
+
+    return error;
+}
+
+pub fn weed_expressions(expressions: &Vec<Expression>) -> bool {
+    let mut error = false;
+
+    for expr in expressions.iter() {
+        error |= weed_expression(expr);
+    }
+
+    return error;
+}
+
+pub fn weed_opt_expression(expression: &Option<Expression>) -> bool {
+    if let &Some(ref expr) = expression {
+        return weed_expression(expr);
+    } else {
+        return false;
+    }
+}
+
+
+pub fn weed_statement(statement: &Statement) -> bool {
+    let mut error = false;
+
+    match statement {
+        &Statement::Expression(ref expr) => error |= weed_expression(expr),
+        &Statement::If(ref expr, box ref stmt1, None) => {
+            error |= weed_expression(expr);
+            error |= weed_statement(stmt1);
+        },
+        &Statement::If(ref expr, box ref stmt1, Some(box ref stmt2)) => {
+            error |= weed_expression(expr);
+            error |= weed_statement(stmt1);
+            error |= weed_statement(stmt2);
+        },
+        &Statement::While(ref expr, box ref stmt) => {
+            error |= weed_expression(expr);
+            error |= weed_statement(stmt);
+        },
+        &Statement::For(ref expr1, ref expr2, ref expr3, box ref stmt) => {
+            error |= weed_opt_expression(expr1);
+            error |= weed_opt_expression(expr2);
+            error |= weed_opt_expression(expr3);
+            error |= weed_statement(stmt);
+        }
+        &Statement::ForDecl(_, ref expr1, ref expr2, box ref stmt) => {
+            error |= weed_opt_expression(expr1);
+            error |= weed_opt_expression(expr2);
+            error |= weed_statement(stmt);
+        }
+        &Statement::Return(ref expr) => error |= weed_expression(expr),
+        &Statement::Block(ref block) => error |= weed_block(block),
+        &Statement::Empty => {}
+    }
+
+    return error;
+}
+
 pub fn weed_block(block: &Block) -> bool {
     let mut error = false;
+
+    for stmt in block.stmts.iter() {
+        match stmt {
+            &BlockStatement::Statement(ref statement) =>
+                error |= weed_statement(statement),
+            &BlockStatement::LocalVariable(ref local) =>
+                error |= weed_expression(&local.initializer),
+            &BlockStatement::LocalClass(_) => {},
+        }
+    }
 
     return error;
 }
@@ -58,6 +188,10 @@ pub fn weed_class_field(field: &Field) -> bool {
 
     error |= ensure_valid_modifiers(&allowed_modifiers, &field.modifiers,
                                     format!("field `{}`", field.name).as_slice());
+
+    if let Some(ref expr) = field.initializer {
+        error |= weed_expression(expr);
+    }
 
     return error;
 }
@@ -120,6 +254,10 @@ pub fn weed_class_method(method: &Method) -> bool {
         error = true;
     }
 
+    if let Some(ref body) = method.body {
+        error |= weed_block(body);
+    }
+
     return error;
 }
 
@@ -169,6 +307,7 @@ pub fn weed_class(class: &Class) -> bool {
             &ClassBodyDeclaration::ConstructorDeclaration(ref constructor) => {
                 if constructor.name == class.name {
                     has_constructor = true;
+                    error |= weed_block(&constructor.body);
                 } else {
                     println_err!("`{}` not a valid constructor for class `{}`",
                                  constructor.name, class.name);
