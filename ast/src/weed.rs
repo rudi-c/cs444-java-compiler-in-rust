@@ -36,14 +36,76 @@ pub fn ensure_valid_modifiers(allowed_modifiers: &HashSet<Modifier>,
     return error;
 }
 
+pub fn weed_block(block: &Block) -> bool {
+    let mut error = false;
+
+    return error;
+}
+
 pub fn weed_class_field(field: &Field) -> bool {
     let mut error = false;
+
+    // Assignment specs: "No field can be final."
+    let allowed_modifiers: HashSet<Modifier> =
+        vec![Modifier::Public, Modifier::Protected, Modifier::Private,
+             Modifier::Static]
+        .into_iter().collect();
+
+    error |= ensure_valid_modifiers(&allowed_modifiers, &field.modifiers,
+                                    format!("field `{}`", field.name).as_slice());
 
     return error;
 }
 
 pub fn weed_class_method(method: &Method) -> bool {
     let mut error = false;
+
+    let allowed_modifiers: HashSet<Modifier> =
+        vec![Modifier::Public, Modifier::Protected, Modifier::Private,
+             Modifier::Abstract, Modifier::Static, Modifier::Final, Modifier::Native]
+        .into_iter().collect();
+
+    error |= ensure_valid_modifiers(&allowed_modifiers, &method.modifiers,
+                                    format!("method `{}`", method.name).as_slice());
+
+    // Assignment specs: "An abstract method cannot be static or final"
+    if method.modifiers.contains(&Modifier::Abstract) {
+        if method.modifiers.contains(&Modifier::Static) ||
+           method.modifiers.contains(&Modifier::Final) {
+            println_err!("Abstract method `{}` cannot also be static/final.", method.name);
+            error = true;
+        }
+    }
+
+    // Assignment specs: "A static method cannot be final."
+    if method.modifiers.contains(&Modifier::Static) &&
+       method.modifiers.contains(&Modifier::Final) {
+        println_err!("Static method `{}` cannot also be final.", method.name);
+        error = true;
+    }
+
+    // Assignment specs: "A native method must be static.""
+    if method.modifiers.contains(&Modifier::Native) &&
+       !method.modifiers.contains(&Modifier::Static) {
+        println_err!("Native method `{}` must also be static.", method.name);
+        error = true;
+    }
+
+    // Assignment specs: "A method has a body if and only if it is neither
+    // abstract nor native".
+    let abstract_or_native = method.modifiers.contains(&Modifier::Abstract) ||
+                             method.modifiers.contains(&Modifier::Native);
+    if let Some(ref body) = method.body {
+        if abstract_or_native {
+            println_err!("Abstract/native method `{}` should not have a body.", method.name);
+            error = true;
+        } else {
+            error |= weed_block(body);
+        }
+    } else if !abstract_or_native {
+        println_err!("Non-abstract/native method `{}` should have a body.", method.name);
+        error = true;
+    }
 
     return error;
 }
