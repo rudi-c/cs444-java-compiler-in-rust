@@ -12,7 +12,7 @@ pub enum Token {
     StringLiteral(String),
     NullLiteral,
 
-    // Keywords ($3.8)
+    // Keywords ($3.9)
     // Capitalized because the variants in this enum are constants
     // and some of the variants (e.g. 'Char') can be easily confused
     // with Rust's 'Char' type (the syntax highlighter is among the things
@@ -167,14 +167,14 @@ scanner! {
     r#"'\\.'"# => (Token::CharacterLiteral(unescape(&text[1..text.len()-1]).char_at(0)), text),
     r#"'.'"# => panic!("invalid character literal: {}", text),
     r#"'"# => panic!("invalid character literal"),
+    r#"true"# => (Token::BooleanLiteral(true), text),
+    r#"false"# => (Token::BooleanLiteral(false), text),
+    r#"null"# => (Token::NullLiteral, text),
 
 
     // Identifiers defined in $3.8
     // Note that $ is considered a Java letter.
     r#"[a-zA-Z_$][a-zA-Z0-9_$]*"# => (Token::Identifier(text.to_string()), text),
-    r#"true"# => (Token::BooleanLiteral(true), text),
-    r#"false"# => (Token::BooleanLiteral(false), text),
-    r#"null"# => (Token::NullLiteral, text),
 
     // Separators defined in $3.11
     r#"\("# => (Token::LParen, text),

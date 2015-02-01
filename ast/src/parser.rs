@@ -74,6 +74,7 @@ parser! parse {
     referenceType: Type {
         arrayType[t] => Type::ArrayType(t),
         typeName[t] => Type::SimpleType(t),
+        NullLiteral => Type::Null,
     }
 
     arrayType: SimpleType {

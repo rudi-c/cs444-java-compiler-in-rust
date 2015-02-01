@@ -96,7 +96,8 @@ pub struct QualifiedIdentifier {
 #[derive(Show)]
 pub enum Type {
     SimpleType(SimpleType),
-    ArrayType(SimpleType)
+    ArrayType(SimpleType),
+    Null
 }
 
 #[derive(Show)]
