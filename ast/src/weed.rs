@@ -110,6 +110,24 @@ pub fn weed_class_method(method: &Method) -> bool {
     return error;
 }
 
+pub fn weed_interface_method(method: &Method) -> bool {
+    let mut error = false;
+
+    // Assignment specs: "An interface method cannot be static, final or native.
+    let allowed_modifiers: HashSet<Modifier> =
+        vec![Modifier::Public, Modifier::Protected, Modifier::Private,
+             Modifier::Abstract]
+        .into_iter().collect();
+
+    error |= ensure_valid_modifiers(&allowed_modifiers, &method.modifiers,
+                                    format!("interface method `{}`", method.name).as_slice());
+
+    // This should have been taken care of during parsing.
+    assert!(method.body.is_none());
+
+    return error;
+}
+
 pub fn weed_class(class: &Class) -> bool {
     let mut error = false;
 
@@ -159,6 +177,19 @@ pub fn weed_class(class: &Class) -> bool {
 
 pub fn weed_interface(interface: &Interface) -> bool {
     let mut error = false;
+
+    // ($9.1.1) "The access modifiers protected and private pertain only to member
+    // classes within a directly enclosing class declaration"
+    let allowed_modifiers: HashSet<Modifier> =
+        vec![Modifier::Public, Modifier::Abstract, Modifier::Static]
+        .into_iter().collect();
+
+    error |= ensure_valid_modifiers(&allowed_modifiers, &interface.modifiers,
+                                    format!("interface `{}`", interface.name).as_slice());
+
+    for method in interface.body.iter() {
+        error |= weed_interface_method(method);
+    }
 
     return error;
 }
