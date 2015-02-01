@@ -261,26 +261,9 @@ parser! parse {
     }
 
     // Variable initializers ($8.3)
+    // Note that array initializers ("array data expressions") not in Joos 1W.
     variableInitializer: VariableInitializer {
         expression[expr] => VariableInitializer::Expression(expr),
-        arrayInitializer[init] => VariableInitializer::Array(init),
-    }
-
-    // Array initializers ($10.6)
-    // TODO: Check if test cases have any of these, but I think that "no array data"
-    //       means that there shouldn't be?
-    // TODO: Will want test cases in regards to the last comma.
-    // TODO: I think we're not supposed to have nested initializers.
-    arrayInitializer: Vec<VariableInitializer> {
-        LBrace RBrace => vec![],
-        LBrace variableInitializers[inits] RBrace => inits,
-        LBrace variableInitializers[inits] Comma RBrace => inits,
-    }
-
-    variableInitializers: Vec<VariableInitializer> {
-        variableInitializer[init] => vec![init],
-        variableInitializers[mut inits] Comma variableInitializer[init] =>
-            { inits.push(init); inits }
     }
 
     //
@@ -333,16 +316,12 @@ parser! parse {
     }
 
     // Array creation expression ($15.10)
-    // Note that Joos 1W only has 1D arrays.
+    // Note that Joos 1W only has 1D arrays and does not support array initializers.
     arrayCreationExpression: Expression {
         NEW primitiveType[t] LBracket expression[expr] RBracket =>
             Expression::NewArray(t, box expr),
         NEW typeName[t] LBracket expression[expr] RBracket =>
             Expression::NewArray(t, box expr),
-        NEW primitiveType[t] LBracket expression[expr] RBracket arrayInitializer[init] =>
-            Expression::NewArrayInit(t, box expr, init),
-        NEW typeName[t] LBracket expression[expr] RBracket arrayInitializer[init] =>
-            Expression::NewArrayInit(t, box expr, init),
     }
 
     // Field access expressions ($15.11)
