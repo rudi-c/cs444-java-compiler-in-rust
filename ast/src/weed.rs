@@ -36,6 +36,18 @@ pub fn ensure_valid_modifiers(allowed_modifiers: &HashSet<Modifier>,
     return error;
 }
 
+pub fn weed_class_field(field: &Field) -> bool {
+    let mut error = false;
+
+    return error;
+}
+
+pub fn weed_class_method(method: &Method) -> bool {
+    let mut error = false;
+
+    return error;
+}
+
 pub fn weed_class(class: &Class) -> bool {
     let mut error = false;
 
@@ -48,9 +60,35 @@ pub fn weed_class(class: &Class) -> bool {
     error |= ensure_valid_modifiers(&allowed_modifiers, &class.modifiers,
                                     format!("class `{}`", class.name).as_slice());
 
+    // Assignment specs: "A class cannot be both abstract and final."
     if class.modifiers.contains(&Modifier::Abstract) &&
        class.modifiers.contains(&Modifier::Final) {
         println_err!("Class `{}` cannot be both Abstract and Final.", class.name);
+        error = true;
+    }
+
+    let mut has_constructor = false;
+    for body_declaration in class.body.iter() {
+        match body_declaration {
+            &ClassBodyDeclaration::FieldDeclaration(ref field) =>
+                error |= weed_class_field(field),
+            &ClassBodyDeclaration::MethodDeclaration(ref method) =>
+                error |= weed_class_method(method),
+            &ClassBodyDeclaration::ConstructorDeclaration(ref constructor) => {
+                if constructor.name == class.name {
+                    has_constructor = true;
+                } else {
+                    println_err!("`{}` not a valid constructor for class `{}`",
+                                 constructor.name, class.name);
+                    error = true;
+                }
+            },
+        }
+    }
+
+    // Assignment specs: "Every class must contain at least one explicit constructor."
+    if !has_constructor {
+        println_err!("Class `{}` has no explicit constructor.", class.name);
         error = true;
     }
 
