@@ -70,7 +70,7 @@ pub struct Interface {
     pub extends: Vec<QualifiedIdentifier>,
 }
 
-#[derive(Show)]
+#[derive(Show, Hash, PartialEq, Eq)]
 pub enum Modifier {
     Public,
     Protected,
