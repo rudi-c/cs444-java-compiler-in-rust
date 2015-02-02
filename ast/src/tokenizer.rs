@@ -99,7 +99,7 @@ pub enum Token {
 
     Whitespace,
     Comment,
-    Error,
+    Error(String),
 }
 
 scanner! {
@@ -150,6 +150,26 @@ scanner! {
     r#"void"# => (Token::VOID, text),
     r#"while"# => (Token::WHILE, text),
 
+    // Unsupported keywords.
+    // We still parse these because we don't want to mistake them as identifiers.
+    r#"break"# => (Token::Error(String::from_str("keyword break not supported")), text),
+    r#"case"# => (Token::Error(String::from_str("keyword case not supported")), text),
+    r#"catch"# => (Token::Error(String::from_str("keyword catch not supported")), text),
+    r#"continue"# => (Token::Error(String::from_str("keyword continue not supported")), text),
+    r#"double"# => (Token::Error(String::from_str("keyword double not supported")), text),
+    r#"finally"# => (Token::Error(String::from_str("keyword finally not supported")), text),
+    r#"float"# => (Token::Error(String::from_str("keyword float not supported")), text),
+    r#"long"# => (Token::Error(String::from_str("keyword long not supported")), text),
+    r#"strictfp"# => (Token::Error(String::from_str("keyword strictfp not supported")), text),
+    r#"switch"# => (Token::Error(String::from_str("keyword switch not supported")), text),
+    r#"synchronized"# => (Token::Error(String::from_str("keyword synchronized not supported")), text),
+    r#"throw"# => (Token::Error(String::from_str("keyword throw not supported")), text),
+    r#"throws"# => (Token::Error(String::from_str("keyword throws not supported")), text),
+    r#"transient"# => (Token::Error(String::from_str("keyword transient not supported")), text),
+    r#"try"# => (Token::Error(String::from_str("keyword try not supported")), text),
+    r#"volatile"# => (Token::Error(String::from_str("keyword volatile not supported")), text),
+
+
     // Literals defined in $3.10
     // Note that Octal, Hex and Long literals are not required in Joos.
     // Negative literals do not exist: the minus sign is a unary operator.
@@ -158,7 +178,7 @@ scanner! {
     // Note that Unicode escapes are not required.
     r#""([^"\\]|\\.)*""# => (Token::StringLiteral(unescape(&text[1..text.len()-1])), text),
     // Check for unterminated string constants.
-    r#""([^"\\]|\\.)*"# => (Token::Error, text),
+    r#""([^"\\]|\\.)*"# => (Token::Error(String::from_str("unterminated string constant")), text),
     // TODO: Character literals.
     r#"'[^'\\]'"# => (Token::CharacterLiteral(text.char_at(1)), text),
     r#"'\\[0-7]'"# => (Token::CharacterLiteral(unescape(&text[1..text.len()-1]).char_at(0)), text),
@@ -261,9 +281,8 @@ impl<'a> Iterator for Tokenizer<'a> {
             }
             match next_token(&mut self.slice) {
                 Some((token, text)) => {
-                    if let &Token::Error = &token {
-                        // TODO: report error here and below
-                        println!("invalid token: {}", text);
+                    if let &Token::Error(ref error) = &token {
+                        println!("invalid token `{}`: {}", text, error);
                         return None;
                     }
                     if token_filter(&token) {
