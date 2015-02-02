@@ -38,6 +38,11 @@ pub fn ensure_valid_modifiers(allowed_modifiers: &HashSet<Modifier>,
         println_err!("Both modifiers Public and Protected appear for {}.", modifier_target);
         error = true;
     }
+    if !modifiers.contains(&Modifier::Public) && !modifiers.contains(&Modifier::Protected) {
+        println_err!("Access modifier required for {} - package private not supported.",
+                     modifier_target);
+        error = true;
+    }
 
     return error;
 }
@@ -54,8 +59,8 @@ pub fn weed_expression(expression: &Expression) -> bool {
         &Expression::Prefix(PrefixOperator::Minus,
                             box Expression::Literal(Literal::Integer(i))) => {
             if i > 2147483648 {
-                println_err!("Integer {} exceeds maximum value of integer literal \
-                              in unary minus.", i);
+                println_err!(concat!("Integer {} exceeds maximum value of integer literal ",
+                                     "in unary minus."), i);
                 error = true;
             }
         }
@@ -232,14 +237,6 @@ pub fn weed_class_method(method: &Method) -> bool {
     if method.modifiers.contains(&Modifier::Native) &&
        !method.modifiers.contains(&Modifier::Static) {
         println_err!("Native method `{}` must also be static.", method.name);
-        error = true;
-    }
-
-    // Methods must have an access modifier. I'm not sure where this is specified,
-    // but the test case Je_1_Methods_MissingAccessModifier.java seems to require it.
-    if !(method.modifiers.contains(&Modifier::Public) ^
-         method.modifiers.contains(&Modifier::Protected)) {
-        println_err!("Method `{}` must have exactly one access modifier.", method.name);
         error = true;
     }
 
