@@ -97,9 +97,14 @@ pub fn weed_expression(expression: &Expression) -> bool {
         }
 
         &Expression::Name(_) => {},
-        // TODO: Deal with instanceOf null
-        &Expression::InstanceOf(box ref expr, _) => {
+
+        &Expression::InstanceOf(box ref expr, Type::Null) => {
             weed_expression(expr);
+            println_err!("instanceof null is not valid.");
+            error = true;
+        },
+        &Expression::InstanceOf(box ref expr, _) => {
+            error |= weed_expression(expr);
         },
     }
 
