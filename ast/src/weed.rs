@@ -347,8 +347,16 @@ pub fn weed_interface(interface: &Interface) -> bool {
     return error;
 }
 
+pub fn weed_filename(typename: &str, filestem: &str) -> bool {
+    if typename != filestem {
+        println_err!("File {} must contain a class or interface with the same name.", filestem);
+        return true;
+    }
+    return false;
+}
+
 // Return whether an error was found.
-pub fn weed(ast: CompilationUnit) -> bool {
+pub fn weed(ast: CompilationUnit, filestem: &str) -> bool {
     let mut error = false;
 
     if ast.types.len() > 1 {
@@ -358,8 +366,14 @@ pub fn weed(ast: CompilationUnit) -> bool {
 
     if ast.types.len() == 1 {
         match ast.types[0] {
-            TypeDeclaration::Class(ref class) => error |= weed_class(class),
-            TypeDeclaration::Interface(ref interface) => error |= weed_interface(interface),
+            TypeDeclaration::Class(ref class) => {
+                error |= weed_filename(class.name.as_slice(), filestem);
+                error |= weed_class(class);
+            },
+            TypeDeclaration::Interface(ref interface) => {
+                error |= weed_filename(interface.name.as_slice(), filestem);
+                error |= weed_interface(interface);
+            },
         }
     }
 
