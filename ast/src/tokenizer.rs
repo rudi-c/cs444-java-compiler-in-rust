@@ -173,7 +173,13 @@ scanner! {
     // Literals defined in $3.10
     // Note that Octal, Hex and Long literals are not required in Joos.
     // Negative literals do not exist: the minus sign is a unary operator.
-    r#"0|[1-9][0-9]*"# => (Token::IntegerLiteral(text.parse().unwrap()), text),
+    r#"0|[1-9][0-9]*"# => {
+        if let Some(i) = text.parse() {
+            (Token::IntegerLiteral(i), text)
+        } else {
+            (Token::Error(String::from_str("integer is way too large, did the cat step on the numpad?")), text)
+        }
+    },
     // String literals
     // Note that Unicode escapes are not required.
     r#""([^"\\]|\\.)*""# => (Token::StringLiteral(unescape(&text[1..text.len()-1])), text),
