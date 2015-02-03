@@ -84,9 +84,16 @@ impl TyExpr {
     }
 }
 
+macro_rules! spanned {
+    () => (span!());
+}
+
 parser! parse {
     Token;
+    ();
+    (a, b) { }
 
+    /*
     stmt: Stmt {
         expr[x] SEMI => Stmt::Expr(x),
         #[no_reduce(ELSE)]
@@ -120,6 +127,10 @@ parser! parse {
         Ident(x) => Expr::Id(x),
         expr_and_not_ty[x] => x,
     }
+    */
+    derp: () {
+        Ident => spanned!()
+    }
 }
 
 fn main() {
@@ -142,6 +153,6 @@ fn main() {
                 }
             }
         }
-        println!("{:?}", parse(line.into_iter()));
+        println!("{:?}", parse(line.into_iter().map(|x| (x, ()))));
     }
 }

@@ -8,18 +8,12 @@ macro_rules! spanned {
     ($node: expr) => (spanned(span!(), $node));
 }
 
-// FIXME(spans)
-macro_rules! span {
-    () => (Span { lo: 0, hi: 0, file: () });
-}
-
-// FIXME(spans)
-fn span_of<T>(_: &T) -> Span {
-    span!()
-}
-
 parser! parse {
+    // XXX: This syntax looks ugly
     Token;
+
+    Span;
+    (a, b) { Span::range(a, b) }
 
     // Compilation unit ($7.3)
     root: CompilationUnit {
@@ -398,9 +392,9 @@ parser! parse {
     // array type.)
     castExpression: Expression {
         LParen primitiveType[t] RParen unaryExpression[expr] =>
-            spanned!(Expression_::Cast(spanned(span_of(&t), Type_::SimpleType(t)), box expr)),
+            spanned!(Expression_::Cast(spanned(t.span, Type_::SimpleType(t)), box expr)),
         LParen arrayType[t] RParen unaryExpressionNotPlusMinus[expr] =>
-            spanned!(Expression_::Cast(spanned(span_of(&t), Type_::ArrayType(t)), box expr)),
+            spanned!(Expression_::Cast(spanned(t.span, Type_::ArrayType(t)), box expr)),
         LParen expressionNameOrType[q] RParen unaryExpressionNotPlusMinus[expr] =>
             spanned!(Expression_::Cast(q.into(), box expr)),
     }
@@ -606,8 +600,8 @@ parser! parse {
     }
 }
 
-pub fn make_ast<I: Iterator<Item=Token>>(tokens: I)
-        -> Result<CompilationUnit, (Option<Token>, &'static str)> {
+pub fn make_ast<I: Iterator<Item=(Token, Span)>>(tokens: I)
+        -> Result<CompilationUnit, (Option<(Token, Span)>, &'static str)> {
     parse(tokens)
 }
 
