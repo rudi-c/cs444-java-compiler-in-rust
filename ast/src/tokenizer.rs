@@ -275,9 +275,9 @@ pub struct Tokenizer<'a> {
 }
 
 impl<'a> Iterator for Tokenizer<'a> {
-    type Item = Token;
+    type Item = (Token, &'a str);
 
-    fn next(&mut self) -> Option<Token> {
+    fn next(&mut self) -> Option<(Token, &'a str)> {
         loop {
             if self.slice.is_empty() {
                 return None;
@@ -292,7 +292,7 @@ impl<'a> Iterator for Tokenizer<'a> {
                         // XXX: the "{:?}" formatter doesn't seem to accept
                         // alignment
                         println!("{:<25} {:?}", format!("{:?}", token), text);
-                        return Some(token);
+                        return Some((token, text));
                     }
                 }
                 None => {

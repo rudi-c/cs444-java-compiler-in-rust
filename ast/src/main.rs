@@ -10,6 +10,7 @@ use std::io::fs::File;
 use parser::make_ast;
 use tokenizer::tokenizer;
 use weed::weed;
+use ast::Span;
 
 mod ast;
 mod parser;
@@ -24,7 +25,14 @@ fn main() {
     let mut file = File::open(&input_path).unwrap();
     let input = file.read_to_string().unwrap();
 
-    let ast = make_ast(tokenizer(&*input));
+    let ast = make_ast(tokenizer(&*input).map(|(token, text)| {
+        let offset = input.subslice_offset(text);
+        (token, Span {
+            lo: offset as u32,
+            hi: (offset + text.len()) as u32,
+            file: (),
+        })
+    }));
     println!("{:?}", ast);
 
     match ast {
