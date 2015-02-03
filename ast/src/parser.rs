@@ -4,6 +4,20 @@ use tokenizer::Token::*;
 
 // See Chapter 18 for full grammar (p.449) (pdf p.475)
 
+macro_rules! spanned {
+    ($node: expr) => (spanned(span!(), $node));
+}
+
+// FIXME(spans)
+macro_rules! span {
+    () => (Span { lo: 0, hi: 0, file: () });
+}
+
+// FIXME(spans)
+fn span_of<T>(_: &T) -> Span {
+    span!()
+}
+
 parser! parse {
     Token;
 
@@ -23,9 +37,10 @@ parser! parse {
 
     // Import declarations ($7.5)
     importDeclaration: ImportDeclaration {
-        IMPORT qualifiedIdentifier[ident] Semicolon => ImportDeclaration::SingleType(ident),
+        IMPORT qualifiedIdentifier[ident] Semicolon =>
+            spanned!(ImportDeclaration_::SingleType(ident)),
         IMPORT qualifiedIdentifierHelperDot[ident] Star Semicolon =>
-            ImportDeclaration::OnDemand(QualifiedIdentifier { parts: ident }),
+            spanned!(ImportDeclaration_::OnDemand(QualifiedIdentifier::new(ident))),
     }
 
     importDeclarations: Vec<ImportDeclaration> {
@@ -37,8 +52,10 @@ parser! parse {
     // Note that Joos 1W only supports one of these per file, but I leave that to the
     // weeding phase so it's easier to output a clearer error message.
     typeDeclaration: TypeDeclaration {
-        classDeclaration[class] => TypeDeclaration::Class(class),
-        interfaceDeclaration[interface] => TypeDeclaration::Interface(interface),
+        classDeclaration[class] =>
+            spanned!(TypeDeclaration_::Class(class)),
+        interfaceDeclaration[interface] =>
+            spanned!(TypeDeclaration_::Interface(interface)),
     }
 
     typeDeclarations: Vec<TypeDeclaration> {
@@ -47,34 +64,34 @@ parser! parse {
     }
 
     // Literals ($3.10)
-    literal: Literal {
-        IntegerLiteral(lit) => Literal::Integer(lit),
-        BooleanLiteral(lit) => Literal::Boolean(lit),
-        CharacterLiteral(lit) => Literal::Character(lit),
-        StringLiteral(lit) => Literal::String(lit),
-        NullLiteral => Literal::Null,
+    literal: Spanned<Literal> {
+        IntegerLiteral(lit) => spanned!(Literal::Integer(lit)),
+        BooleanLiteral(lit) => spanned!(Literal::Boolean(lit)),
+        CharacterLiteral(lit) => spanned!(Literal::Character(lit)),
+        StringLiteral(lit) => spanned!(Literal::String(lit)),
+        NullLiteral => spanned!(Literal::Null),
     }
 
     // Types ($4.1 - $4.3)
     // Since type is a Rust keyword, use the term ty.
     // Note that multidimensional arrays are not in Joos 1W.
     ty: Type {
-        primitiveType[t] => Type::SimpleType(t),
+        primitiveType[t] => spanned!(Type_::SimpleType(t)),
         referenceType[t] => t,
     }
 
     primitiveType: SimpleType {
-        BOOLEAN => SimpleType::Boolean,
-        INT => SimpleType::Int,
-        SHORT => SimpleType::Short,
-        CHAR => SimpleType::Char,
-        BYTE => SimpleType::Byte,
+        BOOLEAN => spanned!(SimpleType_::Boolean),
+        INT => spanned!(SimpleType_::Int),
+        SHORT => spanned!(SimpleType_::Short),
+        CHAR => spanned!(SimpleType_::Char),
+        BYTE => spanned!(SimpleType_::Byte),
     }
 
     referenceType: Type {
-        arrayType[t] => Type::ArrayType(t),
-        typeName[t] => Type::SimpleType(t),
-        NullLiteral => Type::Null,
+        arrayType[t] => spanned!(Type_::ArrayType(t)),
+        typeName[t] => spanned!(Type_::SimpleType(t)),
+        NullLiteral => spanned!(Type_::Null),
     }
 
     arrayType: SimpleType {
@@ -83,34 +100,39 @@ parser! parse {
     }
 
     typeName: SimpleType {
-        qualifiedIdentifier[q] => SimpleType::Other(q),
+        qualifiedIdentifier[q] => spanned!(SimpleType_::Other(q)),
     }
 
     // Needed to resolve shift-reduce conflicts due of the Type Dot Something
     // because Type can be a qualifiedIdentifier
     // TODO: Remove
     // tyDot: Type {
-    //     primitiveType[t] Dot => Type::SimpleType(t),
-    //     arrayType[t] Dot => Type::ArrayType(t),
+    //     primitiveType[t] Dot => Type_::SimpleType(t),
+    //     arrayType[t] Dot => Type_::ArrayType(t),
     //     qualifiedIdentifierHelperDot[q] => {
     //         let ident = QualifiedIdentifier { parts: q };
-    //         Type::SimpleType(SimpleType::Other(ident))
+    //         Type_::SimpleType(SimpleType_::Other(ident))
     //     }
     // }
 
 
     // Identifiers ($6.7)
-    qualifiedIdentifier: QualifiedIdentifier {
-        qualifiedIdentifierHelper[list] => QualifiedIdentifier { parts: list }
+    identifier: Ident {
+        Identifier(ident) => spanned!(ident),
     }
 
-    qualifiedIdentifierHelperDot: Vec<String> {
+    qualifiedIdentifier: QualifiedIdentifier {
+        qualifiedIdentifierHelper[list] =>
+            spanned!(QualifiedIdentifier_ { parts: list })
+    }
+
+    qualifiedIdentifierHelperDot: Vec<Ident> {
         qualifiedIdentifierHelper[list] Dot => list,
     }
 
-    qualifiedIdentifierHelper: Vec<String> {
-        Identifier(ident) => vec![ident],
-        qualifiedIdentifierHelperDot[mut list] Identifier(ident) => {
+    qualifiedIdentifierHelper: Vec<Ident> {
+        identifier[ident] => vec![ident],
+        qualifiedIdentifierHelperDot[mut list] identifier[ident] => {
             list.push(ident);
             list
         }
@@ -118,15 +140,15 @@ parser! parse {
 
     // Classes ($8.1)
     classDeclaration : Class {
-        modifierList[mods] CLASS Identifier(ident) superType[s]
+        modifierList[mods] CLASS identifier[ident] superType[s]
                 interfaceImplementations[impls] classBody[body] =>
-            Class {
+            spanned!(Class_ {
                 name: ident,
                 modifiers: mods,
                 extends: s,
                 implements: impls,
                 body: body,
-            },
+            }),
     }
 
     superType: Option<QualifiedIdentifier> {
@@ -151,60 +173,68 @@ parser! parse {
     }
 
     classBodyDeclaration: ClassBodyDeclaration {
-        fieldDeclaration[dcl] => ClassBodyDeclaration::FieldDeclaration(dcl),
-        methodDeclaration[dcl] => ClassBodyDeclaration::MethodDeclaration(dcl),
-        constructorDeclaration[dcl] => ClassBodyDeclaration::ConstructorDeclaration(dcl),
+        fieldDeclaration[dcl] =>
+            spanned!(ClassBodyDeclaration_::FieldDeclaration(dcl)),
+        methodDeclaration[dcl] =>
+            spanned!(ClassBodyDeclaration_::MethodDeclaration(dcl)),
+        constructorDeclaration[dcl] =>
+            spanned!(ClassBodyDeclaration_::ConstructorDeclaration(dcl)),
     }
 
     // Field declaration ($8.3)
     // Multiple fields per declarations not required.
     fieldDeclaration: Field {
         modifierList[mods] ty[t] variableDeclarator[(name, expr)] Semicolon => {
-            Field { name: name, modifiers: mods, ty: t, initializer: expr }
+            spanned!(Field_ {
+                name: name,
+                modifiers: mods,
+                ty: t,
+                initializer: expr,
+            })
         }
     }
 
-    variableDeclarator: (String, Option<Expression>) {
-        Identifier(name) => (name, None),
-        Identifier(name) Assignment variableInitializer[init] => (name, Some(init)),
+    variableDeclarator: (Ident, Option<Expression>) {
+        identifier[name] => (name, None),
+        identifier[name] Assignment variableInitializer[init] => (name, Some(init)),
     }
 
     methodDeclaration: Method {
-        modifierList[mods] VOID Identifier(name)
+        modifierList[mods] VOID identifier[name]
                 LParen parameterList[params] RParen block[b] =>
-            Method { name: name, modifiers: mods, params: params, return_type: None, body: Some(b) },
-        modifierList[mods] ty[t] Identifier(name)
+            spanned!(Method_ { name: name, modifiers: mods, params: params, return_type: None, body: Some(b) }),
+        modifierList[mods] ty[t] identifier[name]
                 LParen parameterList[params] RParen block[b] =>
-            Method { name: name, modifiers: mods, params: params, return_type: Some(t), body: Some(b) },
+            spanned!(Method_ { name: name, modifiers: mods, params: params, return_type: Some(t), body: Some(b) }),
         methodDeclarationNoBody[dcl] => dcl,
     }
 
     // Method declaration ($8.4)
     methodDeclarationNoBody: Method {
-        modifierList[mods] VOID Identifier(name)
+        modifierList[mods] VOID identifier[name]
                 LParen parameterList[params] RParen Semicolon =>
-            Method { name: name, modifiers: mods, params: params, return_type: None, body: None },
-        modifierList[mods] ty[t] Identifier(name)
+            spanned!(Method_ { name: name, modifiers: mods, params: params, return_type: None, body: None }),
+        modifierList[mods] ty[t] identifier[name]
                 LParen parameterList[params] RParen Semicolon =>
-            Method { name: name, modifiers: mods, params: params, return_type: Some(t), body: None },
+            spanned!(Method_ { name: name, modifiers: mods, params: params, return_type: Some(t), body: None }),
     }
 
     // Class constructor ($8.8)
     constructorDeclaration: Constructor {
-        modifierList[mods] Identifier(name) LParen parameterList[params] RParen block[b] =>
-            Constructor { name: name, modifiers: mods, params: params, body: b },
+        modifierList[mods] identifier[name] LParen parameterList[params] RParen block[b] =>
+            spanned!(Constructor_ { name: name, modifiers: mods, params: params, body: b }),
     }
 
     // Interfaces ($9.1)
     interfaceDeclaration: Interface {
-        modifierList[mods] INTERFACE Identifier(ident)
+        modifierList[mods] INTERFACE identifier[ident]
                 interfaceExtensions[exts] interfaceBody[body] =>
-            Interface {
+            spanned!(Interface_ {
                 name: ident,
                 modifiers: mods,
                 extends: exts,
                 body: body,
-            },
+            }),
     }
 
     interfaceExtensions: Vec<QualifiedIdentifier> {
@@ -240,19 +270,21 @@ parser! parse {
     }
 
     modifier: Modifier {
-        PUBLIC[_] => Modifier::Public,
-        PROTECTED[_] => Modifier::Protected,
-        PRIVATE[_] => Modifier::Private,
-        ABSTRACT[_] => Modifier::Abstract,
-        STATIC[_] => Modifier::Static,
-        FINAL[_] => Modifier::Final,
-        NATIVE[_] => Modifier::Native,
+        PUBLIC[_]    => spanned!(Modifier_::Public),
+        PROTECTED[_] => spanned!(Modifier_::Protected),
+        PRIVATE[_]   => spanned!(Modifier_::Private),
+        ABSTRACT[_]  => spanned!(Modifier_::Abstract),
+        STATIC[_]    => spanned!(Modifier_::Static),
+        FINAL[_]     => spanned!(Modifier_::Final),
+        NATIVE[_]    => spanned!(Modifier_::Native),
     }
 
     // TODO: Check this comment.
     // For array types ($8.3)
     variableDeclaration: VariableDeclaration {
-        ty[t] Identifier(name) => VariableDeclaration { ty: t, name: name }
+        ty[t] identifier[name] => spanned!(VariableDeclaration_ {
+            ty: t, name: name
+        }),
     }
 
     // Method parameters ($8.4.1). The reference refers to them as formal parameters.
@@ -272,7 +304,7 @@ parser! parse {
     // Expressions ($15)
     //
     expressionNameOrType: ExpressionOrType {
-        qualifiedIdentifier[q] => ExpressionOrType::Name(q),
+        qualifiedIdentifier[q] => spanned!(ExpressionOrType_::Name(q)),
     }
 
     // Primary expression ($15.8)
@@ -283,11 +315,11 @@ parser! parse {
     }
 
     primaryNoNewArray: Expression {
-        literal[expr] => Expression::Literal(expr),
-        THIS => Expression::This,
+        literal[lit] => spanned!(Expression_::Literal(lit.node)),
+        THIS => spanned!(Expression_::This),
         qualifiedIdentifierHelperDot[q] THIS => {
-            let ident = QualifiedIdentifier { parts: q };
-            Expression::QualifiedThis(ident)
+            let ident = QualifiedIdentifier::new(q);
+            spanned!(Expression_::QualifiedThis(ident))
         },
         LParen expressionNameOrType[expr] RParen => expr.into(),
         LParen expressionNotName[expr] RParen => expr,
@@ -300,15 +332,15 @@ parser! parse {
     // Class instance creation expression ($15.9)
     classInstanceCreationExpression: Expression {
         NEW qualifiedIdentifier[q] LParen argumentList[args] RParen =>
-            Expression::NewStaticClass(q, args, None),
-        primary[expr] Dot NEW Identifier(ident) LParen argumentList[args] RParen =>
-            Expression::NewDynamicClass(box expr, ident, args, None),
+            spanned!(Expression_::NewStaticClass(q, args, None)),
+        primary[expr] Dot NEW identifier[ident] LParen argumentList[args] RParen =>
+            spanned!(Expression_::NewDynamicClass(box expr, ident, args, None)),
         // TODO: Confirm that anonymous classes count as nested types.
         // NEW qualifiedIdentifier[q] LParen argumentList[args] RParen classBody[body] =>
-        //     Expression::NewStaticClass(q, args, Some(body)), // "Somebody har har har"
-        // primary[expr] Dot NEW Identifier(ident)
+        //     spanned!(Expression_::NewStaticClass(q, args, Some(body))), // "Somebody har har har"
+        // primary[expr] Dot NEW identifier[ident]
         //         LParen argumentList[args] RParen classBody[body] =>
-        //     Expression::NewDynamicClass(box expr, args, Some(body)),
+        //     spanned!(Expression_::NewDynamicClass(box expr, args, Some(body))),
     }
 
     argumentList: Vec<Expression> {
@@ -321,36 +353,42 @@ parser! parse {
     // Note that Joos 1W only has 1D arrays and does not support array initializers.
     arrayCreationExpression: Expression {
         NEW primitiveType[t] LBracket expression[expr] RBracket =>
-            Expression::NewArray(t, box expr),
+            spanned!(Expression_::NewArray(t, box expr)),
         NEW typeName[t] LBracket expression[expr] RBracket =>
-            Expression::NewArray(t, box expr),
+            spanned!(Expression_::NewArray(t, box expr)),
     }
 
     // Field access expressions ($15.11)
     // Super field access not required in Joos 1W
     fieldAccess: Expression {
-        primary[expr] Dot Identifier(ident) => Expression::FieldAccess(box expr, ident),
+        primary[expr] Dot identifier[ident] => spanned!(Expression_::FieldAccess(box expr, ident)),
     }
 
     // Method invocation expressions ($15.12)
     methodInvocation: Expression {
-        expressionNameOrType[ExpressionOrType::Name(mut ids)] LParen argumentList[args] RParen => {
-            let name = ids.parts.pop().unwrap();
-            match ids.parts.len() {
-                0 => Expression::MethodInvocation(None, name, args),
-                _ => Expression::MethodInvocation(Some(box Expression::Name(ids)), name, args),
+        expressionNameOrType[node!(ExpressionOrType_::Name(mut ids))] LParen argumentList[args] RParen => {
+            let name = ids.node.parts.pop().unwrap();
+            match ids.node.parts.len() {
+                0 => spanned!(Expression_::MethodInvocation(None, name, args)),
+                _ => {
+                    let sp = Span::range(ids.node.parts.first().unwrap().span,
+                                         ids.node.parts.last().unwrap().span);
+                    ids.span = sp;
+                    spanned!(Expression_::MethodInvocation(
+                            Some(box spanned(sp, Expression_::Name(ids))), name, args))
+                }
             }
         }
-        primary[expr] Dot Identifier(ident) LParen argumentList[args] RParen =>
-            Expression::MethodInvocation(Some(box expr), ident, args),
+        primary[expr] Dot identifier[ident] LParen argumentList[args] RParen =>
+            spanned!(Expression_::MethodInvocation(Some(box expr), ident, args)),
     }
 
     // Array access expressions ($15.13)
     arrayAccess: Expression {
         expressionNameOrType[name] LBracket expression[expr] RBracket =>
-            Expression::ArrayAccess(box name.into(), box expr),
+            spanned!(Expression_::ArrayAccess(box name.into(), box expr)),
         primaryNoNewArray[primary] LBracket expression[expr] RBracket =>
-            Expression::ArrayAccess(box primary, box expr),
+            spanned!(Expression_::ArrayAccess(box primary, box expr)),
     }
 
     // Postfix expression (%15.14)
@@ -362,7 +400,7 @@ parser! parse {
 
     // Unary operators ($15.15)
     unaryExpression: Expression {
-        Minus unaryExpression[expr] => Expression::Prefix(PrefixOperator::Minus, box expr),
+        Minus unaryExpression[expr] => spanned!(Expression_::Prefix(PrefixOperator::Minus, box expr)),
         unaryExpressionNotPlusMinus[expr] => expr
     }
 
@@ -370,7 +408,7 @@ parser! parse {
     unaryExpressionNotPlusMinus: Expression {
         castExpression[expr] => expr,
         postfixExpression[expr] => expr,
-        Bang unaryExpression[expr] => Expression::Prefix(PrefixOperator::Not, box expr),
+        Bang unaryExpression[expr] => spanned!(Expression_::Prefix(PrefixOperator::Not, box expr)),
     }
 
     // Casting ($15.16)
@@ -380,32 +418,33 @@ parser! parse {
     // array type.)
     castExpression: Expression {
         LParen primitiveType[t] RParen unaryExpression[expr] =>
-            Expression::Cast(Type::SimpleType(t), box expr),
+            spanned!(Expression_::Cast(spanned(span_of(&t), Type_::SimpleType(t)), box expr)),
         LParen arrayType[t] RParen unaryExpressionNotPlusMinus[expr] =>
-            Expression::Cast(Type::ArrayType(t), box expr),
+            spanned!(Expression_::Cast(spanned(span_of(&t), Type_::ArrayType(t)), box expr)),
         LParen expressionNameOrType[q] RParen unaryExpressionNotPlusMinus[expr] =>
-            Expression::Cast(q.into(), box expr),
+            spanned!(Expression_::Cast(q.into(), box expr)),
     }
 
     // Multiplicative expressions ($15.17)
     multiplicativeExpression: Expression {
         unaryExpression[expr] => expr,
 
-        multiplicativeExpression[expr1] Star unaryExpression[expr2] =>
-            Expression::Infix(InfixOperator::Mult, box expr1, box expr2),
-        multiplicativeExpression[expr1] Slash unaryExpression[expr2] =>
-            Expression::Infix(InfixOperator::Div, box expr1, box expr2),
-        multiplicativeExpression[expr1] Percent unaryExpression[expr2] =>
-            Expression::Infix(InfixOperator::Modulo, box expr1, box expr2),
+        multiplicativeExpression[expr1] multiplicativeOperator[op] unaryExpression[expr2] =>
+            spanned!(Expression_::Infix(op, box expr1, box expr2)),
+    }
+    multiplicativeOperator: InfixOperator {
+        Star => InfixOperator::Mult,
+        Slash => InfixOperator::Div,
+        Percent => InfixOperator::Modulo,
     }
 
     // Additive expressions ($15.18)
     additiveExpression: Expression {
         multiplicativeExpression[expr] => expr,
         additiveExpression[expr1] Plus multiplicativeExpression[expr2] =>
-            Expression::Infix(InfixOperator::Plus, box expr1, box expr2),
+            spanned!(Expression_::Infix(InfixOperator::Plus, box expr1, box expr2)),
         additiveExpression[expr1] Minus multiplicativeExpression[expr2] =>
-            Expression::Infix(InfixOperator::Minus, box expr1, box expr2),
+            spanned!(Expression_::Infix(InfixOperator::Minus, box expr1, box expr2)),
     }
 
     // Shift operators ($15.19)
@@ -416,9 +455,9 @@ parser! parse {
     relationalExpression: Expression {
         additiveExpression[expr] => expr,
         relationalExpression[expr1] comparisonOperator[op] additiveExpression[expr2] =>
-            Expression::Infix(op, box expr1, box expr2),
+            spanned!(Expression_::Infix(op, box expr1, box expr2)),
         relationalExpression[expr] INSTANCEOF referenceType[t] =>
-            Expression::InstanceOf(box expr, t),
+            spanned!(Expression_::InstanceOf(box expr, t)),
     }
 
     comparisonOperator: InfixOperator {
@@ -432,28 +471,28 @@ parser! parse {
     equalityExpression: Expression {
         relationalExpression[expr] => expr,
         equalityExpression[expr1] Equals relationalExpression[expr2] =>
-            Expression::Infix(InfixOperator::Equals, box expr1, box expr2),
+            spanned!(Expression_::Infix(InfixOperator::Equals, box expr1, box expr2)),
         equalityExpression[expr1] NotEquals relationalExpression[expr2] =>
-            Expression::Infix(InfixOperator::NotEquals, box expr1, box expr2),
+            spanned!(Expression_::Infix(InfixOperator::NotEquals, box expr1, box expr2)),
     }
 
     // Logical operators ($15.22)
     andExpression: Expression {
         equalityExpression[expr] => expr,
         andExpression[expr1] And equalityExpression[expr2] =>
-            Expression::Infix(InfixOperator::EagerAnd, box expr1, box expr2),
+            spanned!(Expression_::Infix(InfixOperator::EagerAnd, box expr1, box expr2)),
     }
 
     exclusiveOrExpression: Expression {
         andExpression[expr] => expr,
         exclusiveOrExpression[expr1] Xor andExpression[expr2] =>
-            Expression::Infix(InfixOperator::Xor, box expr1, box expr2),
+            spanned!(Expression_::Infix(InfixOperator::Xor, box expr1, box expr2)),
     }
 
     inclusiveOrExpression: Expression {
         exclusiveOrExpression[expr] => expr,
         inclusiveOrExpression[expr1] Or exclusiveOrExpression[expr2] =>
-            Expression::Infix(InfixOperator::EagerOr, box expr1, box expr2),
+            spanned!(Expression_::Infix(InfixOperator::EagerOr, box expr1, box expr2)),
     }
 
     // Skipping the ternary operator ($15.25)
@@ -462,13 +501,13 @@ parser! parse {
     conditionalAndExpression: Expression {
         inclusiveOrExpression[expr] => expr,
         conditionalAndExpression[expr1] AndAnd inclusiveOrExpression[expr2] =>
-            Expression::Infix(InfixOperator::LazyAnd, box expr1, box expr2),
+            spanned!(Expression_::Infix(InfixOperator::LazyAnd, box expr1, box expr2)),
     }
 
     conditionalOrExpression: Expression {
         conditionalAndExpression[expr] => expr,
         conditionalOrExpression[expr1] OrOr conditionalAndExpression[expr2] =>
-            Expression::Infix(InfixOperator::LazyOr, box expr1, box expr2),
+            spanned!(Expression_::Infix(InfixOperator::LazyOr, box expr1, box expr2)),
     }
 
     // Assignment operator ($15.26)
@@ -479,11 +518,11 @@ parser! parse {
 
     assignment: Expression {
         leftHandSide[lhs] Assignment conditionalOrExpression[expr] =>
-            Expression::Assignment(box lhs, box expr),
+            spanned!(Expression_::Assignment(box lhs, box expr)),
     }
 
     leftHandSide: Expression {
-        qualifiedIdentifier[q] => Expression::Name(q),
+        qualifiedIdentifier[q] => spanned!(Expression_::Name(q)),
         fieldAccess[expr] => expr,
         arrayAccess[expr] => expr,
     }
@@ -495,45 +534,41 @@ parser! parse {
     // Same as `expression`, but can't expand into just `expressionName`.
     // All the rules are inlined.
     expressionNotName: Expression {
-        Minus unaryExpression[expr] => Expression::Prefix(PrefixOperator::Minus, box expr),
+        Minus unaryExpression[expr] => spanned!(Expression_::Prefix(PrefixOperator::Minus, box expr)),
         castExpression[expr] => expr,
         primary[expr] => expr,
-        Bang unaryExpression[expr] => Expression::Prefix(PrefixOperator::Not, box expr),
+        Bang unaryExpression[expr] => spanned!(Expression_::Prefix(PrefixOperator::Not, box expr)),
 
-        multiplicativeExpression[expr1] Star unaryExpression[expr2] =>
-            Expression::Infix(InfixOperator::Mult, box expr1, box expr2),
-        multiplicativeExpression[expr1] Slash unaryExpression[expr2] =>
-            Expression::Infix(InfixOperator::Div, box expr1, box expr2),
-        multiplicativeExpression[expr1] Percent unaryExpression[expr2] =>
-            Expression::Infix(InfixOperator::Modulo, box expr1, box expr2),
+        multiplicativeExpression[expr1] multiplicativeOperator[op] unaryExpression[expr2] =>
+            spanned!(Expression_::Infix(op, box expr1, box expr2)),
         additiveExpression[expr1] Plus multiplicativeExpression[expr2] =>
-            Expression::Infix(InfixOperator::Plus, box expr1, box expr2),
+            spanned!(Expression_::Infix(InfixOperator::Plus, box expr1, box expr2)),
         additiveExpression[expr1] Minus multiplicativeExpression[expr2] =>
-            Expression::Infix(InfixOperator::Minus, box expr1, box expr2),
+            spanned!(Expression_::Infix(InfixOperator::Minus, box expr1, box expr2)),
         relationalExpression[expr1] comparisonOperator[op] additiveExpression[expr2] =>
-            Expression::Infix(op, box expr1, box expr2),
+            spanned!(Expression_::Infix(op, box expr1, box expr2)),
         relationalExpression[expr] INSTANCEOF referenceType[t] =>
-            Expression::InstanceOf(box expr, t),
+            spanned!(Expression_::InstanceOf(box expr, t)),
         equalityExpression[expr1] Equals relationalExpression[expr2] =>
-            Expression::Infix(InfixOperator::Equals, box expr1, box expr2),
+            spanned!(Expression_::Infix(InfixOperator::Equals, box expr1, box expr2)),
         equalityExpression[expr1] NotEquals relationalExpression[expr2] =>
-            Expression::Infix(InfixOperator::NotEquals, box expr1, box expr2),
+            spanned!(Expression_::Infix(InfixOperator::NotEquals, box expr1, box expr2)),
         andExpression[expr1] And equalityExpression[expr2] =>
-            Expression::Infix(InfixOperator::EagerAnd, box expr1, box expr2),
+            spanned!(Expression_::Infix(InfixOperator::EagerAnd, box expr1, box expr2)),
         exclusiveOrExpression[expr1] Xor andExpression[expr2] =>
-            Expression::Infix(InfixOperator::Xor, box expr1, box expr2),
+            spanned!(Expression_::Infix(InfixOperator::Xor, box expr1, box expr2)),
         inclusiveOrExpression[expr1] Or exclusiveOrExpression[expr2] =>
-            Expression::Infix(InfixOperator::EagerOr, box expr1, box expr2),
+            spanned!(Expression_::Infix(InfixOperator::EagerOr, box expr1, box expr2)),
         conditionalAndExpression[expr1] AndAnd inclusiveOrExpression[expr2] =>
-            Expression::Infix(InfixOperator::LazyAnd, box expr1, box expr2),
+            spanned!(Expression_::Infix(InfixOperator::LazyAnd, box expr1, box expr2)),
         conditionalOrExpression[expr1] OrOr conditionalAndExpression[expr2] =>
-            Expression::Infix(InfixOperator::LazyOr, box expr1, box expr2),
+            spanned!(Expression_::Infix(InfixOperator::LazyOr, box expr1, box expr2)),
         assignment[a] => a,
     }
 
     // Block ($14.2)
     block: Block {
-        LBrace blockStatements[stmts] RBrace => Block { stmts: stmts }
+        LBrace blockStatements[stmts] RBrace => spanned!(Block_ { stmts: stmts })
     }
 
     blockStatements: Vec<BlockStatement> {
@@ -542,34 +577,34 @@ parser! parse {
     }
 
     blockStatement: BlockStatement {
-        localVariableDeclaration[local] Semicolon => BlockStatement::LocalVariable(local),
-        classDeclaration[c] => BlockStatement::LocalClass(c),
-        statement[s] => BlockStatement::Statement(s),
+        localVariableDeclaration[local] Semicolon => spanned!(BlockStatement_::LocalVariable(local)),
+        classDeclaration[c] => spanned!(BlockStatement_::LocalClass(c)),
+        statement[s] => spanned!(BlockStatement_::Statement(s)),
     }
 
     // Local declarations ($14.4)
     localVariableDeclaration: LocalVariable {
         variableDeclaration[var] Assignment variableInitializer[init] =>
-            LocalVariable { variable: var, initializer: init }
+            spanned!(LocalVariable_ { variable: var, initializer: init })
     }
 
     // Statements ($14.5)
     statement: Statement {
-        block[b] => Statement::Block(b),
+        block[b] => spanned!(Statement_::Block(b)),
         #[no_reduce(ELSE)]
         IF LParen expression[test] RParen statement[s1] =>
-            Statement::If(test, box s1, None),
+            spanned!(Statement_::If(test, box s1, None)),
         IF LParen expression[test] RParen statement[s1] ELSE statement[s2] =>
-            Statement::If(test, box s1, Some(box s2)),
+            spanned!(Statement_::If(test, box s1, Some(box s2))),
         WHILE LParen expression[test] RParen statement[body] =>
-            Statement::While(test, box body),
+            spanned!(Statement_::While(test, box body)),
         FOR LParen maybeStatementExpression[f1] Semicolon maybeExpression[f2] Semicolon maybeStatementExpression[f3] RParen statement[body] =>
-            Statement::For(f1, f2, f3, box body),
+            spanned!(Statement_::For(f1, f2, f3, box body)),
         FOR LParen localVariableDeclaration[f1] Semicolon maybeExpression[f2] Semicolon maybeStatementExpression[f3] RParen statement[body] =>
-            Statement::ForDecl(f1, f2, f3, box body),
-        Semicolon => Statement::Empty,
-        statementExpression[expr] Semicolon => Statement::Expression(expr),
-        RETURN expression[expr] Semicolon => Statement::Return(expr),
+            spanned!(Statement_::ForDecl(f1, f2, f3, box body)),
+        Semicolon => spanned!(Statement_::Empty),
+        statementExpression[expr] Semicolon => spanned!(Statement_::Expression(expr)),
+        RETURN expression[expr] Semicolon => spanned!(Statement_::Return(expr)),
     }
 
     statementExpression: Expression {
@@ -597,30 +632,31 @@ pub fn make_ast<I: Iterator<Item=Token>>(tokens: I)
 // An intermediate type for parsing. Represents syntax that can be interpreted as
 // either an expression or a type.
 #[derive(Show)]
-pub enum ExpressionOrType {
+pub enum ExpressionOrType_ {
     Name(QualifiedIdentifier),
 }
+type ExpressionOrType = Spanned<ExpressionOrType_>;
 
 pub trait IsExpressionOrType {
     fn convert(ExpressionOrType) -> Self;
 }
 impl IsExpressionOrType for Expression {
     fn convert(x: ExpressionOrType) -> Expression {
-        match x {
-            ExpressionOrType::Name(n) => Expression::Name(n),
+        match x.node {
+            ExpressionOrType_::Name(n) => spanned(x.span, Expression_::Name(n)),
         }
     }
 }
 impl IsExpressionOrType for SimpleType {
     fn convert(x: ExpressionOrType) -> SimpleType {
-        match x {
-            ExpressionOrType::Name(n) => SimpleType::Other(n),
+        match x.node {
+            ExpressionOrType_::Name(n) => spanned(x.span, SimpleType_::Other(n)),
         }
     }
 }
 impl IsExpressionOrType for Type {
     fn convert(x: ExpressionOrType) -> Type {
-        Type::SimpleType(x.into())
+        spanned(x.span, Type_::SimpleType(x.into()))
     }
 }
 impl ExpressionOrType {

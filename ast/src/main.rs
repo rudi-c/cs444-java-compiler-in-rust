@@ -14,6 +14,7 @@ use weed::weed;
 mod ast;
 mod parser;
 mod tokenizer;
+#[macro_use]
 mod weed;
 
 fn main() {
