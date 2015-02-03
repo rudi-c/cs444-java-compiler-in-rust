@@ -4,7 +4,8 @@ use std::collections::HashSet;
 // http://stackoverflow.com/questions/27588416/how-to-send-output-to-stderr
 macro_rules! println_err(
     ($($arg:tt)*) => (
-        match writeln!(&mut ::std::io::stdio::stderr(), $($arg)* ) {
+        match writeln!(&mut ::std::io::stdio::stderr(), "ERROR: {}",
+                       format!($($arg)*) ) {
             Ok(_) => {},
             Err(x) => panic!("Unable to write to stderr: {}", x),
         }
@@ -20,12 +21,12 @@ pub fn ensure_valid_modifiers(allowed_modifiers: &HashSet<Modifier_>,
     for modifier in modifiers.iter() {
         if modifier_set.contains(&modifier.node) {
             println_err!("Modifier `{:?}` occurs more than once for {}.",
-                         modifier, modifier_target);
+                         modifier.node, modifier_target);
             *error = true;
         }
         if !allowed_modifiers.contains(&modifier.node) {
             println_err!("`{:?}` not a valid modifier for {}.",
-                         modifier, modifier_target);
+                         modifier.node, modifier_target);
             *error = true;
         }
 
