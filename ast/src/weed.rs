@@ -67,13 +67,13 @@ pub fn weed_expression(expression: &Expression) -> bool {
         Expression_::This => {},
         Expression_::QualifiedThis(_) => {},
 
-        Expression_::NewDynamicClass(box ref expr, _, ref exprs, _)
+        Expression_::NewDynamicClass(box ref expr, _, ref exprs)
         | Expression_::MethodInvocation(Some(box ref expr), _, ref exprs) => {
             error |= weed_expression(expr);
             error |= weed_expressions(exprs);
         },
 
-        Expression_::NewStaticClass(_, ref exprs, _)
+        Expression_::NewStaticClass(_, ref exprs)
         | Expression_::MethodInvocation(_, _, ref exprs) => {
             error |= weed_expressions(exprs);
         },

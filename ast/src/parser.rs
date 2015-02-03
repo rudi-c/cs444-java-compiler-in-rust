@@ -102,19 +102,6 @@ parser! parse {
         qualifiedIdentifier[q] => spanned!(SimpleType_::Other(q)),
     }
 
-    // Needed to resolve shift-reduce conflicts due of the Type Dot Something
-    // because Type can be a qualifiedIdentifier
-    // TODO: Remove
-    // tyDot: Type {
-    //     primitiveType[t] Dot => Type_::SimpleType(t),
-    //     arrayType[t] Dot => Type_::ArrayType(t),
-    //     qualifiedIdentifierHelperDot[q] => {
-    //         let ident = QualifiedIdentifier { parts: q };
-    //         Type_::SimpleType(SimpleType_::Other(ident))
-    //     }
-    // }
-
-
     // Identifiers ($6.7)
     identifier: Ident {
         Identifier(ident) => spanned!(ident),
@@ -278,19 +265,17 @@ parser! parse {
         NATIVE[_]    => spanned!(Modifier_::Native),
     }
 
-    // TODO: Check this comment.
-    // For array types ($8.3)
-    variableDeclaration: VariableDeclaration {
-        ty[t] identifier[name] => spanned!(VariableDeclaration_ {
-            ty: t, name: name
-        }),
-    }
-
     // Method parameters ($8.4.1). The reference refers to them as formal parameters.
     parameterList: Vec<VariableDeclaration> {
         => vec![],
         variableDeclaration[p] => vec![p],
         parameterList[mut list] Comma variableDeclaration[p] => { list.push(p); list },
+    }
+
+    variableDeclaration: VariableDeclaration {
+        ty[t] identifier[name] => spanned!(VariableDeclaration_ {
+            ty: t, name: name
+        }),
     }
 
     // Variable initializers ($8.3)
@@ -331,15 +316,9 @@ parser! parse {
     // Class instance creation expression ($15.9)
     classInstanceCreationExpression: Expression {
         NEW qualifiedIdentifier[q] LParen argumentList[args] RParen =>
-            spanned!(Expression_::NewStaticClass(q, args, None)),
+            spanned!(Expression_::NewStaticClass(q, args)),
         primary[expr] Dot NEW identifier[ident] LParen argumentList[args] RParen =>
-            spanned!(Expression_::NewDynamicClass(box expr, ident, args, None)),
-        // TODO: Confirm that anonymous classes count as nested types.
-        // NEW qualifiedIdentifier[q] LParen argumentList[args] RParen classBody[body] =>
-        //     spanned!(Expression_::NewStaticClass(q, args, Some(body))), // "Somebody har har har"
-        // primary[expr] Dot NEW identifier[ident]
-        //         LParen argumentList[args] RParen classBody[body] =>
-        //     spanned!(Expression_::NewDynamicClass(box expr, args, Some(body))),
+            spanned!(Expression_::NewDynamicClass(box expr, ident, args)),
     }
 
     argumentList: Vec<Expression> {
