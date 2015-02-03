@@ -1,7 +1,7 @@
 use std::num::FromStrRadix;
 use std::char;
 
-#[derive(Show)]
+#[derive(Show, Clone)]
 pub enum Token {
     Identifier(String),
 
@@ -271,7 +271,8 @@ fn unescape(mut s: &str) -> String {
 }
 
 pub struct Tokenizer<'a> {
-    slice: &'a str
+    slice: &'a str,
+    pub tokens: Vec<(Token, String)>,
 }
 
 impl<'a> Iterator for Tokenizer<'a> {
@@ -289,9 +290,8 @@ impl<'a> Iterator for Tokenizer<'a> {
                         return None;
                     }
                     if token_filter(&token) {
-                        // XXX: the "{:?}" formatter doesn't seem to accept
-                        // alignment
-                        println!("{:<25} {:?}", format!("{:?}", token), text);
+                        self.tokens.push((token.clone(), 
+                                          String::from_str(text)));
                         return Some(token);
                     }
                 }
@@ -312,6 +312,6 @@ fn token_filter(token: &Token) -> bool {
     }
 }
 
-pub fn tokenizer<'a>(s: &'a str) -> Tokenizer<'a> {
-    Tokenizer { slice: s }
+pub fn make_tokenizer<'a>(s: &'a str) -> Tokenizer<'a> {
+    Tokenizer { slice: s, tokens: vec![] }
 }
