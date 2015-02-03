@@ -535,6 +535,8 @@ parser! parse {
     // Same as `expression`, but can't expand into just `expressionName`.
     // All the rules are inlined.
     expressionNotName: Expression {
+        #[overriding]
+        Minus IntegerLiteral(lit) => spanned!(Expression_::Literal(Literal::Integer(-lit))),
         Minus unaryExpression[expr] => spanned!(Expression_::Prefix(PrefixOperator::Minus, box expr)),
         castExpression[expr] => expr,
         primary[expr] => expr,
