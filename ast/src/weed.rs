@@ -53,19 +53,12 @@ pub fn weed_expression(expression: &Expression) -> bool {
         // ($3.10.1) Special rule for integers that are operands of unary minus.
         // Yup, all this work just to weed that one edge case.
 
-        // TODO: This doesn't work if there are parentheses.
-        // -(2147483648) is not valid.
-        Expression_::Prefix(PrefixOperator::Minus,
-                            box node!(Expression_::Literal(Literal::Integer(i)))) => {
-            if i > 2147483648 {
-                println_err!("Integer -{} exceeds maximum value of integer literal.", i);
-                error = true;
-            }
-        }
-
         Expression_::Literal(Literal::Integer(i)) => {
             if i > 2147483647 {
                 println_err!("Integer {} exceeds maximum value of integer literal.", i);
+                error = true;
+            } else if i < -2147483648 {
+                println_err!("Integer {} exceeds minimum value of integer literal.", i);
                 error = true;
             }
         },

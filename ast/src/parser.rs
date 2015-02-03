@@ -400,6 +400,8 @@ parser! parse {
 
     // Unary operators ($15.15)
     unaryExpression: Expression {
+        #[overriding]
+        Minus IntegerLiteral(lit) => spanned!(Expression_::Literal(Literal::Integer(-lit))),
         Minus unaryExpression[expr] => spanned!(Expression_::Prefix(PrefixOperator::Minus, box expr)),
         unaryExpressionNotPlusMinus[expr] => expr
     }

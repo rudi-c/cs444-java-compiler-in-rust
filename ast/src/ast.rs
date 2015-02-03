@@ -245,7 +245,7 @@ pub type Expression = Spanned<Expression_>;
 
 #[derive(Show)]
 pub enum Literal {
-    Integer(u64),
+    Integer(i64),
     Boolean(bool),
     Character(char),
     String(String),

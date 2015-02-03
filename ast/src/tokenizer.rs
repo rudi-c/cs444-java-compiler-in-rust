@@ -6,7 +6,7 @@ pub enum Token {
     Identifier(String),
 
     // Literals. Note that FloatingPointLiteral not required in Joos
-    IntegerLiteral(u64),
+    IntegerLiteral(i64),
     BooleanLiteral(bool),
     CharacterLiteral(char),
     StringLiteral(String),
