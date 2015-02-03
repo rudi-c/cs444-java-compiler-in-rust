@@ -59,8 +59,7 @@ pub fn weed_expression(expression: &Expression) -> bool {
         &Expression::Prefix(PrefixOperator::Minus,
                             box Expression::Literal(Literal::Integer(i))) => {
             if i > 2147483648 {
-                println_err!(concat!("Integer {} exceeds maximum value of integer literal ",
-                                     "in unary minus."), i);
+                println_err!("Integer -{} exceeds maximum value of integer literal.", i);
                 error = true;
             }
         }
@@ -256,10 +255,6 @@ pub fn weed_class_method(method: &Method) -> bool {
         error = true;
     }
 
-    if let Some(ref body) = method.body {
-        error |= weed_block(body);
-    }
-
     return error;
 }
 
@@ -356,7 +351,7 @@ pub fn weed_filename(typename: &str, filestem: &str) -> bool {
 }
 
 // Return whether an error was found.
-pub fn weed(ast: CompilationUnit, filestem: &str) -> bool {
+pub fn weed(ast: &CompilationUnit, filestem: &str) -> bool {
     let mut error = false;
 
     if ast.types.len() > 1 {

@@ -28,7 +28,7 @@ fn main() {
 
     match ast {
         Ok(result) => {
-            let found_error = weed(result, input_path.filestem_str().unwrap());
+            let found_error = weed(&result, input_path.filestem_str().unwrap());
             if found_error {
                 os::set_exit_status(42);
             }
