@@ -94,11 +94,6 @@ pub fn weed_expression(expression: &Expression) -> bool {
 
         Expression_::Name(_) => {},
 
-        Expression_::InstanceOf(box ref expr, node!(Type_::Null)) => {
-            weed_expression(expr);
-            println_err!("instanceof null is not valid.");
-            error = true;
-        },
         Expression_::InstanceOf(box ref expr, _) => {
             error |= weed_expression(expr);
         },

@@ -172,7 +172,6 @@ impl QualifiedIdentifier {
 pub enum Type_ {
     SimpleType(SimpleType),
     ArrayType(SimpleType),
-    Null
 }
 pub type Type = Spanned<Type_>;
 

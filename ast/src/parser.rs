@@ -91,7 +91,6 @@ parser! parse {
     referenceType: Type {
         arrayType[t] => spanned!(Type_::ArrayType(t)),
         typeName[t] => spanned!(Type_::SimpleType(t)),
-        NullLiteral => spanned!(Type_::Null),
     }
 
     arrayType: SimpleType {
