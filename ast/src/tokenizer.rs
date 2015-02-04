@@ -182,7 +182,10 @@ scanner! {
     },
     // String literals
     // Note that Unicode escapes are not required.
-    r#""([^"\\]|\\.)*""# => unescape_token(text),
+    r#""([^"\\]|\\.)*""# => (match unescape(&text[1..text.len()-1]) {
+        Ok(s) => Token::StringLiteral(s),
+        Err(e) => Token::Error(e),
+    }, text),
     // Check for unterminated string constants.
     r#""([^"\\]|\\.)*"# => (Token::Error(String::from_str("unterminated string constant")), text),
     r#"'[^'\\]'"# => (Token::CharacterLiteral(text.char_at(1)), text),
@@ -277,7 +280,7 @@ fn unescape(mut s: &str) -> Result<String, String> {
 
 fn unescape_token(text: &str) -> (Token, &str) {
     (match unescape(&text[1..text.len()-1]) {
-        Ok(s) => Token::StringLiteral(s),
+        Ok(s) => Token::CharacterLiteral(s.char_at(0)),
         Err(e) => Token::Error(e),
     }, text)
 }
