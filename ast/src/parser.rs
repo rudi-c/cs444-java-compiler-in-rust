@@ -1,4 +1,5 @@
 use ast::*;
+use span::{Span, Spanned, spanned};
 use tokenizer::*;
 use tokenizer::Token::*;
 

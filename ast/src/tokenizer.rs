@@ -1,3 +1,5 @@
+use span::Span;
+
 use std::num::FromStrRadix;
 use std::char;
 
@@ -287,33 +289,34 @@ fn unescape_token(text: &str) -> (Token, &str) {
 
 pub struct Tokenizer<'a> {
     slice: &'a str,
-    pub tokens: Vec<(Token, String)>,
+    full_slice: &'a str,
+    file_ix: usize,
+    pub tokens: Vec<(Token, &'a str)>,
 }
 
 impl<'a> Iterator for Tokenizer<'a> {
-    type Item = (Token, &'a str);
+    type Item = (Token, Span);
 
-    fn next(&mut self) -> Option<(Token, &'a str)> {
+    fn next(&mut self) -> Option<(Token, Span)> {
         loop {
             if self.slice.is_empty() {
                 return None;
             }
-            match next_token(&mut self.slice) {
-                Some((token, text)) => {
-                    if let &Token::Error(ref error) = &token {
-                        println!("invalid token `{}`: {}", text, error);
-                        return None;
-                    }
-                    if token_filter(&token) {
-                        self.tokens.push((token.clone(),
-                                          String::from_str(text)));
-                        return Some((token, text));
-                    }
-                }
-                None => {
-                    println!("invalid token");
-                    return None;
-                }
+            // This can never return `None`, since the input is nonempty,
+            // and the tokenizer can always match any character.
+            let (token, text) = next_token(&mut self.slice).unwrap();
+            let offset = self.full_slice.subslice_offset(text);
+            let span = Span {
+                lo: offset as u32,
+                hi: (offset + text.len()) as u32,
+                file: self.file_ix,
+            };
+            if let &Token::Error(ref error) = &token {
+                span_fatal!(span, "invalid token: {}", error);
+            }
+            if token_filter(&token) {
+                self.tokens.push((token.clone(), text));
+                return Some((token, span));
             }
         }
     }
@@ -327,6 +330,8 @@ fn token_filter(token: &Token) -> bool {
     }
 }
 
-pub fn make_tokenizer<'a>(s: &'a str) -> Tokenizer<'a> {
-    Tokenizer { slice: s, tokens: vec![] }
+impl<'a> Tokenizer<'a> {
+    pub fn new(s: &'a str, ix: usize) -> Tokenizer<'a> {
+        Tokenizer { slice: s, full_slice: s, file_ix: ix, tokens: vec![] }
+    }
 }

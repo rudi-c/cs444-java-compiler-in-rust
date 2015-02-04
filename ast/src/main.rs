@@ -4,24 +4,32 @@
 #[no_link] #[plugin] extern crate dfagen;
 #[no_link] #[plugin] extern crate lalrgen;
 extern crate getopts;
+extern crate term;
+
 use getopts::{getopts, optflag};
 
-use std::os;
-use std::io::fs::File;
+use std::{io, os};
+use std::cell::RefCell;
+use std::rt::unwind;
+use std::boxed::BoxAny;
 
 use parser::make_ast;
-use tokenizer::make_tokenizer;
+use tokenizer::Tokenizer;
 use weed::weed;
-use ast::Span;
+use span::Span;
+use context::{Context, CONTEXT};
+use error::{FatalError, ErrorReporter, ERRORS};
 
+mod span;
+mod file;
+mod context;
+mod error;
 mod ast;
 mod parser;
 mod tokenizer;
-#[macro_use]
 mod weed;
 
-fn main() {
-    let mut verbose = false;
+fn driver(ctx: &RefCell<Context>) {
     let opts = &[
         optflag("v", "verbose", "verbose - print parsing debug info")
     ];
@@ -32,7 +40,7 @@ fn main() {
     };
 
     if matches.opt_present("verbose") {
-        verbose = true;
+        ctx.borrow_mut().verbose = true;
     }
 
     let input_arg = if !matches.free.is_empty() {
@@ -42,45 +50,66 @@ fn main() {
         panic!("No input!");
     };
 
-    let input_path = Path::new(input_arg);
-    let mut file = File::open(&input_path).unwrap();
-    let input = file.read_to_string().unwrap();
+    let file_ix = ctx.borrow_mut().add_file(Path::new(input_arg)).unwrap();
+    let ctx_borrow = ctx.borrow(); // XXX: this will cause problems later maybe?
+    let file = ctx_borrow.file(file_ix);
+    let mut tokenizer = Tokenizer::new(&*file.contents, file_ix);
+    let ast = match make_ast(tokenizer.by_ref()) {
+        Ok(res) => res,
+        Err((Some((_, bad_span)), message)) => ctx.borrow().span_fatal(bad_span, format!("unexpected token; {}", message)),
+        Err((None, message)) => ctx.borrow().span_fatal(Span {
+            lo: file.contents.len() as u32,
+            hi: file.contents.len() as u32,
+            file: file_ix
+        }, format!("unexpected EOF; {}", message)),
+    };
 
-    let mut tokenizer = make_tokenizer(&*input);
-    let ast = make_ast(tokenizer.by_ref().map(|(token, text)| {
-        let offset = input.subslice_offset(text);
-        (token, Span {
-            lo: offset as u32,
-            hi: (offset + text.len()) as u32,
-            file: (),
-        })
-    }));
+    if ctx.borrow().verbose {
+        for &(ref token, ref text) in tokenizer.tokens.iter() {
+            // XXX: the "{:?}" formatter doesn't seem to accept
+            // alignment
+            println!("{:<25} {:?}", format!("{:?}", token), text);
+        }
+        println!("{:?}", ast);
+    }
 
-    match ast {
-        Ok(ref result) => {
-            if verbose {
-                for &(ref token, ref text) in tokenizer.tokens.iter() {
-                    // XXX: the "{:?}" formatter doesn't seem to accept
-                    // alignment
-                    println!("{:<25} {:?}", format!("{:?}", token), text);
-                }
-                println!("{:?}", ast);
-            }
+    weed(&ast, file.stem(), Span {
+        lo: 0,
+        hi: file.contents.len() as u32,
+        file: file_ix,
+    });
 
-            let found_error = weed(result, input_path.filestem_str().unwrap());
-            if found_error {
-                os::set_exit_status(42);
-            }
-        },
+    if ERRORS.with(|v| v.get()) > 0 { return; }
+        /*
         Err(_) => {
             // If the verbose flag was on, we would already
             // have printed the tokens.
-            if !verbose {
+            if !context.verbose {
                 for &(ref token, ref text) in tokenizer.tokens.iter() {
                     println!("{:<25} {:?}", format!("{:?}", token), text);
                 }
             }
             println!("{:?}", ast);
+            os::set_exit_status(42);
+        }
+        */
+}
+
+fn main() {
+    unsafe {
+        let error = match unwind::try(|| CONTEXT.with(|ctx| driver(ctx))) {
+            Err(res) => {
+                if res.is::<FatalError>() {
+                    true
+                } else {
+                    // The compiler had a problem
+                    os::set_exit_status(1);
+                    false
+                }
+            },
+            Ok(_) => ERRORS.with(|v| v.get()) > 0
+        };
+        if error {
             os::set_exit_status(42);
         }
     }
