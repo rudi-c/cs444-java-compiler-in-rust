@@ -101,6 +101,7 @@ pub enum Token {
 
     Whitespace,
     Comment,
+    SoftError(Box<Token>, String),
     Error(String),
 }
 
@@ -176,29 +177,31 @@ scanner! {
     // Note that Octal, Hex and Long literals are not required in Joos.
     // Negative literals do not exist: the minus sign is a unary operator.
     r#"0|[1-9][0-9]*"# => {
-        if let Some(i) = text.parse() {
-            (Token::IntegerLiteral(i), text)
+        (if let Some(i) = text.parse() {
+            Token::IntegerLiteral(i)
         } else {
-            (Token::Error(String::from_str("integer is way too large, did the cat step on the numpad?")), text)
-        }
+            Token::SoftError(
+                box Token::IntegerLiteral(0),
+                "integer is way too large, did the cat step on the numpad?".to_string())
+        }, text)
     },
     // String literals
     // Note that Unicode escapes are not required.
-    r#""([^"\\]|\\.)*""# => (match unescape(&text[1..text.len()-1]) {
-        Ok(s) => Token::StringLiteral(s),
-        Err(e) => Token::Error(e),
-    }, text),
+    r#""([^"\\]|\\.)*""# => match unescape(&text[1..text.len()-1]) {
+        Ok(s) => (Token::StringLiteral(s), text),
+        Err((e, sp)) => (Token::SoftError(box Token::StringLiteral(String::new()), e), sp),
+    },
     // Check for unterminated string constants.
     r#""([^"\\]|\\.)*"# => (Token::Error(String::from_str("unterminated string constant")), text),
     r#"'[^'\\]'"# => (Token::CharacterLiteral(text.char_at(1)), text),
 
-    r#"'\\[0-7]'"# => unescape_token(text),
-    r#"'\\[0-7][0-7]'"# => unescape_token(text),
-    r#"'\\[0-3][0-7][0-7]'"# => unescape_token(text),
-    r#"'\\.'"# => unescape_token(text),
+    r#"'\\[0-7]'"# => unescape_char(text),
+    r#"'\\[0-7][0-7]'"# => unescape_char(text),
+    r#"'\\[0-3][0-7][0-7]'"# => unescape_char(text),
+    r#"'\\.'"# => unescape_char(text),
 
-    r#"'.'"# => (Token::Error(String::from_str("invalid character literal")), text),
-    r#"'"# => (Token::Error(String::from_str("invalid character literal")), text),
+    r#"'(.|[^']*)'"# => (Token::SoftError(box Token::CharacterLiteral(' '), String::from_str("invalid character literal")), text),
+    r#"'"# => (Token::Error(String::from_str("unterminated character literal")), text),
     r#"true"# => (Token::BooleanLiteral(true), text),
     r#"false"# => (Token::BooleanLiteral(false), text),
     r#"null"# => (Token::NullLiteral, text),
@@ -250,7 +253,7 @@ fn octal(s: &str) -> char {
 }
 
 scanner! {
-    unescape_c(text) -> Result<char, String>;
+    unescape_c(text: 'a) -> Result<char, (String, &'a str)>;
 
     r"\\[0-3][0-7][0-7]" => Ok(octal(&text[1..])),
     r"\\[0-7][0-7]" => Ok(octal(&text[1..])),
@@ -263,28 +266,25 @@ scanner! {
     r#"\\""# => Ok('"'),
     r"\\'" => Ok('\''),
     r"\\\\" => Ok('\\'),
-    r"\\." => Err(String::from_str("bad escape sequence")),
-    r"\\" => Err(String::from_str("unterminated escape sequence")),
+    r"\\." => Err((String::from_str("bad escape sequence"), text)),
+    r"\\" => Err((String::from_str("unterminated escape sequence"), text)),
     r"[^\\]" => Ok(text.char_at(0)),
 }
 
-fn unescape(mut s: &str) -> Result<String, String> {
+fn unescape(mut s: &str) -> Result<String, (String, &str)> {
     let mut r = String::with_capacity(s.len());
     while let Some(result) = unescape_c(&mut s) {
-        match result {
-            Ok(c) => r.push(c),
-            Err(e) => return Err(e),
-        }
+        r.push(try!(result));
     }
     assert!(s.is_empty());
     Ok(r)
 }
 
-fn unescape_token(text: &str) -> (Token, &str) {
-    (match unescape(&text[1..text.len()-1]) {
-        Ok(s) => Token::CharacterLiteral(s.char_at(0)),
-        Err(e) => Token::Error(e),
-    }, text)
+fn unescape_char(text: &str) -> (Token, &str) {
+    match unescape(&text[1..text.len()-1]) {
+        Ok(s) => (Token::CharacterLiteral(s.char_at(0)), text),
+        Err((e, sp)) => (Token::SoftError(box Token::CharacterLiteral(' '), e), sp),
+    }
 }
 
 pub struct Tokenizer<'a> {
@@ -311,9 +311,16 @@ impl<'a> Iterator for Tokenizer<'a> {
                 hi: (offset + text.len()) as u32,
                 file: self.file_ix,
             };
-            if let &Token::Error(ref error) = &token {
-                span_fatal!(span, "invalid token: {}", error);
-            }
+            let token = match token {
+                Token::SoftError(box replacement, error) => {
+                    span_error!(span, "{}", error);
+                    replacement
+                }
+                Token::Error(error) => {
+                    span_fatal!(span, "{}", error)
+                }
+                t => t
+            };
             if token_filter(&token) {
                 self.tokens.push((token.clone(), text));
                 return Some((token, span));

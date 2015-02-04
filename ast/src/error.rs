@@ -66,7 +66,7 @@ impl ErrorReporter for Context {
             // one line error; print the contents of the file
             let line = file.line(lo.0);
             let prefix = format!("{}:{} ", path, lo.0+1);
-            writeln!(&mut stderr, "{}{}", prefix, line);
+            writeln!(&mut stderr, "{}{}", prefix, line).unwrap();
             // for the second, just print spaces
             let prefix_spaces: String = iter::repeat(' ').take(prefix.chars().count()).collect();
             // ... and a nice indicator
@@ -81,8 +81,9 @@ impl ErrorReporter for Context {
                 } else {
                     ' '
                 }).collect();
+            write!(&mut stderr, "{}", prefix_spaces).unwrap();
             stderr.fg(term::color::GREEN).unwrap();
-            writeln!(&mut stderr, "{}{}", prefix_spaces, line_indicator).unwrap();
+            writeln!(&mut stderr, "{}", line_indicator).unwrap();
             stderr.reset().unwrap();
         }
     }
