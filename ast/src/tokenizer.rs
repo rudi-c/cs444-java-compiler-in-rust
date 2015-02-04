@@ -182,16 +182,18 @@ scanner! {
     },
     // String literals
     // Note that Unicode escapes are not required.
-    r#""([^"\\]|\\.)*""# => (Token::StringLiteral(unescape(&text[1..text.len()-1])), text),
+    r#""([^"\\]|\\.)*""# => unescape_token(text),
     // Check for unterminated string constants.
     r#""([^"\\]|\\.)*"# => (Token::Error(String::from_str("unterminated string constant")), text),
     r#"'[^'\\]'"# => (Token::CharacterLiteral(text.char_at(1)), text),
-    r#"'\\[0-7]'"# => (Token::CharacterLiteral(unescape(&text[1..text.len()-1]).char_at(0)), text),
-    r#"'\\[0-7][0-7]'"# => (Token::CharacterLiteral(unescape(&text[1..text.len()-1]).char_at(0)), text),
-    r#"'\\[0-3][0-7][0-7]'"# => (Token::CharacterLiteral(unescape(&text[1..text.len()-1]).char_at(0)), text),
-    r#"'\\.'"# => (Token::CharacterLiteral(unescape(&text[1..text.len()-1]).char_at(0)), text),
-    r#"'.'"# => panic!("invalid character literal: {}", text),
-    r#"'"# => panic!("invalid character literal"),
+
+    r#"'\\[0-7]'"# => unescape_token(text),
+    r#"'\\[0-7][0-7]'"# => unescape_token(text),
+    r#"'\\[0-3][0-7][0-7]'"# => unescape_token(text),
+    r#"'\\.'"# => unescape_token(text),
+
+    r#"'.'"# => (Token::Error(String::from_str("invalid character literal")), text),
+    r#"'"# => (Token::Error(String::from_str("invalid character literal")), text),
     r#"true"# => (Token::BooleanLiteral(true), text),
     r#"false"# => (Token::BooleanLiteral(false), text),
     r#"null"# => (Token::NullLiteral, text),
@@ -243,31 +245,41 @@ fn octal(s: &str) -> char {
 }
 
 scanner! {
-    unescape_c(text) -> char;
+    unescape_c(text) -> Result<char, String>;
 
-    r"\\[0-3][0-7][0-7]" => octal(&text[1..]),
-    r"\\[0-7][0-7]" => octal(&text[1..]),
-    r"\\[0-7]" => octal(&text[1..]),
-    r"\\b" => '\u{0008}',
-    r"\\t" => '\t',
-    r"\\n" => '\n',
-    r"\\f" => '\u{000c}',
-    r"\\r" => '\r',
-    r#"\\""# => '"',
-    r"\\'" => '\'',
-    r"\\\\" => '\\',
-    r"\\." => panic!("bad escape sequence: {}", text),
-    r"\\" => panic!("unterminated escape sequence"),
-    r"[^\\]" => text.char_at(0),
+    r"\\[0-3][0-7][0-7]" => Ok(octal(&text[1..])),
+    r"\\[0-7][0-7]" => Ok(octal(&text[1..])),
+    r"\\[0-7]" => Ok(octal(&text[1..])),
+    r"\\b" => Ok('\u{0008}'),
+    r"\\t" => Ok('\t'),
+    r"\\n" => Ok('\n'),
+    r"\\f" => Ok('\u{000c}'),
+    r"\\r" => Ok('\r'),
+    r#"\\""# => Ok('"'),
+    r"\\'" => Ok('\''),
+    r"\\\\" => Ok('\\'),
+    r"\\." => Err(String::from_str("bad escape sequence")),
+    r"\\" => Err(String::from_str("unterminated escape sequence")),
+    r"[^\\]" => Ok(text.char_at(0)),
 }
 
-fn unescape(mut s: &str) -> String {
+fn unescape(mut s: &str) -> Result<String, String> {
     let mut r = String::with_capacity(s.len());
-    while let Some(c) = unescape_c(&mut s) {
-        r.push(c);
+    while let Some(result) = unescape_c(&mut s) {
+        match result {
+            Ok(c) => r.push(c),
+            Err(e) => return Err(e),
+        }
     }
     assert!(s.is_empty());
-    r
+    Ok(r)
+}
+
+fn unescape_token(text: &str) -> (Token, &str) {
+    (match unescape(&text[1..text.len()-1]) {
+        Ok(s) => Token::StringLiteral(s),
+        Err(e) => Token::Error(e),
+    }, text)
 }
 
 pub struct Tokenizer<'a> {

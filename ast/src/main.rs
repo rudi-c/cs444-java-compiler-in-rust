@@ -55,7 +55,6 @@ fn main() {
             file: (),
         })
     }));
-    println!("{:?}", ast);
 
     match ast {
         Ok(ref result) => {
