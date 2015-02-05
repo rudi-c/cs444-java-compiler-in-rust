@@ -108,11 +108,8 @@ pub enum Token {
 scanner! {
     next_token(text: 'a) -> (Token, &'a str);
 
-    // TODO:
-    // Windows line terminators?
-
     // Whitespace defined in $3.6
-    r#"[ \t\n][ \t\n]*"# => (Token::Whitespace, text),
+    "[ \x0C\t\r\n][ \x0C\t\r\n]*" => (Token::Whitespace, text),
 
     // Comments defined in $3.7
     r#"/[*](~(.*[*]/.*))[*]/"# => (Token::Comment, text),
@@ -155,22 +152,22 @@ scanner! {
 
     // Unsupported keywords.
     // We still parse these because we don't want to mistake them as identifiers.
-    r#"break"# => (Token::Error(String::from_str("keyword break not supported")), text),
-    r#"case"# => (Token::Error(String::from_str("keyword case not supported")), text),
-    r#"catch"# => (Token::Error(String::from_str("keyword catch not supported")), text),
-    r#"continue"# => (Token::Error(String::from_str("keyword continue not supported")), text),
-    r#"double"# => (Token::Error(String::from_str("keyword double not supported")), text),
-    r#"finally"# => (Token::Error(String::from_str("keyword finally not supported")), text),
-    r#"float"# => (Token::Error(String::from_str("keyword float not supported")), text),
-    r#"long"# => (Token::Error(String::from_str("keyword long not supported")), text),
-    r#"strictfp"# => (Token::Error(String::from_str("keyword strictfp not supported")), text),
-    r#"switch"# => (Token::Error(String::from_str("keyword switch not supported")), text),
-    r#"synchronized"# => (Token::Error(String::from_str("keyword synchronized not supported")), text),
-    r#"throw"# => (Token::Error(String::from_str("keyword throw not supported")), text),
-    r#"throws"# => (Token::Error(String::from_str("keyword throws not supported")), text),
-    r#"transient"# => (Token::Error(String::from_str("keyword transient not supported")), text),
-    r#"try"# => (Token::Error(String::from_str("keyword try not supported")), text),
-    r#"volatile"# => (Token::Error(String::from_str("keyword volatile not supported")), text),
+    r#"break"# => (Token::Error("keyword break not supported".to_string()), text),
+    r#"case"# => (Token::Error("keyword case not supported".to_string()), text),
+    r#"catch"# => (Token::Error("keyword catch not supported".to_string()), text),
+    r#"continue"# => (Token::Error("keyword continue not supported".to_string()), text),
+    r#"double"# => (Token::Error("keyword double not supported".to_string()), text),
+    r#"finally"# => (Token::Error("keyword finally not supported".to_string()), text),
+    r#"float"# => (Token::Error("keyword float not supported".to_string()), text),
+    r#"long"# => (Token::Error("keyword long not supported".to_string()), text),
+    r#"strictfp"# => (Token::Error("keyword strictfp not supported".to_string()), text),
+    r#"switch"# => (Token::Error("keyword switch not supported".to_string()), text),
+    r#"synchronized"# => (Token::Error("keyword synchronized not supported".to_string()), text),
+    r#"throw"# => (Token::Error("keyword throw not supported".to_string()), text),
+    r#"throws"# => (Token::Error("keyword throws not supported".to_string()), text),
+    r#"transient"# => (Token::Error("keyword transient not supported".to_string()), text),
+    r#"try"# => (Token::Error("keyword try not supported".to_string()), text),
+    r#"volatile"# => (Token::Error("keyword volatile not supported".to_string()), text),
 
 
     // Literals defined in $3.10
@@ -192,7 +189,7 @@ scanner! {
         Err((e, sp)) => (Token::SoftError(box Token::StringLiteral(String::new()), e), sp),
     },
     // Check for unterminated string constants.
-    r#""([^"\\]|\\.)*"# => (Token::Error(String::from_str("unterminated string constant")), text),
+    r#""([^"\\]|\\.)*"# => (Token::Error("unterminated string constant".to_string()), text),
     r#"'[^'\\]'"# => (Token::CharacterLiteral(text.char_at(1)), text),
 
     r#"'\\[0-7]'"# => unescape_char(text),
@@ -200,8 +197,8 @@ scanner! {
     r#"'\\[0-3][0-7][0-7]'"# => unescape_char(text),
     r#"'\\.'"# => unescape_char(text),
 
-    r#"'(.|[^']*)'"# => (Token::SoftError(box Token::CharacterLiteral(' '), String::from_str("invalid character literal")), text),
-    r#"'"# => (Token::Error(String::from_str("unterminated character literal")), text),
+    r#"'(.|[^']*)'"# => (Token::SoftError(box Token::CharacterLiteral(' '), "invalid character literal".to_string()), text),
+    r#"'"# => (Token::Error("unterminated character literal".to_string()), text),
     r#"true"# => (Token::BooleanLiteral(true), text),
     r#"false"# => (Token::BooleanLiteral(false), text),
     r#"null"# => (Token::NullLiteral, text),
@@ -266,8 +263,8 @@ scanner! {
     r#"\\""# => Ok('"'),
     r"\\'" => Ok('\''),
     r"\\\\" => Ok('\\'),
-    r"\\." => Err((String::from_str("bad escape sequence"), text)),
-    r"\\" => Err((String::from_str("unterminated escape sequence"), text)),
+    r"\\." => Err(("bad escape sequence".to_string(), text)),
+    r"\\" => Err(("unterminated escape sequence".to_string(), text)),
     r"[^\\]" => Ok(text.char_at(0)),
 }
 
@@ -299,7 +296,9 @@ impl<'a> Iterator for Tokenizer<'a> {
 
     fn next(&mut self) -> Option<(Token, Span)> {
         loop {
-            if self.slice.is_empty() {
+            if self.slice.is_empty()
+                // Allow input to end with \x1a ($3.5)
+                || self.slice == "\x1a" {
                 return None;
             }
             // This can never return `None`, since the input is nonempty,
