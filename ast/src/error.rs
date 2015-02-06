@@ -1,5 +1,5 @@
 #![macro_use]
-use std::{fmt, iter};
+use std::{fmt, iter, io};
 use std::cell::Cell;
 use span::Span;
 use context::{Context, CONTEXT};
@@ -42,13 +42,38 @@ pub fn fatal() -> ! {
 /// The number of errors reported.
 thread_local!(pub static ERRORS: Cell<u32> = Cell::new(0));
 
+/// A `Terminal` that doesn't support any terminal features.
+/// Used when `term::stderr` fails to return a working Terminal.
+struct DummyTerminal {
+    dest: Box<Writer + Send>,
+}
+
+impl io::Writer for DummyTerminal {
+    fn write(&mut self, bytes: &[u8]) -> io::IoResult<()> { self.dest.write(bytes) }
+    fn flush(&mut self) -> io::IoResult<()> { self.dest.flush() }
+}
+
+impl term::Terminal<term::WriterWrapper> for DummyTerminal {
+    fn fg(&mut self, _: term::color::Color) -> io::IoResult<bool> { Ok(false) }
+    fn bg(&mut self, _: term::color::Color) -> io::IoResult<bool> { Ok(false) }
+    fn attr(&mut self, _: term::attr::Attr) -> io::IoResult<bool> { Ok(false) }
+    fn supports_attr(&self, _: term::attr::Attr) -> bool { false }
+    fn reset(&mut self) -> io::IoResult<()> { Ok(()) }
+    fn get_ref(&self) -> &term::WriterWrapper { panic!() }
+    fn get_mut(&mut self) -> &mut term::WriterWrapper { panic!() }
+}
+
 impl ErrorReporter for Context {
     fn span_msg<S: fmt::String>(&self, span: Span, err_type: &str, colour: term::color::Color, err: S) {
         let file = self.file(span.file);
         let lo = file.row_col(span.lo as usize);
         let hi = file.row_col(span.hi as usize);
         let path = file.path.as_str().unwrap();
-        let mut stderr = term::stderr().unwrap();
+        let mut stderr = term::stderr().unwrap_or_else(||
+            (box DummyTerminal {
+                dest: box io::stderr()
+            }) as Box<term::Terminal<term::WriterWrapper> + Send>
+        );
         stderr.reset().unwrap();
         write!(&mut stderr, "{}:{}:{}: ", path, lo.0+1, lo.1+1).unwrap();
         if span.lo + 1 < span.hi {
