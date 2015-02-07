@@ -1,4 +1,5 @@
 use ast::*;
+use name::Ident;
 use span::Span;
 use std::collections::HashSet;
 

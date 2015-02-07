@@ -1,7 +1,5 @@
 #![macro_use]
 
-use ast;
-
 use file::File;
 use std::cell::RefCell;
 use std::io::IoResult;

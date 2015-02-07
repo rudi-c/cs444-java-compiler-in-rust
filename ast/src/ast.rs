@@ -1,27 +1,5 @@
-use std::{cmp, fmt};
-use span::{Span, Spanned, spanned};
-
-pub type Ident = Spanned<String>;
-
-impl fmt::String for Ident {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        self.node.fmt(f)
-    }
-}
-impl PartialEq for Ident {
-    fn eq(&self, other: &Ident) -> bool { self.node.eq(&other.node) }
-    fn ne(&self, other: &Ident) -> bool { self.node.ne(&other.node) }
-}
-impl Eq for Ident { }
-impl PartialOrd for Ident {
-    fn partial_cmp(&self, other: &Ident) -> Option<cmp::Ordering> { self.node.partial_cmp(&other.node) }
-}
-impl Ord for Ident {
-    fn cmp(&self, other: &Ident) -> cmp::Ordering { self.node.cmp(&other.node) }
-}
-impl Str for Ident {
-    fn as_slice(&self) -> &str { self.node.as_slice() }
-}
+use span::Spanned;
+use name::{Ident, QualifiedIdentifier};
 
 #[derive(Show)]
 pub enum ImportDeclaration_ {
@@ -120,20 +98,6 @@ pub struct VariableDeclaration_ {
     pub name: Ident,
 }
 pub type VariableDeclaration = Spanned<VariableDeclaration_>;
-
-#[derive(Show)]
-pub struct QualifiedIdentifier_ {
-    pub parts: Vec<Ident>,
-}
-pub type QualifiedIdentifier = Spanned<QualifiedIdentifier_>;
-
-impl QualifiedIdentifier {
-    pub fn new(parts: Vec<Ident>) -> QualifiedIdentifier {
-        assert!(parts.len() > 0);
-        spanned(Span::range(parts.first().unwrap().span, parts.last().unwrap().span),
-                QualifiedIdentifier_ { parts: parts })
-    }
-}
 
 #[derive(Show)]
 pub enum Type_ {

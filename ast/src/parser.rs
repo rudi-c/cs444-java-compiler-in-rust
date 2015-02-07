@@ -1,4 +1,5 @@
 use ast::*;
+use name::*;
 use span::{Span, Spanned, spanned};
 use tokenizer::*;
 use tokenizer::Token::*;
@@ -609,12 +610,12 @@ pub fn make_ast<I: Iterator<Item=(Token, Span)>>(tokens: I)
 // An intermediate type for parsing. Represents syntax that can be interpreted as
 // either an expression or a type.
 #[derive(Show)]
-pub enum ExpressionOrType_ {
+enum ExpressionOrType_ {
     Name(QualifiedIdentifier),
 }
 type ExpressionOrType = Spanned<ExpressionOrType_>;
 
-pub trait IsExpressionOrType {
+trait IsExpressionOrType {
     fn convert(ExpressionOrType) -> Self;
 }
 impl IsExpressionOrType for Expression {

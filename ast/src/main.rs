@@ -8,10 +8,9 @@ extern crate term;
 
 use getopts::{getopts, optflag};
 
-use std::{io, os};
+use std::os;
 use std::cell::RefCell;
 use std::rt::unwind;
-use std::boxed::BoxAny;
 
 use parser::make_ast;
 use tokenizer::Tokenizer;
@@ -20,14 +19,15 @@ use span::Span;
 use context::{Context, CONTEXT};
 use error::{FatalError, ErrorReporter, ERRORS};
 
-mod span;
-mod file;
-mod context;
-mod error;
-mod ast;
-mod parser;
-mod tokenizer;
-mod weed;
+pub mod span;
+pub mod file;
+pub mod context;
+pub mod error;
+pub mod name;
+pub mod ast;
+pub mod parser;
+pub mod tokenizer;
+pub mod weed;
 
 fn driver(ctx: &RefCell<Context>) {
     let opts = &[

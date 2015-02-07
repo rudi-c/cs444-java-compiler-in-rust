@@ -1,11 +1,12 @@
 use span::Span;
+use name::Symbol;
 
 use std::num::FromStrRadix;
 use std::char;
 
 #[derive(Show, Clone)]
 pub enum Token {
-    Identifier(String),
+    Identifier(Symbol),
 
     // Literals. Note that FloatingPointLiteral not required in Joos
     IntegerLiteral(i64),
@@ -206,7 +207,7 @@ scanner! {
 
     // Identifiers defined in $3.8
     // Note that $ is considered a Java letter.
-    r#"[a-zA-Z_$][a-zA-Z0-9_$]*"# => (Token::Identifier(text.to_string()), text),
+    r#"[a-zA-Z_$][a-zA-Z0-9_$]*"# => (Token::Identifier(Symbol::from_str(text)), text),
 
     // Separators defined in $3.11
     r#"\("# => (Token::LParen, text),
