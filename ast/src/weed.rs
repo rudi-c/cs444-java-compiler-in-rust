@@ -51,7 +51,6 @@ pub fn weed_expression(expression: &Expression) {
 
         Expression_::Literal(_) => {},
         Expression_::This => {},
-        Expression_::QualifiedThis(_) => {},
 
         Expression_::NewDynamicClass(box ref expr, _, ref exprs)
         | Expression_::MethodInvocation(Some(box ref expr), _, ref exprs) => {

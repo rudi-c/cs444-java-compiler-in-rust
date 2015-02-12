@@ -155,7 +155,6 @@ pub type Statement = Spanned<Statement_>;
 pub enum Expression_ {
     Literal(Literal),
     This,
-    QualifiedThis(QualifiedIdentifier),
     NewStaticClass(QualifiedIdentifier, Vec<Expression>),
     NewDynamicClass(Box<Expression>, Ident, Vec<Expression>),
     NewArray(SimpleType, Box<Expression>),
