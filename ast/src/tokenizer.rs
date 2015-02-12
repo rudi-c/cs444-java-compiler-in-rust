@@ -110,7 +110,7 @@ scanner! {
     next_token(text: 'a) -> (Token, &'a str);
 
     // Whitespace defined in $3.6
-    "[ \x0C\t\r\n][ \x0C\t\r\n]*" => (Token::Whitespace, text),
+    "[ \x0C\t\r\n]+" => (Token::Whitespace, text),
 
     // Comments defined in $3.7
     r#"/[*](~(.*[*]/.*))[*]/"# => (Token::Comment, text),
@@ -222,7 +222,7 @@ scanner! {
     r#">"# => (Token::GreaterThan, text),
     r#"<="# => (Token::LessEqual, text),
     r#">="# => (Token::GreaterEqual, text),
-    r#"+"# => (Token::Plus, text),
+    r#"\+"# => (Token::Plus, text),
     r#"-"# => (Token::Minus, text),
     r#"\*"# => (Token::Star, text),
     r#"/"# => (Token::Slash, text),
