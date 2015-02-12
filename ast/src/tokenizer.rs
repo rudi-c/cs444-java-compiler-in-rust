@@ -31,7 +31,7 @@ pub enum Token {
     CONST,
     // CONTINUE,
     DEFAULT,
-    DO,
+    // DO,
     // DOUBLE,
     ELSE,
     EXTENDS,
@@ -125,7 +125,6 @@ scanner! {
     r#"class"# => (Token::CLASS, text),
     r#"const"# => (Token::CONST, text),
     r#"default"# => (Token::DEFAULT, text),
-    r#"do"# => (Token::DO, text),
     r#"else"# => (Token::ELSE, text),
     r#"extends"# => (Token::EXTENDS, text),
     r#"final"# => (Token::FINAL, text),
@@ -153,7 +152,7 @@ scanner! {
 
     // Unsupported keywords.
     // We still parse these because we don't want to mistake them as identifiers.
-    "break|case|catch|continue|double|finally|float|long|strictfp\
+    "break|case|catch|continue|do|double|finally|float|long|strictfp\
     |switch|synchronized|throw|throws|transient|try|volatile"
         => (Token::Error(format!("keyword `{}` not supported", text)), text),
 
@@ -228,6 +227,8 @@ scanner! {
     r#"/"# => (Token::Slash, text),
     r#"%"# => (Token::Percent, text),
     r#"!"# => (Token::Bang, text),
+    r#"\+\+"# => (Token::Error("increment operator not supported".to_string()), text),
+    r#"--"# => (Token::Error("decrement operator not supported".to_string()), text),
 
     // Allow input to contain \x1a, but _only_ at the end ($3.5)
     "\x1a." => (Token::Error("unrecognized input".to_string()), &text[0..1]),
