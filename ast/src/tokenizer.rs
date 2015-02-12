@@ -153,23 +153,9 @@ scanner! {
 
     // Unsupported keywords.
     // We still parse these because we don't want to mistake them as identifiers.
-    r#"break"# => (Token::Error("keyword break not supported".to_string()), text),
-    r#"case"# => (Token::Error("keyword case not supported".to_string()), text),
-    r#"catch"# => (Token::Error("keyword catch not supported".to_string()), text),
-    r#"continue"# => (Token::Error("keyword continue not supported".to_string()), text),
-    r#"double"# => (Token::Error("keyword double not supported".to_string()), text),
-    r#"finally"# => (Token::Error("keyword finally not supported".to_string()), text),
-    r#"float"# => (Token::Error("keyword float not supported".to_string()), text),
-    r#"long"# => (Token::Error("keyword long not supported".to_string()), text),
-    r#"strictfp"# => (Token::Error("keyword strictfp not supported".to_string()), text),
-    r#"switch"# => (Token::Error("keyword switch not supported".to_string()), text),
-    r#"synchronized"# => (Token::Error("keyword synchronized not supported".to_string()), text),
-    r#"throw"# => (Token::Error("keyword throw not supported".to_string()), text),
-    r#"throws"# => (Token::Error("keyword throws not supported".to_string()), text),
-    r#"transient"# => (Token::Error("keyword transient not supported".to_string()), text),
-    r#"try"# => (Token::Error("keyword try not supported".to_string()), text),
-    r#"volatile"# => (Token::Error("keyword volatile not supported".to_string()), text),
-
+    "break|case|catch|continue|double|finally|float|long|strictfp\
+    |switch|synchronized|throw|throws|transient|try|volatile"
+        => (Token::Error(format!("keyword `{}` not supported", text)), text),
 
     // Literals defined in $3.10
     // Note that Octal, Hex and Long literals are not required in Joos.

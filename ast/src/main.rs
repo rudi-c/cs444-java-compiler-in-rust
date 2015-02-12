@@ -56,12 +56,18 @@ fn driver(ctx: &RefCell<Context>) {
     let mut tokenizer = Tokenizer::new(&*file.contents, file_ix);
     let ast = match make_ast(tokenizer.by_ref()) {
         Ok(res) => res,
-        Err((Some((_, bad_span)), message)) => ctx.borrow().span_fatal(bad_span, format!("unexpected token; {}", message)),
-        Err((None, message)) => ctx.borrow().span_fatal(Span {
-            lo: file.contents.len() as u32,
-            hi: file.contents.len() as u32,
-            file: file_ix
-        }, format!("unexpected EOF; {}", message)),
+        Err((Some((_, bad_span)), message)) => {
+            ctx.borrow().span_error(bad_span, format!("unexpected token; {}", message));
+            return
+        }
+        Err((None, message)) => {
+            ctx.borrow().span_error(Span {
+                lo: file.contents.len() as u32,
+                hi: file.contents.len() as u32,
+                file: file_ix
+            }, format!("unexpected EOF; {}", message));
+            return
+        }
     };
 
     if ctx.borrow().verbose {
