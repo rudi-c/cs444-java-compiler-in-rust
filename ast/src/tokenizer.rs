@@ -175,8 +175,8 @@ scanner! {
         Ok(s) => (Token::StringLiteral(s), text),
         Err((e, sp)) => (Token::SoftError(box Token::StringLiteral(String::new()), e), sp),
     },
-    // Check for unterminated string constants.
-    r#""([^"\\]|\\.)*"# => (Token::Error("unterminated string constant".to_string()), text),
+    // Check for unterminated string literals.
+    r#""([^"\\]|\\.)*"# => (Token::Error("unterminated string literal".to_string()), text),
     r#"'[^'\\]'"# => (Token::CharacterLiteral(text.char_at(1)), text),
 
     r#"'\\[0-7]'"# => unescape_char(text),
