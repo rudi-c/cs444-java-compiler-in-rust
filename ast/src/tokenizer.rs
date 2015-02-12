@@ -243,6 +243,10 @@ scanner! {
     r#"%"# => (Token::Percent, text),
     r#"!"# => (Token::Bang, text),
 
+    // Allow input to contain \x1a, but _only_ at the end ($3.5)
+    "\x1a." => (Token::Error("unrecognized input".to_string()), &text[0..1]),
+    "\x1a" => (Token::Whitespace, text),
+
     r#"."# => (Token::Error("unrecognized input".to_string()), text),
 }
 
@@ -297,9 +301,7 @@ impl<'a> Iterator for Tokenizer<'a> {
 
     fn next(&mut self) -> Option<(Token, Span)> {
         loop {
-            if self.slice.is_empty()
-                // Allow input to end with \x1a ($3.5)
-                || self.slice == "\x1a" {
+            if self.slice.is_empty() {
                 return None;
             }
             // This can never return `None`, since the input is nonempty,
