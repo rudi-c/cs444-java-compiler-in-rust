@@ -7,38 +7,61 @@ use Node::*;
 use Color::*;
 
 /// A persistent, immutable red-black tree.
-pub struct RbMap<T, U> {
-    root: Node<T, U>,
+pub struct RbMap<K, V> {
+    root: Node<K, V>,
 }
 
-impl<T, U> RbMap<T, U> {
-    pub fn new() -> RbMap<T, U> {
+impl<K, V> RbMap<K, V> {
+    /// Creates a new, empty map.
+    pub fn new() -> RbMap<K, V> {
         RbMap { root: Leaf }
     }
-    pub fn insert(&self, k: T, v: U) -> (RbMap<T, U>, Option<&(T, U)>) where T: Ord {
+    /// Inserts a key-value pair into the map.
+    /// Returns the updated map and the previous element with the given key, if any.
+    pub fn insert<'a>(&'a self, k: K, v: V) -> (RbMap<K, V>, Option<&'a (K, V)>) where K: Ord {
         let (node, prev) = self.root.insert(k, v);
         (RbMap { root: node }, prev)
     }
-    pub fn get<'a, Q: ?Sized + BorrowFrom<T> + Ord>(&'a self, k: &Q) -> Option<&'a U> {
+    /// Looks up the given key in the map.
+    pub fn get<'a, Q: ?Sized>(&'a self, k: &Q) -> Option<&'a V> where Q: BorrowFrom<K> + Ord {
         self.root.lookup(k)
     }
-    pub fn iter<'a>(&'a self) -> RbMapIter<'a, T, U> {
+    /// Removes a key from the map, if it exists.
+    /// Returns the new map and the removed element.
+    ///
+    /// FIXME: Actually implement this.
+    pub fn remove<'a, Q: ?Sized>(&'a self, k: &Q) -> (RbMap<K, V>, Option<&'a (K, V)>) where Q: BorrowFrom<K> + Ord {
+        if let Some((node, prev)) = self.root.remove(k) {
+            (RbMap { root: node }, Some(prev))
+        } else {
+            (self.clone(), None)
+        }
+    }
+    /// Iterates by reference over all the elements in the map.
+    pub fn iter<'a>(&'a self) -> RbMapIter<'a, K, V> {
         RbMapIter { nodes: vec![IterNode::Node(&self.root)] }
     }
 }
 
-enum IterNode<'a, T: 'a, U: 'a> {
-    Node(&'a Node<T, U>),
-    Item(&'a (T, U)),
+impl<K, V> Clone for RbMap<K, V> {
+    fn clone(&self) -> RbMap<K, V> {
+        RbMap { root: self.root.clone() }
+    }
 }
 
-pub struct RbMapIter<'a, T: 'a, U: 'a> {
-    nodes: Vec<IterNode<'a T, U>>,
+enum IterNode<'a, K: 'a, V: 'a> {
+    Node(&'a Node<K, V>),
+    Item(&'a (K, V)),
 }
 
-impl<'a, T, U> Iterator for RbMapIter<'a, T, U> {
-    type Item = &'a (T, U);
-    fn next(&mut self) -> Option<&'a (T, U)> {
+/// An iterator over the entries of an RbMap.
+pub struct RbMapIter<'a, K: 'a, V: 'a> {
+    nodes: Vec<IterNode<'a K, V>>,
+}
+
+impl<'a, K, V> Iterator for RbMapIter<'a, K, V> {
+    type Item = &'a (K, V);
+    fn next(&mut self) -> Option<&'a (K, V)> {
         loop {
             let n = self.nodes.pop();
             match n {
@@ -62,14 +85,24 @@ enum Color {
 }
 
 #[derive(Show)]
-enum Node<T, U> {
-    Branch(Color, Rc<Node<T, U>>, Rc<(T, U)>, Rc<Node<T, U>>),
+enum Node<K, V> {
+    Branch(Color, Rc<Node<K, V>>, Rc<(K, V)>, Rc<Node<K, V>>),
     Leaf
 }
 
+impl<K, V> Clone for Node<K, V> {
+    fn clone(&self) -> Node<K, V> {
+        match *self {
+            Branch(c, ref l, ref m, ref r) => Branch(c, l.clone(), m.clone(), r.clone()),
+            Leaf => Leaf
+        }
+    }
+}
+
+
 /*
-impl<T, U> Node<T, U> {
-    fn into_quasi(self) -> Quasi<T, U> {
+impl<K, V> Node<K, V> {
+    fn into_quasi(self) -> Quasi<K, V> {
         match self {
             Node::Red(a, b, c) => Quasi::Red(a, b, c),
             Node::Black(a, b, c) => Quasi::Black(a, b, c),
@@ -78,28 +111,28 @@ impl<T, U> Node<T, U> {
     }
 }
 
-enum Quasi<T, U> {
-    NBlack(Rc<Node<T, U>>, (T, U), Rc<Node<T, U>>),
-    Red(Rc<Node<T, U>>, (T, U), Rc<Node<T, U>>),
-    Black(Rc<Node<T, U>>, (T, U), Rc<Node<T, U>>),
-    BBlack(Rc<Node<T, U>>, (T, U), Rc<Node<T, U>>),
+enum Quasi<K, V> {
+    NBlack(Rc<Node<K, V>>, (K, V), Rc<Node<K, V>>),
+    Red(Rc<Node<K, V>>, (K, V), Rc<Node<K, V>>),
+    Black(Rc<Node<K, V>>, (K, V), Rc<Node<K, V>>),
+    BBlack(Rc<Node<K, V>>, (K, V), Rc<Node<K, V>>),
     BLeaf,
     BBLeaf,
 }
-fn red<T, U>(l: Rc<Node<T, U>>, m: Rc<(T, U)>, r: Rc<Node<T, U>>) -> Rc<Node<T, U>> {
+fn red<K, V>(l: Rc<Node<K, V>>, m: Rc<(K, V)>, r: Rc<Node<K, V>>) -> Rc<Node<K, V>> {
     Rc::new(Branch(Red, l, m, r))
 }
 */
 
-fn black<T, U>(l: Rc<Node<T, U>>, m: Rc<(T, U)>, r: Rc<Node<T, U>>) -> Rc<Node<T, U>> {
+fn black<K, V>(l: Rc<Node<K, V>>, m: Rc<(K, V)>, r: Rc<Node<K, V>>) -> Rc<Node<K, V>> {
     Rc::new(Branch(Black, l, m, r))
 }
 // XXX
-fn leaf<T, U>() -> Rc<Node<T, U>> {
+fn leaf<K, V>() -> Rc<Node<K, V>> {
     Rc::new(Leaf)
 }
 
-fn balance<T, U>(t: Node<T, U>) -> Node<T, U> {
+fn balance<K, V>(t: Node<K, V>) -> Node<K, V> {
     // With manual derefs, because Rc.
     match t {
         Branch(_, ref l, ref m, ref r) => {
@@ -125,8 +158,8 @@ fn balance<T, U>(t: Node<T, U>) -> Node<T, U> {
     t
 }
 
-impl<T, U> Node<T, U> {
-    fn insert(&self, k: T, v: U) -> (Node<T, U>, Option<&(T, U)>) where T: Ord {
+impl<K, V> Node<K, V> {
+    fn insert(&self, k: K, v: V) -> (Node<K, V>, Option<&(K, V)>) where K: Ord {
         match *self {
             Branch(c, ref l, ref m, ref r) => match k.cmp(&m.0) {
                 Less => {
@@ -144,7 +177,7 @@ impl<T, U> Node<T, U> {
             Leaf => (Branch(Red, leaf(), Rc::new((k, v)), leaf()), None)
         }
     }
-    fn lookup<'a, Q: ?Sized + BorrowFrom<T> + Ord>(&'a self, k: &Q) -> Option<&'a U> {
+    fn lookup<'a, Q: ?Sized>(&'a self, k: &Q) -> Option<&'a V> where Q: BorrowFrom<K> + Ord {
         match *self {
             Branch(_, ref l, ref m, ref r) => match k.cmp(BorrowFrom::borrow_from(&m.0)) {
                 Less => l.lookup(k),
@@ -154,15 +187,13 @@ impl<T, U> Node<T, U> {
             Leaf => None,
         }
     }
-    /*
-    fn remove<Q: ?Sized + BorrowFrom<T>>(&self, k: &Q) -> Node<T, U> {
+    fn remove<'a, Q: ?Sized + BorrowFrom<K>>(&'a self, _k: &Q) -> Option<(Node<K, V>, &'a (K, V))> {
         panic!()
     }
-    */
 }
 
 #[cfg(test)]
-impl<T, U> Node<T, U> {
+impl<K, V> Node<K, V> {
     fn is_black(&self) -> bool {
         match *self {
             Branch(Black, _, _, _) | Leaf => true,
