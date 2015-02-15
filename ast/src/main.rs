@@ -12,6 +12,7 @@ use std::os;
 use std::cell::RefCell;
 use std::rt::unwind;
 
+use ast::CompilationUnit;
 use parser::make_ast;
 use tokenizer::Tokenizer;
 use weed::weed;
@@ -29,28 +30,8 @@ pub mod parser;
 pub mod tokenizer;
 pub mod weed;
 
-fn driver(ctx: &RefCell<Context>) {
-    let opts = &[
-        optflag("v", "verbose", "verbose - print parsing debug info")
-    ];
-
-    let matches = match getopts(os::args().tail(), opts) {
-        Ok(m) => { m }
-        Err(f) => { panic!(f.to_string()) }
-    };
-
-    if matches.opt_present("verbose") {
-        ctx.borrow_mut().verbose = true;
-    }
-
-    let input_arg = if !matches.free.is_empty() {
-        matches.free[0].clone()
-    } else {
-        // TODO: Should have a print_usage function.
-        panic!("No input!");
-    };
-
-    let file_ix = ctx.borrow_mut().add_file(Path::new(input_arg)).unwrap();
+fn create_ast(ctx: &RefCell<Context>, filename: &str) -> Option<CompilationUnit> {
+    let file_ix = ctx.borrow_mut().add_file(Path::new(filename)).unwrap();
     let ctx_borrow = ctx.borrow(); // XXX: this will cause problems later maybe?
     let file = ctx_borrow.file(file_ix);
     let mut tokenizer = Tokenizer::new(&*file.contents, file_ix);
@@ -58,7 +39,7 @@ fn driver(ctx: &RefCell<Context>) {
         Ok(res) => res,
         Err((Some((_, bad_span)), message)) => {
             ctx.borrow().span_error(bad_span, format!("unexpected token; {}", message));
-            return
+            return None
         }
         Err((None, message)) => {
             ctx.borrow().span_error(Span {
@@ -66,7 +47,7 @@ fn driver(ctx: &RefCell<Context>) {
                 hi: file.contents.len() as u32,
                 file: file_ix
             }, format!("unexpected EOF; {}", message));
-            return
+            return None
         }
     };
 
@@ -85,20 +66,54 @@ fn driver(ctx: &RefCell<Context>) {
         file: file_ix,
     });
 
-    if ERRORS.with(|v| v.get()) > 0 { return; }
-        /*
-        Err(_) => {
-            // If the verbose flag was on, we would already
-            // have printed the tokens.
-            if !context.verbose {
-                for &(ref token, ref text) in tokenizer.tokens.iter() {
-                    println!("{:<25} {:?}", format!("{:?}", token), text);
-                }
-            }
-            println!("{:?}", ast);
-            os::set_exit_status(42);
+    Some(ast)
+}
+
+fn driver(ctx: &RefCell<Context>) {
+    let opts = &[
+        optflag("v", "verbose", "verbose - print parsing debug info")
+    ];
+
+    let matches = match getopts(os::args().tail(), opts) {
+        Ok(m) => { m }
+        Err(f) => { panic!(f.to_string()) }
+    };
+
+    if matches.opt_present("verbose") {
+        ctx.borrow_mut().verbose = true;
+    }
+
+    if matches.free.is_empty() {
+        // TODO: Should have a print_usage function.
+        panic!("No input!");
+    };
+
+    let mut asts: Vec<CompilationUnit> = vec![];
+
+    for file in matches.free.iter() {
+        println!("Parsing file {}...", file);
+
+        if let Some(ast) = create_ast(ctx, file.as_slice()) {
+            asts.push(ast);
+        } else {
+            return;
         }
-        */
+
+        if ERRORS.with(|v| v.get()) > 0 { return; }
+            /*
+            Err(_) => {
+                // If the verbose flag was on, we would already
+                // have printed the tokens.
+                if !context.verbose {
+                    for &(ref token, ref text) in tokenizer.tokens.iter() {
+                        println!("{:<25} {:?}", format!("{:?}", token), text);
+                    }
+                }
+                println!("{:?}", ast);
+                os::set_exit_status(42);
+            }
+            */
+    }
 }
 
 fn main() {
