@@ -72,7 +72,7 @@ impl Str for Ident {
     fn as_slice(&self) -> &str { self.node.as_slice() }
 }
 
-#[derive(Show)]
+#[derive(Show, Clone)]
 pub struct QualifiedIdentifier_ {
     pub parts: Vec<Ident>,
 }
@@ -86,6 +86,24 @@ impl QualifiedIdentifier {
         assert!(parts.len() > 0);
         spanned(Span::range(parts.first().unwrap().span, parts.last().unwrap().span),
                 QualifiedIdentifier_ { parts: parts })
+    }
+
+    pub fn as_symbol(&self) -> Symbol {
+        let mut string_repr = String::new();
+        for i in range(0, self.node.parts.len()) {
+            if i != 0 {
+                string_repr.push('.');
+            }
+            string_repr.push_str(self.node.parts[i].as_slice());
+        }
+        return Symbol::from_str(string_repr.as_slice());
+    }
+
+    // Returns a new QualifiedIdentifier with an identifier appended.
+    pub fn append_ident(&self, identifier: &Ident) -> QualifiedIdentifier {
+        let mut new_identifier = self.clone();
+        new_identifier.node.parts.push(identifier.clone());
+        new_identifier
     }
 }
 

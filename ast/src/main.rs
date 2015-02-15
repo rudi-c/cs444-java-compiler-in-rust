@@ -19,6 +19,7 @@ use weed::weed;
 use span::Span;
 use context::{Context, CONTEXT};
 use error::{FatalError, ErrorReporter, ERRORS};
+use name_resolve::name_resolve;
 
 pub mod span;
 pub mod file;
@@ -29,6 +30,7 @@ pub mod ast;
 pub mod parser;
 pub mod tokenizer;
 pub mod weed;
+pub mod name_resolve;
 
 fn create_ast(ctx: &RefCell<Context>, filename: &str) -> Option<CompilationUnit> {
     let file_ix = ctx.borrow_mut().add_file(Path::new(filename)).unwrap();
@@ -114,6 +116,8 @@ fn driver(ctx: &RefCell<Context>) {
             }
             */
     }
+
+    name_resolve(&asts);
 }
 
 fn main() {

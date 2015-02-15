@@ -22,6 +22,15 @@ pub struct CompilationUnit {
     pub types: Vec<TypeDeclaration>,
 }
 
+impl CompilationUnit {
+    pub fn name(&self) -> &Ident {
+        match self.types[0].node {
+            TypeDeclaration_::Class(ref class) => &class.node.name,
+            TypeDeclaration_::Interface(ref interface) => &interface.node.name,
+        }
+    }
+}
+
 #[derive(Show)]
 pub struct Class_ {
     pub name: Ident,

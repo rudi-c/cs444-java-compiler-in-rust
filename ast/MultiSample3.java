@@ -1,6 +1,6 @@
 package banana;
 
-public class sample3
+public class MultiSample3
 {
     public int x = 0;
     public int y = 0;
@@ -9,5 +9,5 @@ public class sample3
 
     }
 
-    public sample3() {}
+    public MultiSample3() {}
 }
