@@ -77,6 +77,32 @@ struct Collector<'all, 'ast> {
     type_definition: Option<TypeDefinition>,
 }
 
+impl<'all, 'ast> Collector<'all, 'ast> {
+    fn walk_type<F: FnOnce(&mut Self)>(&mut self, name: &Ident, kind: TypeKind, f: F) {
+        assert!(self.type_definition.is_none());
+
+        self.scope.push(name.node);
+        let fq_type = Name::fresh(Qualified(self.scope.iter()).to_string());
+        match self.all.get_mut(&self.package).unwrap().package_mut().contents.entry(name.node) {
+            hash_map::Entry::Occupied(_v) => {
+                span_error!(name.span,
+                            "type `{}` already exists in package `{:?}`",
+                            name, self.package);
+            }
+            hash_map::Entry::Vacant(v) => {
+                v.insert(fq_type);
+            }
+        }
+
+        self.type_definition = Some(TypeDefinition::new(kind));
+
+        f(self);
+
+        self.all.insert(fq_type, NamedItem::TypeDefinition(self.type_definition.take().unwrap()));
+        self.scope.pop();
+    }
+}
+
 impl<'all, 'ast> Walker<'ast> for Collector<'all, 'ast> {
     fn walk_class_field(&mut self, field: &Field) {
         let field_name = Name::fresh(format!("{}.{}", Qualified(self.scope.iter()), field.node.name));
@@ -119,48 +145,11 @@ impl<'all, 'ast> Walker<'ast> for Collector<'all, 'ast> {
     }
 
     fn walk_class(&mut self, class: &Class) {
-        assert!(self.type_definition.is_none());
-
-        self.scope.push(class.node.name.node);
-        let fq_type = Name::fresh(Qualified(self.scope.iter()).to_string());
-        match self.all.get_mut(&self.package).unwrap().package_mut().contents.entry(class.node.name.node) {
-            hash_map::Entry::Occupied(_v) => {
-                span_error!(class.node.name.span,
-                            "type `{}` already exists in package `{:?}`",
-                            class.node.name, self.package);
-            }
-            hash_map::Entry::Vacant(v) => {
-                v.insert(fq_type);
-            }
-        }
-
-        self.type_definition = Some(TypeDefinition::new(TypeKind::Class));
-        default_walk_class(self, class);
-        self.all.insert(fq_type, NamedItem::TypeDefinition(self.type_definition.take().unwrap()));
-        self.scope.pop();
+        self.walk_type(&class.node.name, TypeKind::Class, |me| default_walk_class(me, class));
     }
 
     fn walk_interface(&mut self, interface: &Interface) {
-        // XXX: This is almost identical to the above, factor it out pls
-        assert!(self.type_definition.is_none());
-
-        self.scope.push(interface.node.name.node);
-        let fq_type = Name::fresh(Qualified(self.scope.iter()).to_string());
-        match self.all.get_mut(&self.package).unwrap().package_mut().contents.entry(interface.node.name.node) {
-            hash_map::Entry::Occupied(_v) => {
-                span_error!(interface.node.name.span,
-                            "type `{}` already exists in package `{:?}`",
-                            interface.node.name, self.package);
-            }
-            hash_map::Entry::Vacant(v) => {
-                v.insert(fq_type);
-            }
-        }
-
-        self.type_definition = Some(TypeDefinition::new(TypeKind::Interface));
-        default_walk_interface(self, interface);
-        self.all.insert(fq_type, NamedItem::TypeDefinition(self.type_definition.take().unwrap()));
-        self.scope.pop();
+        self.walk_type(&interface.node.name, TypeKind::Interface, |me| default_walk_interface(me, interface));
     }
 }
 
