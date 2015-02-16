@@ -1,7 +1,9 @@
 use ast::*;
 use name::*;
+use walker::*;
 
-use std::collections::HashMap;
+use std::borrow::ToOwned;
+use std::collections::{hash_map, HashMap};
 
 // In this file, the variable name prefix 'fq_' abbreviates fully_qualified_
 
@@ -14,6 +16,21 @@ pub enum NamedItem {
     Method,
 }
 
+impl NamedItem {
+    pub fn package(&self) -> &Package {
+        match *self {
+            NamedItem::Package(ref p) => p,
+            _ => panic!("expected a package"),
+        }
+    }
+    pub fn package_mut(&mut self) -> &mut Package {
+        match *self {
+            NamedItem::Package(ref mut p) => p,
+            _ => panic!("expected a package"),
+        }
+    }
+}
+
 #[derive(Show)]
 pub enum TypeKind {
     Class,
@@ -23,6 +40,14 @@ pub enum TypeKind {
 #[derive(Show)]
 pub struct Package {
     contents: HashMap<Symbol, Name>
+}
+
+impl Package {
+    pub fn new() -> Package {
+        Package {
+            contents: HashMap::new(),
+        }
+    }
 }
 
 #[derive(Show)]
@@ -37,132 +62,159 @@ pub struct TypeDefinition {
 
 impl TypeDefinition {
     pub fn new(kind: TypeKind) -> TypeDefinition {
-        TypeDefinition { kind: kind, members: HashMap::new(),
-                         methods: HashMap::new() }
-    }
-}
-
-pub fn process_class_body(class: &Class,
-                          type_definition: &mut TypeDefinition,
-                          all: &mut HashMap<Name, NamedItem>,
-                          class_identifier: &QualifiedIdentifier) {
-    for body_declaration in class.node.body.iter() {
-        match body_declaration.node {
-            ClassBodyDeclaration_::FieldDeclaration(ref field) => {
-                let field_symbol = Symbol::from_str(field.node.name.as_slice());
-                let fq_ident = class_identifier.append_ident(&field.node.name);
-                let fq_field_name = Name::fresh(fq_ident.as_symbol());
-
-                let exists = all.contains_key(&fq_field_name);
-                if exists {
-                    span_error!(field.span, "field `{}` already exists in `{}`",
-                                field.node.name, class_identifier.as_string());
-                } else {
-                    all.insert(fq_field_name, NamedItem::Field);
-                    type_definition.members.insert(field_symbol, fq_field_name);
-                }
-            },
-            ClassBodyDeclaration_::MethodDeclaration(ref method) => {
-                let method_symbol = Symbol::from_str(method.node.name.as_slice());
-                let fq_ident = class_identifier.append_ident(&method.node.name);
-                let fq_method_name = Name::fresh(fq_ident.as_symbol());
-
-                let exists = all.contains_key(&fq_method_name);
-                if !exists {
-                    all.insert(fq_method_name, NamedItem::Method);
-                    type_definition.methods.insert(method_symbol, fq_method_name);
-                }
-            },
-            ClassBodyDeclaration_::ConstructorDeclaration(_) => {
-
-            },
+        TypeDefinition {
+            kind: kind,
+            members: HashMap::new(),
+            methods: HashMap::new(),
         }
     }
 }
 
-pub fn process_interface_body(interface: &Interface,
-                              type_definition: &mut TypeDefinition,
-                              all: &mut HashMap<Name, NamedItem>,
-                              interface_identifier: &QualifiedIdentifier) {
-    for method in interface.node.body.iter() {
-        let method_symbol = Symbol::from_str(method.node.name.as_slice());
-        let fq_ident = interface_identifier.append_ident(&method.node.name);
-        let fq_method_name = Name::fresh(fq_ident.as_symbol());
+struct Collector<'all, 'ast> {
+    all: &'all mut HashMap<Name, NamedItem>,
+    scope: Vec<Symbol>,
+    package: Name,
+    type_definition: Option<TypeDefinition>,
+}
 
-        let exists = all.contains_key(&fq_method_name);
-        if !exists {
-            all.insert(fq_method_name, NamedItem::Method);
-            type_definition.methods.insert(method_symbol, fq_method_name);
+impl<'all, 'ast> Walker<'ast> for Collector<'all, 'ast> {
+    fn walk_class_field(&mut self, field: &Field) {
+        let field_name = Name::fresh(format!("{}.{}", Qualified(self.scope.iter()), field.node.name));
+
+        debug_assert!(!self.all.contains_key(&field_name));
+        self.all.insert(field_name, NamedItem::Field); // TODO: Maybe record some information for the field
+        if let Some(_) = self.type_definition.as_mut().unwrap().members.insert(field.node.name.node, field_name) {
+            // something with the same name was already there!
+            span_error!(field.span, "field `{}` already exists in `{}`",
+                        field.node.name, Qualified(self.scope.iter()));
         }
+
+        // no need to walk deeper
+    }
+    fn walk_class_method(&mut self, method: &Method) {
+        // Note: Implementation is shared with interfaace methods
+
+        let Collector { ref mut all, ref mut type_definition, .. } = *self;
+        let mut ty_methods = &mut type_definition.as_mut().unwrap().methods;
+        match ty_methods.entry(method.node.name.node) {
+            hash_map::Entry::Occupied(_v) => {
+                // Overloaded method.
+                // TODO: Record information about this overload (?)
+            }
+            hash_map::Entry::Vacant(v) => {
+                // First time seeing this method.
+                let method_name = Name::fresh(format!("{}.{}", Qualified(self.scope.iter()), method.node.name));
+
+                debug_assert!(!all.contains_key(&method_name));
+                all.insert(method_name, NamedItem::Method);
+                v.insert(method_name);
+            }
+        }
+
+        // no need to walk deeper
+    }
+    fn walk_interface_method(&mut self, method: &Method) {
+        // same as a class method
+        self.walk_class_method(method);
+    }
+
+    fn walk_class(&mut self, class: &Class) {
+        assert!(self.type_definition.is_none());
+
+        self.scope.push(class.node.name.node);
+        let fq_type = Name::fresh(format!("{}", Qualified(self.scope.iter())));
+        match self.all.get_mut(&self.package).unwrap().package_mut().contents.entry(class.node.name.node) {
+            hash_map::Entry::Occupied(_v) => {
+                span_error!(class.node.name.span,
+                            "type `{}` already exists in package `{:?}`",
+                            class.node.name, self.package);
+            }
+            hash_map::Entry::Vacant(v) => {
+                v.insert(fq_type);
+            }
+        }
+
+        self.type_definition = Some(TypeDefinition::new(TypeKind::Class));
+        default_walk_class(self, class);
+        self.all.insert(fq_type, NamedItem::TypeDefinition(self.type_definition.take().unwrap()));
+        self.scope.pop();
+    }
+
+    fn walk_interface(&mut self, interface: &Interface) {
+        // XXX: This is almost identical to the above, factor it out pls
+        assert!(self.type_definition.is_none());
+
+        self.scope.push(interface.node.name.node);
+        let fq_type = Name::fresh(format!("{}", Qualified(self.scope.iter())));
+        match self.all.get_mut(&self.package).unwrap().package_mut().contents.entry(interface.node.name.node) {
+            hash_map::Entry::Occupied(_v) => {
+                span_error!(interface.node.name.span,
+                            "type `{}` already exists in package `{:?}`",
+                            interface.node.name, self.package);
+            }
+            hash_map::Entry::Vacant(v) => {
+                v.insert(fq_type);
+            }
+        }
+
+        self.type_definition = Some(TypeDefinition::new(TypeKind::Interface));
+        default_walk_interface(self, interface);
+        self.all.insert(fq_type, NamedItem::TypeDefinition(self.type_definition.take().unwrap()));
+        self.scope.pop();
     }
 }
 
-// Process and return the type definition contained within the compilation unit,
-// of which we know there is only one.
-pub fn make_type_definition(compilation_unit: &CompilationUnit,
-                            all: &mut HashMap<Name, NamedItem>,
-                            package_identifier: &QualifiedIdentifier) -> TypeDefinition {
-
-    let fq_type_identifier = package_identifier.append_ident(compilation_unit.name());
-
-    match compilation_unit.types[0].node {
-        TypeDeclaration_::Class(ref class) => {
-            let mut type_definition = TypeDefinition::new(TypeKind::Class);
-
-            process_class_body(class, &mut type_definition, all, &fq_type_identifier);
-
-            type_definition
-        },
-        TypeDeclaration_::Interface(ref interface) => {
-            let mut type_definition = TypeDefinition::new(TypeKind::Interface);
-
-            process_interface_body(interface, &mut type_definition, all,
-                                   &fq_type_identifier);
-
-            type_definition
-        },
+// Looks up a package by qualified identifier, creating it if necessary.
+fn resolve_package(all: &mut HashMap<Name, NamedItem>, toplevel: Name, id: &QualifiedIdentifier) -> Name {
+    let mut name = toplevel;
+    for (ix, ident) in id.node.parts.iter().enumerate() {
+        if let NamedItem::Package(ref mut package) = *all.get_mut(&name).unwrap() {
+            match package.contents.entry(ident.node) {
+                hash_map::Entry::Occupied(v) => {
+                    // Found it
+                    name = *v.get();
+                }
+                hash_map::Entry::Vacant(v) => {
+                    name = Name::fresh(format!("{}", Qualified(id.node.parts[0..ix+1].iter())));
+                    v.insert(name);
+                }
+            }
+        } else {
+            span_error!(ident.span,
+                        // FIXME: better error message
+                        "package name conflict");
+            // create a new name for now...
+            // XXX: One bad class processed early could cause a ton of package name conflicts
+            name = Name::fresh(Qualified(id.node.parts[0..ix+1].iter()).to_string());
+        }
+        // make sure a package exists with this name
+        if let hash_map::Entry::Vacant(v) = all.entry(name) {
+            v.insert(NamedItem::Package(Package::new()));
+        }
     }
+    name
 }
 
 pub fn fully_qualify_names(asts: &Vec<CompilationUnit>) -> HashMap<Name, NamedItem> {
     let mut all: HashMap<Name, NamedItem> = HashMap::new();
 
+    let toplevel = Name::fresh("top level".to_owned());
+    all.insert(toplevel, NamedItem::Package(Package::new()));
+
     for ast in asts.iter() {
-        if let Some(ref package_identifier) = ast.package {
-            let fq_package_name = Name::fresh(package_identifier.as_symbol());
-            let fq_type_name =
-                Name::fresh(package_identifier.append_ident(ast.name()).as_symbol());
+        let (package_name, scope) = if let Some(ref package_identifier) = ast.package {
+            (resolve_package(&mut all, toplevel, package_identifier),
+             package_identifier.node.parts.iter().map(|x| x.node).collect())
+        } else {
+            (toplevel, vec![])
+        };
 
-            // Make sure this type doesn't already exist in the current package.
-            let type_exists = all.contains_key(&fq_type_name);
-            if type_exists {
-                span_error!(ast.types[0].span,
-                            "type `{}` already exists in package `{}`",
-                            ast.name(), package_identifier.as_string());
-            } else {
-                let type_definition = make_type_definition(ast, &mut all,
-                                                           package_identifier);
-                all.insert(fq_type_name, NamedItem::TypeDefinition(type_definition));
-            }
-
-            // This is kind of a weird pattern but the scope of the .get_mut
-            // borrow is the entire if statement, including the else branch,
-            // so it becomes impossible to use .insert in the else branch.
-            let mut present = false;
-            if let Some(&mut NamedItem::Package(ref mut package)) =
-                   all.get_mut(&fq_package_name) {
-                package.contents.insert(Symbol::from_str(ast.name().as_slice()),
-                                        fq_type_name);
-                present = true;
-            }
-
-            if !present {
-                let mut package = Package { contents: HashMap::new() };
-                package.contents.insert(Symbol::from_str(ast.name().as_slice()),
-                                        fq_type_name);
-                all.insert(fq_package_name, NamedItem::Package(package));
-            }
-        }
+        Collector {
+            all: &mut all,
+            scope: scope,
+            package: package_name,
+            type_definition: None,
+        }.walk_compilation_unit(ast);
     }
 
     all

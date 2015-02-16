@@ -35,7 +35,7 @@ impl Str for Symbol {
     fn as_slice(&self) -> &str {
         // This is safe because the String is never mutated or deleted.
         SYMBOL_NAMES.with(|cell| unsafe {
-            mem::transmute::<&str, &str>(cell.borrow()[self.0 as usize].as_slice())
+            mem::copy_lifetime(self, cell.borrow()[self.0 as usize].as_slice())
         })
     }
 }
@@ -88,21 +88,6 @@ impl QualifiedIdentifier {
                 QualifiedIdentifier_ { parts: parts })
     }
 
-    pub fn as_symbol(&self) -> Symbol {
-        return Symbol::from_str(self.as_string().as_slice());
-    }
-
-    pub fn as_string(&self) -> String {
-        let mut string_repr = String::new();
-        for i in range(0, self.node.parts.len()) {
-            if i != 0 {
-                string_repr.push('.');
-            }
-            string_repr.push_str(self.node.parts[i].as_slice());
-        }
-        return string_repr;
-    }
-
     // Returns a new QualifiedIdentifier with an identifier appended.
     pub fn append_ident(&self, identifier: &Ident) -> QualifiedIdentifier {
         let mut new_identifier = self.clone();
@@ -111,15 +96,36 @@ impl QualifiedIdentifier {
     }
 }
 
+impl fmt::String for QualifiedIdentifier {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        Qualified(self.node.parts.iter()).fmt(f)
+    }
+}
+
+// A helper type to print qualified names.
+pub struct Qualified<T>(pub T);
+
+impl<'a, T: Iterator + Clone> fmt::String for Qualified<T> where <T as Iterator>::Item: fmt::String {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        for (i, part) in self.0.clone().enumerate() {
+            if i != 0 {
+                try!(f.write_str("."));
+            }
+            try!(part.fmt(f));
+        }
+        Ok(())
+    }
+}
+
 /// The fully-resolved name of something in the program.
 /// In particular, equal `Name`s always refer to the same thing.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Copy, Clone)]
 pub struct Name(u32);
 
-thread_local!(static NAMES: RefCell<Vec<Symbol>> = RefCell::new(Vec::new()));
+thread_local!(static NAMES: RefCell<Vec<String>> = RefCell::new(Vec::new()));
 
 impl Name {
-    pub fn fresh(sym: Symbol) -> Name {
+    pub fn fresh(sym: String) -> Name {
         NAMES.with(move |cell| {
             let mut n = cell.borrow_mut();
             let ret = Name(n.len() as u32);
