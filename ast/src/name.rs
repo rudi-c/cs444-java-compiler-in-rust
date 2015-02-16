@@ -89,6 +89,10 @@ impl QualifiedIdentifier {
     }
 
     pub fn as_symbol(&self) -> Symbol {
+        return Symbol::from_str(self.as_string().as_slice());
+    }
+
+    pub fn as_string(&self) -> String {
         let mut string_repr = String::new();
         for i in range(0, self.node.parts.len()) {
             if i != 0 {
@@ -96,7 +100,7 @@ impl QualifiedIdentifier {
             }
             string_repr.push_str(self.node.parts[i].as_slice());
         }
-        return Symbol::from_str(string_repr.as_slice());
+        return string_repr;
     }
 
     // Returns a new QualifiedIdentifier with an identifier appended.
