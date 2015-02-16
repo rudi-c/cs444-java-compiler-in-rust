@@ -1,6 +1,7 @@
-use std::{cmp, fmt, mem};
+use std::{fmt, mem};
+use std::borrow::ToOwned;
 use std::cell::RefCell;
-use std::collections::{hash_map, HashMap};
+use std::collections::HashMap;
 
 use span::{Span, Spanned, spanned};
 
@@ -23,8 +24,8 @@ impl Symbol {
             SYMBOL_NAMES.with(move |vec_cell| {
                 let mut vec = vec_cell.borrow_mut();
                 let ret = Symbol(vec.len() as u32);
-                map.insert(sym.to_string(), ret);
-                vec.push(sym.to_string());
+                map.insert(sym.to_owned(), ret);
+                vec.push(sym.to_owned());
                 ret
             })
         })

@@ -8,7 +8,7 @@ extern crate term;
 
 use getopts::{getopts, optflag};
 
-use std::os;
+use std::{io, os};
 use std::cell::RefCell;
 use std::rt::unwind;
 
@@ -78,8 +78,12 @@ fn driver(ctx: &RefCell<Context>) {
     ];
 
     let matches = match getopts(os::args().tail(), opts) {
-        Ok(m) => { m }
-        Err(f) => { panic!(f.to_string()) }
+        Ok(m) => m,
+        Err(f) => {
+            writeln!(&mut io::stderr(), "{}", f).unwrap();
+            os::set_exit_status(1);
+            return
+        }
     };
 
     if matches.opt_present("verbose") {

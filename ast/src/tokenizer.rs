@@ -1,6 +1,7 @@
 use span::Span;
 use name::Symbol;
 
+use std::borrow::ToOwned;
 use std::num::FromStrRadix;
 use std::char;
 
@@ -165,7 +166,7 @@ scanner! {
         } else {
             Token::SoftError(
                 box Token::IntegerLiteral(0),
-                "integer is way too large, did the cat step on the numpad?".to_string())
+                "integer is way too large, did the cat step on the numpad?".to_owned())
         }, text)
     },
     // String literals
@@ -175,7 +176,7 @@ scanner! {
         Err((e, sp)) => (Token::SoftError(box Token::StringLiteral(String::new()), e), sp),
     },
     // Check for unterminated string literals.
-    r#""([^"\\]|\\.)*"# => (Token::Error("unterminated string literal".to_string()), text),
+    r#""([^"\\]|\\.)*"# => (Token::Error("unterminated string literal".to_owned()), text),
     r#"'[^'\\]'"# => (Token::CharacterLiteral(text.char_at(1)), text),
 
     r#"'\\[0-7]'"# => unescape_char(text),
@@ -183,8 +184,8 @@ scanner! {
     r#"'\\[0-3][0-7][0-7]'"# => unescape_char(text),
     r#"'\\.'"# => unescape_char(text),
 
-    r#"'(.|[^']*)'"# => (Token::SoftError(box Token::CharacterLiteral(' '), "invalid character literal".to_string()), text),
-    r#"'"# => (Token::Error("unterminated character literal".to_string()), text),
+    r#"'(.|[^']*)'"# => (Token::SoftError(box Token::CharacterLiteral(' '), "invalid character literal".to_owned()), text),
+    r#"'"# => (Token::Error("unterminated character literal".to_owned()), text),
     r#"true"# => (Token::BooleanLiteral(true), text),
     r#"false"# => (Token::BooleanLiteral(false), text),
     r#"null"# => (Token::NullLiteral, text),
@@ -227,14 +228,14 @@ scanner! {
     r#"/"# => (Token::Slash, text),
     r#"%"# => (Token::Percent, text),
     r#"!"# => (Token::Bang, text),
-    r#"\+\+"# => (Token::Error("increment operator not supported".to_string()), text),
-    r#"--"# => (Token::Error("decrement operator not supported".to_string()), text),
+    r#"\+\+"# => (Token::Error("increment operator not supported".to_owned()), text),
+    r#"--"# => (Token::Error("decrement operator not supported".to_owned()), text),
 
     // Allow input to contain \x1a, but _only_ at the end ($3.5)
-    "\x1a." => (Token::Error("unrecognized input".to_string()), &text[0..1]),
+    "\x1a." => (Token::Error("unrecognized input".to_owned()), &text[0..1]),
     "\x1a" => (Token::Whitespace, text),
 
-    r#"."# => (Token::Error("unrecognized input".to_string()), text),
+    r#"."# => (Token::Error("unrecognized input".to_owned()), text),
 }
 
 fn octal(s: &str) -> char {
@@ -255,8 +256,8 @@ scanner! {
     r#"\\""# => Ok('"'),
     r"\\'" => Ok('\''),
     r"\\\\" => Ok('\\'),
-    r"\\." => Err(("bad escape sequence".to_string(), text)),
-    r"\\" => Err(("unterminated escape sequence".to_string(), text)),
+    r"\\." => Err(("bad escape sequence".to_owned(), text)),
+    r"\\" => Err(("unterminated escape sequence".to_owned(), text)),
     r"[^\\]" => Ok(text.char_at(0)),
 }
 

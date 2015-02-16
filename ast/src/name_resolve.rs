@@ -31,7 +31,7 @@ impl NamedItem {
     }
 }
 
-#[derive(Show)]
+#[derive(Show, Copy)]
 pub enum TypeKind {
     Class,
     Interface,
@@ -122,7 +122,7 @@ impl<'all, 'ast> Walker<'ast> for Collector<'all, 'ast> {
         assert!(self.type_definition.is_none());
 
         self.scope.push(class.node.name.node);
-        let fq_type = Name::fresh(format!("{}", Qualified(self.scope.iter())));
+        let fq_type = Name::fresh(Qualified(self.scope.iter()).to_string());
         match self.all.get_mut(&self.package).unwrap().package_mut().contents.entry(class.node.name.node) {
             hash_map::Entry::Occupied(_v) => {
                 span_error!(class.node.name.span,
@@ -145,7 +145,7 @@ impl<'all, 'ast> Walker<'ast> for Collector<'all, 'ast> {
         assert!(self.type_definition.is_none());
 
         self.scope.push(interface.node.name.node);
-        let fq_type = Name::fresh(format!("{}", Qualified(self.scope.iter())));
+        let fq_type = Name::fresh(Qualified(self.scope.iter()).to_string());
         match self.all.get_mut(&self.package).unwrap().package_mut().contents.entry(interface.node.name.node) {
             hash_map::Entry::Occupied(_v) => {
                 span_error!(interface.node.name.span,
@@ -175,7 +175,7 @@ fn resolve_package(all: &mut HashMap<Name, NamedItem>, toplevel: Name, id: &Qual
                     name = *v.get();
                 }
                 hash_map::Entry::Vacant(v) => {
-                    name = Name::fresh(format!("{}", Qualified(id.node.parts[0..ix+1].iter())));
+                    name = Name::fresh(Qualified(id.node.parts[0..ix+1].iter()).to_string());
                     v.insert(name);
                 }
             }
