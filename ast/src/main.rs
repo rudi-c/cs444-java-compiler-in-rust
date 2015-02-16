@@ -122,7 +122,7 @@ fn driver(ctx: &RefCell<Context>) {
             */
     }
 
-    name_resolve(&asts);
+    name_resolve(&*asts);
 }
 
 fn main() {
