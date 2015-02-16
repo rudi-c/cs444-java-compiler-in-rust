@@ -5,6 +5,7 @@
 #[no_link] #[plugin] extern crate lalrgen;
 extern crate getopts;
 extern crate term;
+extern crate arena;
 
 use getopts::{getopts, optflag};
 
@@ -122,7 +123,7 @@ fn driver(ctx: &RefCell<Context>) {
             */
     }
 
-    name_resolve(&asts);
+    name_resolve(&*asts);
 }
 
 fn main() {

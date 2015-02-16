@@ -117,27 +117,3 @@ impl<'a, T: Iterator + Clone> fmt::String for Qualified<T> where <T as Iterator>
         Ok(())
     }
 }
-
-/// The fully-resolved name of something in the program.
-/// In particular, equal `Name`s always refer to the same thing.
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Copy, Clone)]
-pub struct Name(u32);
-
-thread_local!(static NAMES: RefCell<Vec<String>> = RefCell::new(Vec::new()));
-
-impl Name {
-    pub fn fresh(sym: String) -> Name {
-        NAMES.with(move |cell| {
-            let mut n = cell.borrow_mut();
-            let ret = Name(n.len() as u32);
-            n.push(sym);
-            ret
-        })
-    }
-}
-
-impl fmt::Show for Name {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        NAMES.with(|cell| cell.borrow()[self.0 as usize].fmt(f))
-    }
-}
