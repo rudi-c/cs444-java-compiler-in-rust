@@ -48,7 +48,7 @@ pub fn process_class_body(class: &Class,
 
                 let exists = all.contains_key(&fq_field_name);
                 if exists {
-                    span_error!(field.span, "field {} already exists in {}",
+                    span_error!(field.span, "field `{}` already exists in `{}`",
                                 field.node.name, class_identifier.as_string());
                 } else {
                     all.insert(fq_field_name, NamedItem::Field);
@@ -92,9 +92,9 @@ pub fn process_interface_body(interface: &Interface,
 
 // Process and return the type definition contained within the compilation unit,
 // of which we know there is only one.
-pub fn get_type_definition(compilation_unit: &CompilationUnit,
-                           all: &mut HashMap<Name, NamedItem>,
-                           package_identifier: &QualifiedIdentifier) -> TypeDefinition {
+pub fn make_type_definition(compilation_unit: &CompilationUnit,
+                            all: &mut HashMap<Name, NamedItem>,
+                            package_identifier: &QualifiedIdentifier) -> TypeDefinition {
 
     let fq_type_identifier = package_identifier.append_ident(compilation_unit.name());
 
@@ -121,17 +121,26 @@ pub fn get_type_definition(compilation_unit: &CompilationUnit,
     }
 }
 
-pub fn name_resolve(asts: &Vec<CompilationUnit>) {
+pub fn fully_qualify_names(asts: &Vec<CompilationUnit>) -> HashMap<Name, NamedItem> {
     let mut all: HashMap<Name, NamedItem> = HashMap::new();
 
     for ast in asts.iter() {
         if let Some(ref package_identifier) = ast.package {
-            let type_definition = get_type_definition(ast, &mut all,
-                                                      package_identifier);
-
             let fq_package_name = Name::fresh(package_identifier.as_symbol());
             let fq_type_name =
                 Name::fresh(package_identifier.append_ident(ast.name()).as_symbol());
+
+            // Make sure this type doesn't already exist in the current package.
+            let mut type_exists = all.contains_key(&fq_type_name);
+            if type_exists {
+                span_error!(ast.types[0].span,
+                            "type `{}` already exists in package `{}`",
+                            ast.name(), package_identifier.as_string());
+            } else {
+                let type_definition = make_type_definition(ast, &mut all,
+                                                           package_identifier);
+                all.insert(fq_type_name, NamedItem::TypeDefinition(type_definition));
+            }
 
             // This is kind of a weird pattern but the scope of the .get_mut
             // borrow is the entire if statement, including the else branch,
@@ -150,10 +159,14 @@ pub fn name_resolve(asts: &Vec<CompilationUnit>) {
                                         fq_type_name);
                 all.insert(fq_package_name, NamedItem::Package(package));
             }
-
-            all.insert(fq_type_name, NamedItem::TypeDefinition(type_definition));
         }
     }
+
+    all
+}
+
+pub fn name_resolve(asts: &Vec<CompilationUnit>) {
+    let mut all: HashMap<Name, NamedItem> = fully_qualify_names(asts);
 
     // For testing - remove when name resolution is finished.
     for (name, named_item) in all.iter() {
