@@ -29,6 +29,7 @@ pub mod name;
 pub mod ast;
 pub mod parser;
 pub mod tokenizer;
+pub mod walker;
 pub mod weed;
 pub mod name_resolve;
 
