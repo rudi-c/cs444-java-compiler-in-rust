@@ -35,6 +35,13 @@ pub struct TypeDefinition {
     methods: HashMap<Symbol, Name>,
 }
 
+impl TypeDefinition {
+    pub fn new(kind: TypeKind) -> TypeDefinition {
+        TypeDefinition { kind: kind, members: HashMap::new(),
+                         methods: HashMap::new() }
+    }
+}
+
 pub fn process_class_body(class: &Class,
                           type_definition: &mut TypeDefinition,
                           all: &mut HashMap<Name, NamedItem>,
@@ -100,18 +107,14 @@ pub fn make_type_definition(compilation_unit: &CompilationUnit,
 
     match compilation_unit.types[0].node {
         TypeDeclaration_::Class(ref class) => {
-            let mut type_definition = TypeDefinition
-                { kind: TypeKind::Class, members: HashMap::new(),
-                  methods: HashMap::new() };
+            let mut type_definition = TypeDefinition::new(TypeKind::Class);
 
             process_class_body(class, &mut type_definition, all, &fq_type_identifier);
 
             type_definition
         },
         TypeDeclaration_::Interface(ref interface) => {
-            let mut type_definition = TypeDefinition
-                { kind: TypeKind::Interface, members: HashMap::new(),
-                  methods: HashMap::new() };
+            let mut type_definition = TypeDefinition::new(TypeKind::Interface);
 
             process_interface_body(interface, &mut type_definition, all,
                                    &fq_type_identifier);
@@ -131,7 +134,7 @@ pub fn fully_qualify_names(asts: &Vec<CompilationUnit>) -> HashMap<Name, NamedIt
                 Name::fresh(package_identifier.append_ident(ast.name()).as_symbol());
 
             // Make sure this type doesn't already exist in the current package.
-            let mut type_exists = all.contains_key(&fq_type_name);
+            let type_exists = all.contains_key(&fq_type_name);
             if type_exists {
                 span_error!(ast.types[0].span,
                             "type `{}` already exists in package `{}`",
