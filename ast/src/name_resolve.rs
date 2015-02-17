@@ -11,18 +11,21 @@ use std::rc::{Rc, Weak};
 
 fn rc_cell<T>(x: T) -> Rc<RefCell<T>> { Rc::new(RefCell::new(x)) }
 
-// TODO: Store AST bits.
+// The idea here is to have an object graph represented using Rc pointers.
+// RefCell allows the graph to be mutated by later passes.
+// To avoid cycles, Rc pointers should be used for objects that are conceptually "children" (e.g.
+// types in a package, methods in a type); weak pointers elsewhere.
+// Every object has a unique `Name`, which can be used as an key for external maps. There is
+// intentionally no way to go from a `Name` back to the object: if you need it, just store the
+// pointer! `Name`s are also generally associated with fully-qualified identifiers, suitable for
+// printing in error messages.
+// Many objects also hold references to their associated AST nodes, hence the 'ast lifetime
+// everywhere.
 
 #[derive(Show)]
 pub enum PackageItem<'ast> {
     Package(PackageRef<'ast>),
     TypeDefinition(TypeDefinitionRef<'ast>),
-}
-
-#[derive(Show, Copy)]
-pub enum TypeKind {
-    Class,
-    Interface,
 }
 
 #[derive(Show)]
@@ -75,6 +78,12 @@ impl<'ast> Method<'ast> {
             overloads: vec![],
         })
     }
+}
+
+#[derive(Show, Copy)]
+pub enum TypeKind {
+    Class,
+    Interface,
 }
 
 #[derive(Show)]
