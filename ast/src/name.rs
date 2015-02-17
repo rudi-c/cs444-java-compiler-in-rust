@@ -141,3 +141,8 @@ impl fmt::Show for Name {
         NAMES.with(|cell| cell.borrow()[self.0 as usize].fmt(f))
     }
 }
+impl fmt::String for Name {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        NAMES.with(|cell| cell.borrow()[self.0 as usize].fmt(f))
+    }
+}

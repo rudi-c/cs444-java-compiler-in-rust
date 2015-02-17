@@ -122,18 +122,24 @@ impl<'ast> Collector<'ast> {
 
         self.scope.push(name.node);
 
-        let tydef = match self.package.borrow_mut().contents.entry(name.node) {
-            hash_map::Entry::Occupied(_v) => {
-                span_error!(name.span,
-                            "type `{}` already exists in package `{:?}`",
-                            name, self.package);
-                return
-            }
-            hash_map::Entry::Vacant(v) => {
-                let fq_type = Qualified(self.scope.iter()).to_string();
-                let def = TypeDefinition::new(fq_type, kind);
-                v.insert(PackageItem::TypeDefinition(def.clone()));
-                def
+        let tydef = {
+            let mut package = self.package.borrow_mut();
+            // XXX: Need to go through some contortions here to make rustc recognize the mutable
+            // deref
+            let &mut Package { ref fq_name, ref mut contents } = &mut *package;
+            match contents.entry(name.node) {
+                hash_map::Entry::Occupied(_v) => {
+                    span_error!(name.span,
+                                "type `{}` already exists in package `{}`",
+                                name, fq_name);
+                    return
+                }
+                hash_map::Entry::Vacant(v) => {
+                    let fq_type = Qualified(self.scope.iter()).to_string();
+                    let def = TypeDefinition::new(fq_type, kind);
+                    v.insert(PackageItem::TypeDefinition(def.clone()));
+                    def
+                }
             }
         };
 
