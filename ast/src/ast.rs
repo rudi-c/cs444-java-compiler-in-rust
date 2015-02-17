@@ -15,6 +15,15 @@ pub enum TypeDeclaration_ {
 }
 pub type TypeDeclaration = Spanned<TypeDeclaration_>;
 
+impl TypeDeclaration {
+    pub fn name(&self) -> &Ident {
+        match self.node {
+            TypeDeclaration_::Class(ref class) => &class.node.name,
+            TypeDeclaration_::Interface(ref interface) => &interface.node.name,
+        }
+    }
+}
+
 #[derive(Show)]
 pub struct CompilationUnit {
     pub package: Option<QualifiedIdentifier>,
@@ -24,10 +33,7 @@ pub struct CompilationUnit {
 
 impl CompilationUnit {
     pub fn name(&self) -> &Ident {
-        match self.types[0].node {
-            TypeDeclaration_::Class(ref class) => &class.node.name,
-            TypeDeclaration_::Interface(ref interface) => &interface.node.name,
-        }
+        self.types[0].name()
     }
 }
 

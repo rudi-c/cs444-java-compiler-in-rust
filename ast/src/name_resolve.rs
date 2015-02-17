@@ -95,17 +95,20 @@ pub struct TypeDefinition<'ast> {
     // need to be be in separate namespaces.
     fields: HashMap<Symbol, FieldRef<'ast>>,
     methods: HashMap<Symbol, MethodRef<'ast>>,
+
+    ast: &'ast ast::TypeDeclaration,
 }
 pub type TypeDefinitionRef<'ast> = Rc<RefCell<TypeDefinition<'ast>>>;
 pub type TypeDefinitionWeak<'ast> = Weak<RefCell<TypeDefinition<'ast>>>;
 
 impl<'ast> TypeDefinition<'ast> {
-    pub fn new(name: String, kind: TypeKind) -> TypeDefinitionRef<'ast> {
+    pub fn new(name: String, kind: TypeKind, ast: &'ast ast::TypeDeclaration) -> TypeDefinitionRef<'ast> {
         rc_cell(TypeDefinition {
             fq_name: Name::fresh(name),
             kind: kind,
             fields: HashMap::new(),
             methods: HashMap::new(),
+            ast: ast,
         })
     }
 }
@@ -114,42 +117,6 @@ struct Collector<'ast> {
     package: PackageRef<'ast>,
     scope: Vec<Symbol>,
     type_definition: Option<TypeDefinitionRef<'ast>>,
-}
-
-impl<'ast> Collector<'ast> {
-    fn walk_type<F: FnOnce(&mut Self)>(&mut self, name: &Ident, kind: TypeKind, f: F) {
-        assert!(self.type_definition.is_none());
-
-        self.scope.push(name.node);
-
-        let tydef = {
-            let mut package = self.package.borrow_mut();
-            // XXX: Need to go through some contortions here to make rustc recognize the mutable
-            // deref
-            let &mut Package { ref fq_name, ref mut contents } = &mut *package;
-            match contents.entry(name.node) {
-                hash_map::Entry::Occupied(_v) => {
-                    span_error!(name.span,
-                                "type `{}` already exists in package `{}`",
-                                name, fq_name);
-                    return
-                }
-                hash_map::Entry::Vacant(v) => {
-                    let fq_type = Qualified(self.scope.iter()).to_string();
-                    let def = TypeDefinition::new(fq_type, kind);
-                    v.insert(PackageItem::TypeDefinition(def.clone()));
-                    def
-                }
-            }
-        };
-
-        self.type_definition = Some(tydef);
-
-        f(self);
-
-        self.type_definition = None;
-        self.scope.pop();
-    }
 }
 
 impl<'ast> Walker<'ast> for Collector<'ast> {
@@ -182,35 +149,85 @@ impl<'ast> Walker<'ast> for Collector<'ast> {
         self.walk_class_method(method);
     }
 
-    fn walk_class(&mut self, class: &'ast ast::Class) {
-        self.walk_type(&class.node.name, TypeKind::Class, |me| default_walk_class(me, class));
-    }
+    fn walk_type_declaration(&mut self, ty_decl: &'ast ast::TypeDeclaration) {
+        assert!(self.type_definition.is_none());
 
-    fn walk_interface(&mut self, interface: &'ast ast::Interface) {
-        self.walk_type(&interface.node.name, TypeKind::Interface, |me| default_walk_interface(me, interface));
+        let name = ty_decl.name();
+        let kind = match ty_decl.node {
+            ast::TypeDeclaration_::Class(..) => TypeKind::Class,
+            ast::TypeDeclaration_::Interface(..) => TypeKind::Interface,
+        };
+        self.scope.push(name.node);
+        let fq_type = Qualified(self.scope.iter()).to_string();
+        let tydef = TypeDefinition::new(fq_type, kind, ty_decl);
+
+        // Insert `tydef` into the package
+        {
+            let mut package = self.package.borrow_mut();
+            // XXX: Need to go through some contortions here to make rustc recognize the mutable
+            // deref
+            let &mut Package { ref fq_name, ref mut contents } = &mut *package;
+            match contents.entry(name.node) {
+                hash_map::Entry::Occupied(v) => {
+                    match *v.get() {
+                        PackageItem::Package(..) => {
+                            type_package_conflict(&*tydef.borrow());
+                        }
+                        PackageItem::TypeDefinition(..) => {
+                            span_error!(name.span,
+                                        "type `{}` already exists in package `{}`",
+                                        name, fq_name);
+                        }
+                    }
+                    return
+                }
+                hash_map::Entry::Vacant(v) => {
+                    v.insert(PackageItem::TypeDefinition(tydef.clone()));
+                }
+            }
+        }
+
+        self.type_definition = Some(tydef);
+
+        default_walk_type_declaration(self, ty_decl);
+
+        self.type_definition = None;
+        self.scope.pop();
     }
+}
+
+fn type_package_conflict(tydef: &TypeDefinition) {
+    span_error!(tydef.ast.name().span,
+                // Technically this is the name of the type, not the package,
+                // but the point is that they're the same...
+                "type name conflicts with package `{}`",
+                tydef.fq_name);
 }
 
 // Looks up a package by qualified identifier, creating it if necessary.
 // If a name conflict occurs, this will create a dummy package.
 fn resolve_package<'ast>(toplevel: PackageRef<'ast>, id: &QualifiedIdentifier) -> PackageRef<'ast> {
     id.node.parts.iter().enumerate().fold(toplevel, |package, (ix, ident)| {
+        let new = |:| Package::new(Qualified(id.node.parts[0..ix+1].iter()).to_string());
         match package.borrow_mut().contents.entry(ident.node) {
-            hash_map::Entry::Occupied(v) => {
-                if let PackageItem::Package(ref it) = *v.get() {
-                    // Found it
-                    it.clone()
-                } else {
-                    span_error!(ident.span,
-                                // FIXME: better error message
-                                "package name conflict");
-                    // create a new name for now...
-                    // XXX: One bad class processed early could cause a ton of package name conflicts
-                    Package::new(Qualified(id.node.parts[0..ix+1].iter()).to_string())
+            hash_map::Entry::Occupied(mut v) => {
+                let mut slot = v.get_mut();
+                match *slot {
+                    PackageItem::Package(ref it) => return it.clone(), // Found it
+                    PackageItem::TypeDefinition(ref tydef) => {
+                        // There was a type instead!
+                        type_package_conflict(&*tydef.borrow());
+                    }
                 }
+                // Kick out the type and put a package instead.
+                // This prevents a spray of errors in case one type conflicts with a package with
+                // many compilation units
+                let next = new();
+                *slot = PackageItem::Package(next.clone());
+                next
             }
             hash_map::Entry::Vacant(v) => {
-                let next = Package::new(Qualified(id.node.parts[0..ix+1].iter()).to_string());
+                let next = new();
                 v.insert(PackageItem::Package(next.clone()));
                 next
             }

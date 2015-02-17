@@ -7,6 +7,7 @@ use ast::*;
 /// walk logic).
 pub trait Walker<'a>: Sized {
     fn walk_compilation_unit(&mut self, ast: &'a CompilationUnit) { default_walk_compilation_unit(self, ast); }
+    fn walk_type_declaration(&mut self, ty_decl: &'a TypeDeclaration) { default_walk_type_declaration(self, ty_decl); }
     fn walk_interface(&mut self, interface: &'a Interface) { default_walk_interface(self, interface); }
     fn walk_interface_method(&mut self, method: &'a Method) { default_walk_interface_method(self, method); }
     fn walk_class(&mut self, class: &'a Class) { default_walk_class(self, class); }
@@ -22,14 +23,17 @@ pub trait Walker<'a>: Sized {
 
 pub fn default_walk_compilation_unit<'a, T: Walker<'a>>(walker: &mut T, ast: &'a CompilationUnit) {
     for ty_decl in ast.types.iter() {
-        match ty_decl.node {
-            TypeDeclaration_::Class(ref class) => {
-                walker.walk_class(class);
-            },
-            TypeDeclaration_::Interface(ref interface) => {
-                walker.walk_interface(interface);
-            },
-        }
+        walker.walk_type_declaration(ty_decl);
+    }
+}
+pub fn default_walk_type_declaration<'a, T: Walker<'a>>(walker: &mut T, ty_decl: &'a TypeDeclaration) {
+    match ty_decl.node {
+        TypeDeclaration_::Class(ref class) => {
+            walker.walk_class(class);
+        },
+        TypeDeclaration_::Interface(ref interface) => {
+            walker.walk_interface(interface);
+        },
     }
 }
 pub fn default_walk_interface<'a, T: Walker<'a>>(walker: &mut T, interface: &'a Interface) {
