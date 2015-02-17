@@ -2,6 +2,8 @@ use ast;
 use name::*;
 use walker::*;
 
+use rbtree::RbMap;
+
 use std::borrow::ToOwned;
 use std::collections::{hash_map, HashMap};
 use std::cell::RefCell;

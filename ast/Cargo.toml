@@ -11,3 +11,7 @@ path = "../dfagen"
 [dependencies.lalrgen]
 
 path = "../lalrgen"
+
+[dependencies.rbtree]
+
+path = "../rbtree"
