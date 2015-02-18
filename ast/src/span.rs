@@ -1,4 +1,5 @@
 #![macro_use]
+use std::fmt::{Show, Formatter, Error};
 
 pub type Location = u32;
 pub type FileId = usize;
@@ -17,7 +18,7 @@ impl Span {
     }
 }
 
-#[derive(Show, Clone)]
+#[derive(Clone)]
 pub struct Spanned<T> {
     pub span: Span,
     pub node: T,
@@ -32,3 +33,8 @@ macro_rules! node {
     ($x: pat) => (Spanned { span: _, node: $x });
 }
 
+impl<T: Show> Show for Spanned<T> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        self.node.fmt(f)
+    }
+}
