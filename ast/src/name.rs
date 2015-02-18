@@ -89,6 +89,12 @@ impl QualifiedIdentifier {
                 QualifiedIdentifier_ { parts: parts })
     }
 
+    // Returns a slice of all identifiers but the last.
+    pub fn all_but_last(&self) -> &[Ident] {
+        let length = self.node.parts.len();
+        self.node.parts[0..length - 1].as_slice()
+    }
+
     // Returns a new QualifiedIdentifier with an identifier appended.
     pub fn append_ident(&self, identifier: &Ident) -> QualifiedIdentifier {
         let mut new_identifier = self.clone();

@@ -1,4 +1,4 @@
-package banana;
+package fruit.banana;
 
 public interface MultiSample3
 {

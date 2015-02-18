@@ -1,6 +1,7 @@
 package apples;
-import banana.sample3;
-import banana.sample4;
+import fruit.banana;
+import fruit.banana.MultiSample2;
+import fruit.banana.MultiSample3;
 
 public class MultiSample1
 {

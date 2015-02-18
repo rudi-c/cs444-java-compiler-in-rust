@@ -24,7 +24,7 @@ fn rc_cell<T>(x: T) -> Rc<RefCell<T>> { Rc::new(RefCell::new(x)) }
 // Many objects also hold references to their associated AST nodes, hence the 'ast lifetime
 // everywhere.
 
-#[derive(Show)]
+#[derive(Show, Clone)]
 pub enum PackageItem<'ast> {
     Package(PackageRef<'ast>),
     TypeDefinition(TypeDefinitionRef<'ast>),
@@ -237,7 +237,8 @@ fn resolve_package<'ast>(toplevel: PackageRef<'ast>, id: &QualifiedIdentifier) -
     })
 }
 
-pub fn fully_qualify_names<'ast>(toplevel: PackageRef<'ast>, asts: &'ast [ast::CompilationUnit]) {
+pub fn fully_qualify_names<'ast>(toplevel: PackageRef<'ast>,
+                                 asts: &'ast [ast::CompilationUnit]) {
     for ast in asts.iter() {
         let (package, scope) = if let Some(ref package_identifier) = ast.package {
             (resolve_package(toplevel.clone(), package_identifier),
@@ -254,9 +255,142 @@ pub fn fully_qualify_names<'ast>(toplevel: PackageRef<'ast>, asts: &'ast [ast::C
     }
 }
 
+enum SymTableItem<'ast> {
+    LocalVariable,
+    Field(Field<'ast>),
+}
+
+type TypesEnvironment<'ast> = RbMap<Name, PackageItem<'ast>>;
+type NonTypesEnvironment<'ast> = RbMap<Name, SymTableItem<'ast>>;
+
+struct EnvironmentStack<'ast> {
+    types: TypesEnvironment<'ast>,
+    nonTypes: Vec<NonTypesEnvironment<'ast>>
+}
+
+impl<'ast> Walker<'ast> for EnvironmentStack<'ast> {
+
+}
+
+// Returns the PackageItem corresponding to a path of identifiers a.b.c
+pub fn resolve_import<'ast>(package: PackageRef<'ast>, path: &[Ident])
+        -> Option<PackageItem<'ast>> {
+    match path.first() {
+        // Base case
+        None => Some(PackageItem::Package(package)),
+        Some(first) => match package.borrow().contents.get(&first.node) {
+            Some(&PackageItem::Package(ref found_package)) => {
+                resolve_import(found_package.clone(), path.tail())
+            },
+            Some(&PackageItem::TypeDefinition(ref typedef)) => {
+                if path.len() == 1 {
+                    Some(PackageItem::TypeDefinition(typedef.clone()))
+                } else {
+                    // No nested classes, so shouldn't traverse past a typedef.
+                    None
+                }
+            },
+            None => None,
+        },
+    }
+}
+
+fn insert_check_present<'ast>(symbol: &Symbol,
+                              package_item: &PackageItem<'ast>,
+                              imported: &QualifiedIdentifier,
+                              current_env: TypesEnvironment<'ast>)
+        -> TypesEnvironment<'ast> {
+    let name = Name::fresh(symbol.to_string());
+    let (new_env, previous) = current_env.insert(name, package_item.clone());
+    if let Some(_) = previous {
+        span_error!(imported.span,
+                    "importing `{}` from `{}` conflicts with previous import",
+                    symbol,
+                    imported);
+    }
+    new_env
+}
+
+fn import_single_type<'ast>(imported: &QualifiedIdentifier,
+                            toplevel: PackageRef<'ast>,
+                            current_env: TypesEnvironment<'ast>)
+        -> TypesEnvironment<'ast> {
+    let resolved_import = resolve_import(toplevel,
+                                         imported.node.parts.as_slice());
+    if let Some(package_item) = resolved_import {
+        insert_check_present(&imported.node.parts.last().unwrap().node,
+                             &package_item,
+                             imported,
+                             current_env)
+    } else {
+        span_error!(imported.span,
+                    "cannot find package `{}` to import '*'",
+                    imported);
+        current_env
+    }
+}
+
+fn import_on_demand<'ast>(imported: &QualifiedIdentifier,
+                          toplevel: PackageRef<'ast>,
+                          current_env: TypesEnvironment<'ast>)
+        -> TypesEnvironment<'ast> {
+    let resolved_import = resolve_import(toplevel,
+                                          imported.all_but_last());
+    match resolved_import {
+        Some(PackageItem::Package(ref package)) => {
+            // Add every type and package to the environment.
+            package.borrow()
+                   .contents
+                   .iter()
+                   .fold(current_env, |env, (symbol, package_item)| {
+                insert_check_present(symbol,
+                                     package_item,
+                                     imported,
+                                     env)
+            })
+        },
+        Some(PackageItem::TypeDefinition(_)) |
+        None => {
+            span_error!(imported.span,
+                        "cannot find package `{}` to import",
+                        imported);
+            current_env
+        }
+    }
+}
+
+fn build_environments<'ast>(toplevel: PackageRef<'ast>,
+                            asts: &'ast [ast::CompilationUnit]) {
+    for ast in asts.iter() {
+        let mut types_env: TypesEnvironment<'ast> = RbMap::new();
+
+        // Add all imports to initial environment for this compilation unit.
+        for import in ast.imports.iter() {
+            match import.node {
+                ast::ImportDeclaration_::SingleType(ref qident) => {
+                    types_env = import_single_type(qident,
+                                                   toplevel.clone(),
+                                                   types_env);
+                },
+                ast::ImportDeclaration_::OnDemand(ref qident) => {
+                    types_env = import_on_demand(qident,
+                                                 toplevel.clone(),
+                                                 types_env);
+                },
+            }
+        }
+
+        EnvironmentStack {
+            types: types_env,
+            nonTypes: vec![RbMap::new()],
+        }.walk_compilation_unit(ast);
+    }
+}
+
 pub fn name_resolve(asts: &[ast::CompilationUnit]) {
     let toplevel = Package::new("top level".to_owned());
     fully_qualify_names(toplevel.clone(), asts);
+    build_environments(toplevel.clone(), asts);
 
     // For testing - remove when name resolution is finished.
     // XXX: This may lead to an infinite loop later

@@ -1,4 +1,4 @@
-package banana;
+package fruit.banana;
 
 public class MultiSample2
 {
