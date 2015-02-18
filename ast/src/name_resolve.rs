@@ -269,7 +269,7 @@ enum SymTableItem<'ast> {
     Field(Field<'ast>),
 }
 
-type TypesEnvironment<'ast> = RbMap<Name, PackageItem<'ast>>;
+type TypesEnvironment<'ast> = RbMap<Name, TypeDefinitionRef<'ast>>;
 type NonTypesEnvironment<'ast> = RbMap<Name, SymTableItem<'ast>>;
 
 struct EnvironmentStack<'ast> {
@@ -287,13 +287,13 @@ impl<'ast> Walker<'ast> for EnvironmentStack<'ast> {
     fn walk_class(&mut self, class: &'ast ast::Class) {
         let ref class_name = class.node.name;
         let typedef = self.get_type_declaration(class_name).unwrap();
-        self.types = safe_add_type(&self.types, class_name, typedef);
+        self.types = insert_declared_type(&self.types, class_name, typedef);
     }
 
     fn walk_interface(&mut self, interface: &'ast ast::Interface) {
         let ref interface_name = interface.node.name;
         let typedef = self.get_type_declaration(interface_name).unwrap();
-        self.types = safe_add_type(&self.types, interface_name, typedef);
+        self.types = insert_declared_type(&self.types, interface_name, typedef);
     }
 }
 
@@ -322,19 +322,18 @@ impl<'ast> EnvironmentStack<'ast> {
     }
 }
 
-fn safe_add_type<'ast>(env: &TypesEnvironment<'ast>,
-                       ident: &Ident,
-                       typedef: TypeDefinitionRef<'ast>) -> TypesEnvironment<'ast> {
+fn insert_declared_type<'ast>(env: &TypesEnvironment<'ast>,
+                              ident: &Ident,
+                              typedef: TypeDefinitionRef<'ast>) -> TypesEnvironment<'ast> {
 
     let name = Name::fresh(ident.node.to_string());
-    let package_item = PackageItem::TypeDefinition(typedef);
-    let (new_env, previous) = env.insert(name, package_item);
+    let (new_env, previous) = env.insert(name, typedef);
     if let Some(&(_, ref previous_item)) = previous {
         // TODO: Shouldn't continue after this error - how to do that?
         span_error!(ident.span,
                     "type `{}` declared in this file conflicts with import `{}`",
                     ident,
-                    previous_item.fq_name());
+                    previous_item.borrow().fq_name);
     }
     new_env
 }
@@ -362,15 +361,15 @@ pub fn resolve_import<'ast>(package: PackageRef<'ast>, path: &[Ident])
     }
 }
 
-fn insert_check_present<'ast>(symbol: &Symbol,
-                              package_item: &PackageItem<'ast>,
-                              imported: &QualifiedIdentifier,
-                              current_env: TypesEnvironment<'ast>)
+fn insert_type_import<'ast>(symbol: &Symbol,
+                            typedef: &TypeDefinitionRef<'ast>,
+                            imported: &QualifiedIdentifier,
+                            current_env: TypesEnvironment<'ast>)
         -> TypesEnvironment<'ast> {
     let name = Name::fresh(symbol.to_string());
-    let (new_env, previous_opt) = current_env.insert(name, package_item.clone());
+    let (new_env, previous_opt) = current_env.insert(name, typedef.clone());
     if let Some(previous) = previous_opt {
-        if previous.1.fq_name() != package_item.fq_name() {
+        if previous.1.borrow().fq_name != typedef.borrow().fq_name {
             span_error!(imported.span,
                         "importing `{}` from `{}` conflicts with previous import",
                         symbol,
@@ -387,10 +386,10 @@ fn import_single_type<'ast>(imported: &QualifiedIdentifier,
     let resolved_import = resolve_import(toplevel,
                                          imported.node.parts.as_slice());
     if let Some(PackageItem::TypeDefinition(typedef)) = resolved_import {
-        insert_check_present(&imported.node.parts.last().unwrap().node,
-                             &PackageItem::TypeDefinition(typedef),
-                             imported,
-                             current_env)
+        insert_type_import(&imported.node.parts.last().unwrap().node,
+                           &typedef,
+                           imported,
+                           current_env)
     } else if let Some(PackageItem::Package(_)) = resolved_import {
         // $(7.5.1) : Note that an import statement cannot import a subpackage,
         //            only a type.
@@ -419,10 +418,17 @@ fn import_on_demand<'ast>(imported: &QualifiedIdentifier,
                    .contents
                    .iter()
                    .fold(current_env, |env, (symbol, package_item)| {
-                insert_check_present(symbol,
-                                     package_item,
-                                     imported,
-                                     env)
+                // ($7.5.2) : A type-import-on-demand declaration allows all
+                //            accessible types declared in a type or package
+                //            to be imported as needed.
+                if let &PackageItem::TypeDefinition(ref typedef) = package_item {
+                    insert_type_import(symbol,
+                                       typedef,
+                                       imported,
+                                       env)
+                } else {
+                    env
+                }
             })
         },
         Some(PackageItem::TypeDefinition(_)) |
