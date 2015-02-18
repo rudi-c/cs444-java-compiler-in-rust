@@ -116,7 +116,7 @@ pub struct TypeDefinition<'ast> {
     fields: HashMap<Symbol, FieldRef<'ast>>,
     methods: HashMap<Symbol, MethodRef<'ast>>,
 
-    extends: Option<TypeDefinitionRef<'ast>>,
+    extends: Vec<TypeDefinitionRef<'ast>>,
     implements: Vec<TypeDefinitionRef<'ast>>,
 
     ast: &'ast ast::TypeDeclaration,
@@ -131,7 +131,7 @@ impl<'ast> TypeDefinition<'ast> {
             kind: kind,
             fields: HashMap::new(),
             methods: HashMap::new(),
-            extends: None,
+            extends: vec![],
             implements: vec![],
             ast: ast,
         })
@@ -311,30 +311,26 @@ impl<'ast> Walker<'ast> for EnvironmentStack<'ast> {
 
         // Process the class' inheritance.
         if let Some(ref extension) = class.node.extends {
-            match self.resolve_identifier(extension, non_types_env) {
-                Some(SymTableItem::Type(extended_type)) => {
-                    typedef.borrow_mut().extends = Some(extended_type.clone());
-                },
-                Some(_) => {
-                    span_error!(extension.span,
-                                "class `{}` cannot extend non-type `{}`",
-                                class_name,
-                                extension);
-                },
-                None => {},
-            }
+            self.resolve_extensions(typedef.clone(),
+                                    non_types_env,
+                                    &vec![extension.clone()]);
         }
+        self.resolve_implements(typedef.clone(), non_types_env, &class.node.implements);
 
         // Add the class itself to the environment.
         self.types = insert_declared_type(&self.types, class_name, typedef);
     }
 
     fn walk_interface(&mut self, interface: &'ast ast::Interface) {
-        // Process the interface's inheritance.
-
-        // Add the interface itself to the environment.
         let ref interface_name = interface.node.name;
         let typedef = self.get_type_declaration(interface_name).unwrap();
+
+        let mut non_types_env = self.non_types.last().unwrap();
+
+        // Process the interface's inheritance.
+        self.resolve_extensions(typedef.clone(), non_types_env, &interface.node.extends);
+
+        // Add the interface itself to the environment.
         self.types = insert_declared_type(&self.types, interface_name, typedef);
     }
 }
@@ -359,6 +355,47 @@ impl<'ast> EnvironmentStack<'ast> {
                 Some(typedef)
             } else {
                 None
+            }
+        }
+    }
+
+    fn resolve_extensions(&self,
+                          typedef: TypeDefinitionRef<'ast>,
+                          non_types_env: &NonTypesEnvironment<'ast>,
+                          extensions: &Vec<QualifiedIdentifier>) {
+        for extension in extensions.iter() {
+            match self.resolve_identifier(extension, non_types_env) {
+                Some(SymTableItem::Type(extended_type)) => {
+                    typedef.borrow_mut().extends.push(extended_type.clone());
+                },
+                Some(_) => {
+                    span_error!(extension.span,
+                                "class `{}` cannot extend non-type `{}`",
+                                typedef.borrow().fq_name,
+                                extension);
+                },
+                None => {},
+            }
+        }
+    }
+
+    fn resolve_implements(&self,
+                          typedef: TypeDefinitionRef<'ast>,
+                          non_types_env: &NonTypesEnvironment<'ast>,
+                          implements: &Vec<QualifiedIdentifier>) {
+        for implement in implements.iter() {
+            match self.resolve_identifier(implement, non_types_env) {
+                Some(SymTableItem::Type(implemented_type)) => {
+                    typedef.borrow_mut().implements.push(implemented_type.clone());
+                },
+                Some(_) => {
+                    span_error!(implement.span,
+                                "{:?} `{}` cannot implement non-type `{}`",
+                                typedef.borrow().kind,
+                                typedef.borrow().fq_name,
+                                implement);
+                },
+                None => {},
             }
         }
     }
