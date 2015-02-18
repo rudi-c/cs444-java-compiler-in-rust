@@ -273,12 +273,70 @@ type TypesEnvironment<'ast> = RbMap<Name, PackageItem<'ast>>;
 type NonTypesEnvironment<'ast> = RbMap<Name, SymTableItem<'ast>>;
 
 struct EnvironmentStack<'ast> {
+    // Since there are no nested classes and only one type per file,
+    // this is not a stack/vector and we just use mutation to add the
+    // single class/interface in the file to the initial environment
+    // containing imported types.
     types: TypesEnvironment<'ast>,
-    nonTypes: Vec<NonTypesEnvironment<'ast>>
+    nonTypes: Vec<NonTypesEnvironment<'ast>>,
+    toplevel: PackageRef<'ast>,
+    package: Option<QualifiedIdentifier>,
 }
 
 impl<'ast> Walker<'ast> for EnvironmentStack<'ast> {
+    fn walk_class(&mut self, class: &'ast ast::Class) {
+        let ref class_name = class.node.name;
+        let typedef = self.get_type_declaration(class_name).unwrap();
+        self.types = safe_add_type(&self.types, class_name, typedef);
+    }
 
+    fn walk_interface(&mut self, interface: &'ast ast::Interface) {
+        let ref interface_name = interface.node.name;
+        let typedef = self.get_type_declaration(interface_name).unwrap();
+        self.types = safe_add_type(&self.types, interface_name, typedef);
+    }
+}
+
+impl<'ast> EnvironmentStack<'ast> {
+    fn get_type_declaration(&mut self, ident: &Ident) -> Option<TypeDefinitionRef<'ast>> {
+        if let Some(ref package) = self.package {
+            let fq_parts = package.append_ident(ident).node.parts;
+            let resolved_import = resolve_import(self.toplevel.clone(),
+                                                 fq_parts.as_slice());
+
+            if let Some(PackageItem::TypeDefinition(typedef)) = resolved_import {
+                Some(typedef)
+            } else {
+                None
+            }
+        } else {
+            // Top level.
+            let resolved_import = resolve_import(self.toplevel.clone(),
+                                                 &[ident.clone()]);
+            if let Some(PackageItem::TypeDefinition(typedef)) = resolved_import {
+                Some(typedef)
+            } else {
+                None
+            }
+        }
+    }
+}
+
+fn safe_add_type<'ast>(env: &TypesEnvironment<'ast>,
+                       ident: &Ident,
+                       typedef: TypeDefinitionRef<'ast>) -> TypesEnvironment<'ast> {
+
+    let name = Name::fresh(ident.node.to_string());
+    let package_item = PackageItem::TypeDefinition(typedef);
+    let (new_env, previous) = env.insert(name, package_item);
+    if let Some(&(_, ref previous_item)) = previous {
+        // TODO: Shouldn't continue after this error - how to do that?
+        span_error!(ident.span,
+                    "type `{}` declared in this file conflicts with import `{}`",
+                    ident,
+                    previous_item.fq_name());
+    }
+    new_env
 }
 
 // Returns the PackageItem corresponding to a path of identifiers a.b.c
@@ -394,6 +452,8 @@ fn build_environments<'ast>(toplevel: PackageRef<'ast>,
         EnvironmentStack {
             types: types_env,
             nonTypes: vec![RbMap::new()],
+            toplevel: toplevel.clone(),
+            package: ast.package.clone(),
         }.walk_compilation_unit(ast);
     }
 }
