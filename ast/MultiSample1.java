@@ -1,6 +1,5 @@
 package apples;
-import fruit.banana;
-import fruit.banana;
+import fruit.banana.*;
 import fruit.banana.MultiSample2;
 import fruit.banana.MultiSample3;
 

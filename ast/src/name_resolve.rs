@@ -386,11 +386,18 @@ fn import_single_type<'ast>(imported: &QualifiedIdentifier,
         -> TypesEnvironment<'ast> {
     let resolved_import = resolve_import(toplevel,
                                          imported.node.parts.as_slice());
-    if let Some(package_item) = resolved_import {
+    if let Some(PackageItem::TypeDefinition(typedef)) = resolved_import {
         insert_check_present(&imported.node.parts.last().unwrap().node,
-                             &package_item,
+                             &PackageItem::TypeDefinition(typedef),
                              imported,
                              current_env)
+    } else if let Some(PackageItem::Package(_)) = resolved_import {
+        // $(7.5.1) : Note that an import statement cannot import a subpackage,
+        //            only a type.
+        span_error!(imported.span,
+                    "cannot import subpackages (trying to import `{}` here)",
+                    imported);
+        current_env
     } else {
         span_error!(imported.span,
                     "cannot find package `{}` to import '*'",
