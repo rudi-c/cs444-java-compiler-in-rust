@@ -411,7 +411,6 @@ impl<'ast> EnvironmentStack<'ast> {
     fn resolve_type_identifier(&self, qident: &[Ident],
                                typedef: TypeDefinitionRef<'ast>)
             -> Option<SymTableItem<'ast>> {
-        println!("test------------");
         match qident.first() {
             // Just this type
             None => Some(SymTableItem::Type(typedef.clone())),
