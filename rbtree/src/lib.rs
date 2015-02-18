@@ -1,6 +1,7 @@
 #![allow(unstable)]
 
 use std::borrow::BorrowFrom;
+use std::fmt::{Show, Formatter, Error};
 use std::rc::Rc;
 use std::cmp::Ordering::*;
 use Node::*;
@@ -46,6 +47,18 @@ impl<K, V> RbMap<K, V> {
 impl<K, V> Clone for RbMap<K, V> {
     fn clone(&self) -> RbMap<K, V> {
         RbMap { root: self.root.clone() }
+    }
+}
+
+impl<K: Show, V: Show> Show for RbMap<K, V> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        try!(write!(f, "{{"));
+        for &(ref key, ref value) in self.iter() {
+            // TODO: For extra prettiness, get rid of last comma.
+            try!(write!(f, "{:?}: {:?}, ", key, value));
+        }
+        try!(write!(f, "}}"));
+        Ok(())
     }
 }
 
