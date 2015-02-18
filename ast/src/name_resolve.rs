@@ -37,6 +37,15 @@ impl<'ast> PackageItem<'ast> {
             &PackageItem::TypeDefinition(ref typedef) => typedef.borrow().fq_name,
         }
     }
+
+    pub fn print_light(&self) {
+        println!("{}", self.fq_name());
+        if let &PackageItem::Package(ref package) = self {
+            for package_item in package.borrow().contents.values() {
+                package_item.print_light();
+            }
+        }
+    }
 }
 
 #[derive(Show)]
@@ -107,6 +116,9 @@ pub struct TypeDefinition<'ast> {
     fields: HashMap<Symbol, FieldRef<'ast>>,
     methods: HashMap<Symbol, MethodRef<'ast>>,
 
+    extends: Option<TypeDefinitionRef<'ast>>,
+    implements: Vec<TypeDefinitionRef<'ast>>,
+
     ast: &'ast ast::TypeDeclaration,
 }
 pub type TypeDefinitionRef<'ast> = Rc<RefCell<TypeDefinition<'ast>>>;
@@ -119,6 +131,8 @@ impl<'ast> TypeDefinition<'ast> {
             kind: kind,
             fields: HashMap::new(),
             methods: HashMap::new(),
+            extends: None,
+            implements: vec![],
             ast: ast,
         })
     }
@@ -264,13 +278,18 @@ pub fn fully_qualify_names<'ast>(toplevel: PackageRef<'ast>,
     }
 }
 
+#[derive(Show, Clone)]
 enum SymTableItem<'ast> {
+    Type(TypeDefinitionRef<'ast>),
+    // TODO: Static imports.
     LocalVariable,
-    Field(Field<'ast>),
+    Field(FieldRef<'ast>),
+    Method(MethodRef<'ast>),
 }
 
-type TypesEnvironment<'ast> = RbMap<Name, TypeDefinitionRef<'ast>>;
-type NonTypesEnvironment<'ast> = RbMap<Name, SymTableItem<'ast>>;
+
+type TypesEnvironment<'ast> = RbMap<Symbol, TypeDefinitionRef<'ast>>;
+type NonTypesEnvironment<'ast> = RbMap<Symbol, SymTableItem<'ast>>;
 
 struct EnvironmentStack<'ast> {
     // Since there are no nested classes and only one type per file,
@@ -278,7 +297,7 @@ struct EnvironmentStack<'ast> {
     // single class/interface in the file to the initial environment
     // containing imported types.
     types: TypesEnvironment<'ast>,
-    nonTypes: Vec<NonTypesEnvironment<'ast>>,
+    non_types: Vec<NonTypesEnvironment<'ast>>,
     toplevel: PackageRef<'ast>,
     package: Option<QualifiedIdentifier>,
 }
@@ -287,10 +306,33 @@ impl<'ast> Walker<'ast> for EnvironmentStack<'ast> {
     fn walk_class(&mut self, class: &'ast ast::Class) {
         let ref class_name = class.node.name;
         let typedef = self.get_type_declaration(class_name).unwrap();
+
+        let mut non_types_env = self.non_types.last().unwrap();
+
+        // Process the class' inheritance.
+        if let Some(ref extension) = class.node.extends {
+            match self.resolve_identifier(extension, non_types_env) {
+                Some(SymTableItem::Type(extended_type)) => {
+                    typedef.borrow_mut().extends = Some(extended_type.clone());
+                },
+                Some(_) => {
+                    span_error!(extension.span,
+                                "class `{}` cannot extend non-type `{}`",
+                                class_name,
+                                extension);
+                },
+                None => {},
+            }
+        }
+
+        // Add the class itself to the environment.
         self.types = insert_declared_type(&self.types, class_name, typedef);
     }
 
     fn walk_interface(&mut self, interface: &'ast ast::Interface) {
+        // Process the interface's inheritance.
+
+        // Add the interface itself to the environment.
         let ref interface_name = interface.node.name;
         let typedef = self.get_type_declaration(interface_name).unwrap();
         self.types = insert_declared_type(&self.types, interface_name, typedef);
@@ -298,7 +340,7 @@ impl<'ast> Walker<'ast> for EnvironmentStack<'ast> {
 }
 
 impl<'ast> EnvironmentStack<'ast> {
-    fn get_type_declaration(&mut self, ident: &Ident) -> Option<TypeDefinitionRef<'ast>> {
+    fn get_type_declaration(&self, ident: &Ident) -> Option<TypeDefinitionRef<'ast>> {
         if let Some(ref package) = self.package {
             let fq_parts = package.append_ident(ident).node.parts;
             let resolved_import = resolve_import(self.toplevel.clone(),
@@ -320,14 +362,118 @@ impl<'ast> EnvironmentStack<'ast> {
             }
         }
     }
+
+    fn resolve_identifier(&self, qident: &QualifiedIdentifier,
+                          non_types_env: &NonTypesEnvironment<'ast>)
+            -> Option<SymTableItem<'ast>> {
+        // For qident = a.b.c.d...
+        let first = qident.node.parts.first().unwrap();
+        let rest = qident.node.parts.tail();
+
+        if let Some(item) = non_types_env.get(&first.node) {
+            // a is local variable or parameter or static import
+            self.resolve_expression_identifier(rest, item)
+        } else if let Some(item) = self.types.get(&first.node) {
+            // a is a type
+            self.resolve_type_identifier(rest, item.clone())
+        } else if let Some(item) = self.toplevel.borrow().contents.get(&first.node) {
+            // a is a package
+            if let &PackageItem::Package(ref package) = item {
+                self.resolve_package_identifier(rest, package.clone())
+            } else {
+                span_error!(first.span,
+                            "resolving unimported type `{}`",
+                            first.node);
+                None
+            }
+        } else {
+            span_error!(first.span,
+                        "unable to resolve identifier `{}` in `{}`",
+                        first.node,
+                        qident);
+            None
+        }
+    }
+
+    fn resolve_expression_identifier(&self, qident: &[Ident],
+                                     expression: &SymTableItem<'ast>)
+            -> Option<SymTableItem<'ast>> {
+        match qident.first() {
+            // Just this expression
+            None => Some(expression.clone()),
+            Some(ref first) => {
+                // TODO
+                Some(expression.clone())
+            }
+        }
+    }
+
+    fn resolve_type_identifier(&self, qident: &[Ident],
+                               typedef: TypeDefinitionRef<'ast>)
+            -> Option<SymTableItem<'ast>> {
+        println!("test------------");
+        match qident.first() {
+            // Just this type
+            None => Some(SymTableItem::Type(typedef.clone())),
+            // Look in the type's members
+            Some(ref first) => {
+                if let Some(field) = typedef.borrow().fields.get(&first.node) {
+                    let item = SymTableItem::Field(field.clone());
+                    self.resolve_expression_identifier(qident.tail(), &item)
+                } else if let Some(method) = typedef.borrow().methods.get(&first.node) {
+                    let item = SymTableItem::Method(method.clone());
+                    self.resolve_expression_identifier(qident.tail(), &item)
+                } else {
+                    span_error!(first.span,
+                                "member `{}` not found on type `{}`",
+                                first,
+                                typedef.borrow().fq_name);
+                    None
+                }
+            }
+        }
+    }
+
+    fn resolve_package_identifier(&self, qident: &[Ident],
+                                  package: PackageRef<'ast>)
+            -> Option<SymTableItem<'ast>> {
+        // This function should not be called on an empty qident, because
+        // it would imply that we are returning a package, which is not
+        // a valid name resolution. Caller functions should catch this case.
+        let first = qident.first().unwrap();
+
+        match package.borrow().contents.get(&first.node) {
+            Some(&PackageItem::Package(ref found_package)) => {
+                if qident.len() == 1 {
+                    // Can't resolve to a package.
+                    span_error!(first.span,
+                                "package {} is not a valid name resolution",
+                                found_package.borrow().fq_name);
+                    None
+                } else {
+                    self.resolve_package_identifier(qident.tail(),
+                                                    found_package.clone())
+                }
+            },
+            Some(&PackageItem::TypeDefinition(ref typedef)) => {
+                self.resolve_type_identifier(qident.tail(), typedef.clone())
+            },
+            None => {
+                span_error!(first.span,
+                            "type or package `{}` not found in package `{}`",
+                            first,
+                            package.borrow().fq_name);
+                None
+            }
+        }
+    }
 }
 
 fn insert_declared_type<'ast>(env: &TypesEnvironment<'ast>,
                               ident: &Ident,
                               typedef: TypeDefinitionRef<'ast>) -> TypesEnvironment<'ast> {
 
-    let name = Name::fresh(ident.node.to_string());
-    let (new_env, previous) = env.insert(name, typedef);
+    let (new_env, previous) = env.insert(ident.node, typedef);
     if let Some(&(_, ref previous_item)) = previous {
         // TODO: Shouldn't continue after this error - how to do that?
         span_error!(ident.span,
@@ -366,8 +512,8 @@ fn insert_type_import<'ast>(symbol: &Symbol,
                             imported: &QualifiedIdentifier,
                             current_env: TypesEnvironment<'ast>)
         -> TypesEnvironment<'ast> {
-    let name = Name::fresh(symbol.to_string());
-    let (new_env, previous_opt) = current_env.insert(name, typedef.clone());
+    let (new_env, previous_opt) = current_env.insert(symbol.clone(),
+                                                     typedef.clone());
     if let Some(previous) = previous_opt {
         if previous.1.borrow().fq_name != typedef.borrow().fq_name {
             span_error!(imported.span,
@@ -462,9 +608,12 @@ fn build_environments<'ast>(toplevel: PackageRef<'ast>,
             }
         }
 
+        // TODO: For testing - remove later.
+        println!("{} types environment: {:?}", ast.types[0].name(), types_env);
+
         EnvironmentStack {
             types: types_env,
-            nonTypes: vec![RbMap::new()],
+            non_types: vec![RbMap::new()],
             toplevel: toplevel.clone(),
             package: ast.package.clone(),
         }.walk_compilation_unit(ast);
@@ -476,7 +625,6 @@ pub fn name_resolve(asts: &[ast::CompilationUnit]) {
     fully_qualify_names(toplevel.clone(), asts);
     build_environments(toplevel.clone(), asts);
 
-    // For testing - remove when name resolution is finished.
-    // XXX: This may lead to an infinite loop later
-    println!("{:?}", toplevel);
+    // TODO: For testing - remove when name resolution is finished.
+    PackageItem::Package(toplevel).print_light();
 }
