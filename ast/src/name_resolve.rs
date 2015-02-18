@@ -30,6 +30,15 @@ pub enum PackageItem<'ast> {
     TypeDefinition(TypeDefinitionRef<'ast>),
 }
 
+impl<'ast> PackageItem<'ast> {
+    pub fn fq_name(&self) -> Name {
+        match self {
+            &PackageItem::Package(ref package) => package.borrow().fq_name,
+            &PackageItem::TypeDefinition(ref typedef) => typedef.borrow().fq_name,
+        }
+    }
+}
+
 #[derive(Show)]
 pub struct Package<'ast> {
     fq_name: Name,
@@ -301,12 +310,14 @@ fn insert_check_present<'ast>(symbol: &Symbol,
                               current_env: TypesEnvironment<'ast>)
         -> TypesEnvironment<'ast> {
     let name = Name::fresh(symbol.to_string());
-    let (new_env, previous) = current_env.insert(name, package_item.clone());
-    if let Some(_) = previous {
-        span_error!(imported.span,
-                    "importing `{}` from `{}` conflicts with previous import",
-                    symbol,
-                    imported);
+    let (new_env, previous_opt) = current_env.insert(name, package_item.clone());
+    if let Some(previous) = previous_opt {
+        if previous.1.fq_name() != package_item.fq_name() {
+            span_error!(imported.span,
+                        "importing `{}` from `{}` conflicts with previous import",
+                        symbol,
+                        imported);
+        }
     }
     new_env
 }
