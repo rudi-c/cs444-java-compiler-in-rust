@@ -11,8 +11,18 @@ pub struct Span {
     pub file: FileId,
 }
 
+pub trait IntoSpan {
+    fn into_span(self) -> Span;
+}
+
+impl IntoSpan for Span {
+    fn into_span(self) -> Span { self }
+}
+
 impl Span {
-    pub fn range(a: Span, b: Span) -> Span {
+    pub fn range<T: IntoSpan, U: IntoSpan>(a: T, b: U) -> Span {
+        let a = a.into_span();
+        let b = b.into_span();
         assert_eq!(a.file, b.file);
         Span { lo: a.lo, hi: b.hi, file: a.file }
     }
@@ -24,8 +34,12 @@ pub struct Spanned<T> {
     pub node: T,
 }
 
-pub fn spanned<T>(sp: Span, n: T) -> Spanned<T> {
-    Spanned { span: sp, node: n }
+impl<'a, T> IntoSpan for &'a Spanned<T> {
+    fn into_span(self) -> Span { self.span }
+}
+
+pub fn spanned<T: IntoSpan, U>(sp: T, n: U) -> Spanned<U> {
+    Spanned { span: sp.into_span(), node: n }
 }
 
 #[macro_export]

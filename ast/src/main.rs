@@ -1,4 +1,4 @@
-#![feature(plugin, box_syntax)]
+#![feature(plugin, box_syntax, advanced_slice_patterns)]
 #![allow(unstable)]
 
 #[no_link] #[plugin] extern crate dfagen;
