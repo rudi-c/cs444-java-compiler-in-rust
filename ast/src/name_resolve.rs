@@ -299,16 +299,21 @@ pub fn fully_qualify_names<'ast>(toplevel: PackageRef<'ast>,
 }
 
 #[derive(Show, Clone)]
-enum SymTableItem<'ast> {
+enum Referent<'ast> {
     Type(TypeDefinitionRef<'ast>),
+    Variable(Variable<'ast>),
+    Method(MethodRef<'ast>),
+}
+
+#[derive(Show, Clone)]
+enum Variable<'ast> {
     LocalVariable,
     Field(FieldRef<'ast>, Type<'ast>),
-    Method(MethodRef<'ast>),
 }
 
 
 type TypesEnvironment<'ast> = RbMap<Symbol, TypeDefinitionRef<'ast>>;
-type NonTypesEnvironment<'ast> = RbMap<Symbol, SymTableItem<'ast>>;
+type VariablesEnvironment<'ast> = RbMap<Symbol, Variable<'ast>>;
 
 struct EnvironmentStack<'ast> {
     // Since there are no nested classes and only one type per file,
@@ -316,7 +321,7 @@ struct EnvironmentStack<'ast> {
     // single class/interface in the file to the initial environment
     // containing imported types.
     types: TypesEnvironment<'ast>,
-    non_types: Vec<NonTypesEnvironment<'ast>>,
+    variables: Vec<VariablesEnvironment<'ast>>,
     toplevel: PackageRef<'ast>,
     package: Option<QualifiedIdentifier>,
 
@@ -329,34 +334,34 @@ impl<'ast> Walker<'ast> for EnvironmentStack<'ast> {
         let ref class_name = class.node.name;
         let typedef = self.get_type_declaration(class_name).unwrap();
 
-        let mut non_types_env = self.non_types.last().unwrap().clone();
+        let mut vars_env = self.variables.last().unwrap().clone();
 
         // Process the class' inheritance.
         if let Some(ref extension) = class.node.extends {
             self.resolve_extensions(typedef.clone(),
-                                    &non_types_env,
+                                    &vars_env,
                                     &[extension.clone()]);
         }
         self.resolve_implements(typedef.clone(),
-                                &non_types_env,
+                                &vars_env,
                                 class.node.implements.as_slice());
 
         // Add the class itself to the environment.
         self.types = insert_declared_type(&self.types, class_name, typedef.clone());
 
         // Process class body.
-        non_types_env = self.collect_fields(non_types_env, typedef);
+        vars_env = self.collect_fields(vars_env, typedef);
     }
 
     fn walk_interface(&mut self, interface: &'ast ast::Interface) {
         let ref interface_name = interface.node.name;
         let typedef = self.get_type_declaration(interface_name).unwrap();
 
-        let mut non_types_env = self.non_types.last().unwrap();
+        let mut vars_env = self.variables.last().unwrap();
 
         // Process the interface's inheritance.
         self.resolve_extensions(typedef.clone(),
-                                non_types_env,
+                                vars_env,
                                 interface.node.extends.as_slice());
 
         // Add the interface itself to the environment.
@@ -390,10 +395,10 @@ impl<'ast> EnvironmentStack<'ast> {
 
     fn resolve_extensions(&self,
                           typedef: TypeDefinitionRef<'ast>,
-                          non_types_env: &NonTypesEnvironment<'ast>,
+                          vars_env: &VariablesEnvironment<'ast>,
                           extensions: &[QualifiedIdentifier]) {
         for extension in extensions.iter() {
-            match self.resolve_object_type(extension, non_types_env) {
+            match self.resolve_object_type(extension, vars_env) {
                 Some(extended_type) => {
                     typedef.borrow_mut().extends.push(extended_type.clone());
                 },
@@ -409,10 +414,10 @@ impl<'ast> EnvironmentStack<'ast> {
 
     fn resolve_implements(&self,
                           typedef: TypeDefinitionRef<'ast>,
-                          non_types_env: &NonTypesEnvironment<'ast>,
+                          vars_env: &VariablesEnvironment<'ast>,
                           implements: &[QualifiedIdentifier]) {
         for implement in implements.iter() {
-            match self.resolve_object_type(implement, non_types_env) {
+            match self.resolve_object_type(implement, vars_env) {
                 Some(implemented_type) => {
                     typedef.borrow_mut().implements.push(implemented_type.clone());
                 },
@@ -429,16 +434,16 @@ impl<'ast> EnvironmentStack<'ast> {
 
     fn resolve_type(&self,
                     ty: &ast::Type,
-                    non_types_env: &NonTypesEnvironment<'ast>) -> Type<'ast> {
+                    vars_env: &VariablesEnvironment<'ast>) -> Type<'ast> {
         match ty.node {
             ast::Type_::SimpleType(ref simple_type) =>
-                if let Some(ty) = self.resolve_simple_type(simple_type, non_types_env) {
+                if let Some(ty) = self.resolve_simple_type(simple_type, vars_env) {
                     Type::SimpleType(ty)
                 } else {
                     Type::Unknown
                 },
             ast::Type_::ArrayType(ref simple_type) =>
-                if let Some(ty) = self.resolve_simple_type(simple_type, non_types_env) {
+                if let Some(ty) = self.resolve_simple_type(simple_type, vars_env) {
                     Type::ArrayType(ty)
                 } else {
                     Type::Unknown
@@ -448,7 +453,7 @@ impl<'ast> EnvironmentStack<'ast> {
 
     fn resolve_simple_type(&self,
                            ty: &ast::SimpleType,
-                           non_types_env: &NonTypesEnvironment<'ast>)
+                           vars_env: &VariablesEnvironment<'ast>)
             -> Option<SimpleType<'ast>> {
         match ty.node {
             ast::SimpleType_::Boolean => Some(SimpleType::Boolean),
@@ -457,17 +462,17 @@ impl<'ast> EnvironmentStack<'ast> {
             ast::SimpleType_::Char => Some(SimpleType::Char),
             ast::SimpleType_::Byte => Some(SimpleType::Byte),
             ast::SimpleType_::Other(ref qident) =>
-                self.resolve_object_type(qident, non_types_env)
+                self.resolve_object_type(qident, vars_env)
                     .and_then(|ty| Some(SimpleType::Other(ty))),
         }
     }
 
     fn resolve_object_type(&self,
                            qident: &QualifiedIdentifier,
-                           non_types_env: &NonTypesEnvironment<'ast>)
+                           vars_env: &VariablesEnvironment<'ast>)
             -> Option<TypeDefinitionRef<'ast>> {
-        match self.resolve_identifier(qident, non_types_env) {
-            Some(SymTableItem::Type(ty)) => {
+        match self.resolve_identifier(qident, vars_env) {
+            Some(Referent::Type(ty)) => {
                 Some(ty)
             },
             Some(_) => {
@@ -479,19 +484,19 @@ impl<'ast> EnvironmentStack<'ast> {
     }
 
     fn collect_fields(&self,
-                      non_types_env: NonTypesEnvironment<'ast>,
-                      typedef: TypeDefinitionRef<'ast>) -> NonTypesEnvironment<'ast> {
+                      vars_env: VariablesEnvironment<'ast>,
+                      typedef: TypeDefinitionRef<'ast>) -> VariablesEnvironment<'ast> {
         typedef.borrow()
                .fields
                .values()
-               .fold(non_types_env, |env, field| {
+               .fold(vars_env, |env, field| {
             let ref field_ast = field.borrow().ast.node;
             let field_ref = typedef.borrow().fields.get(&field_ast.name.node).unwrap().clone();
             let field_type = self.resolve_type(&field_ast.ty, &env);
 
-            let sym_table_item = SymTableItem::Field(field_ref.clone(), field_type);
+            let variable = Variable::Field(field_ref.clone(), field_type);
             let (new_env, existing) = env.insert(field_ast.name.node,
-                                                 sym_table_item);
+                                                 variable);
 
             if let Some(_) = existing {
                 // There should only be fields in the symbol table at the moment.
@@ -509,15 +514,15 @@ impl<'ast> EnvironmentStack<'ast> {
     // Tries to resolve a non-fully qualified identifier to a symbol table
     // item. Spans an error upon failure.
     fn resolve_identifier(&self, qident: &QualifiedIdentifier,
-                          non_types_env: &NonTypesEnvironment<'ast>)
-            -> Option<SymTableItem<'ast>> {
+                          vars_env: &VariablesEnvironment<'ast>)
+            -> Option<Referent<'ast>> {
         // For qident = a.b.c.d...
         let first = qident.node.parts.first().unwrap();
         let rest = qident.node.parts.tail();
 
-        if let Some(item) = non_types_env.get(&first.node) {
+        if let Some(item) = vars_env.get(&first.node) {
             // a is local variable or parameter or static import
-            self.resolve_expression_identifier(rest, item)
+            self.resolve_expression_identifier(rest, &Referent::Variable(item.clone()))
         } else if let Some(item) = self.find_type(first) {
             // a is a type
             self.resolve_type_identifier(rest, item.clone())
@@ -541,8 +546,8 @@ impl<'ast> EnvironmentStack<'ast> {
     }
 
     fn resolve_expression_identifier(&self, qident: &[Ident],
-                                     expression: &SymTableItem<'ast>)
-            -> Option<SymTableItem<'ast>> {
+                                     expression: &Referent<'ast>)
+            -> Option<Referent<'ast>> {
         match qident {
             // Just this expression
             [] => Some(expression.clone()),
@@ -555,18 +560,18 @@ impl<'ast> EnvironmentStack<'ast> {
 
     fn resolve_type_identifier(&self, qident: &[Ident],
                                typedef: TypeDefinitionRef<'ast>)
-            -> Option<SymTableItem<'ast>> {
+            -> Option<Referent<'ast>> {
         match qident {
             // Just this type
-            [] => Some(SymTableItem::Type(typedef.clone())),
+            [] => Some(Referent::Type(typedef.clone())),
             // Look in the type's members
             [ref first, rest..] => {
                 if let Some(field) = typedef.borrow().fields.get(&first.node) {
                     // TODO: What should the type be here?
-                    let item = SymTableItem::Field(field.clone(), Type::Unknown);
+                    let item = Referent::Variable(Variable::Field(field.clone(), Type::Unknown));
                     self.resolve_expression_identifier(rest, &item)
                 } else if let Some(method) = typedef.borrow().methods.get(&first.node) {
-                    let item = SymTableItem::Method(method.clone());
+                    let item = Referent::Method(method.clone());
                     self.resolve_expression_identifier(rest, &item)
                 } else {
                     span_error!(first.span,
@@ -581,7 +586,7 @@ impl<'ast> EnvironmentStack<'ast> {
 
     fn resolve_package_identifier(&self, qident: &[Ident],
                                   package: PackageRef<'ast>)
-            -> Option<SymTableItem<'ast>> {
+            -> Option<Referent<'ast>> {
         // This function should not be called on an empty qident, because
         // it would imply that we are returning a package, which is not
         // a valid name resolution. Caller functions should catch this case.
@@ -776,7 +781,7 @@ fn build_environments<'ast>(toplevel: PackageRef<'ast>,
 
         EnvironmentStack {
             types: types_env,
-            non_types: vec![RbMap::new()],
+            variables: vec![RbMap::new()],
             toplevel: toplevel.clone(),
             package: ast.package.clone(),
             on_demand_packages: on_demand_packages,
