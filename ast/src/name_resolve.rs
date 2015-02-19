@@ -345,18 +345,7 @@ impl<'ast> Walker<'ast> for EnvironmentStack<'ast> {
         self.types = insert_declared_type(&self.types, class_name, typedef.clone());
 
         // Process class body.
-        // Is there a neater way to do this filter?
-        let fields: Vec<&ast::Field> =
-            class.node.body
-                 .iter()
-                 .filter_map(|dcl| {
-                   if let ast::ClassBodyDeclaration_::FieldDeclaration(ref field) = dcl.node {
-                       Some(field)
-                   } else {
-                       None
-                   }})
-                 .collect();
-        non_types_env = self.collect_fields(non_types_env, fields.as_slice(), typedef);
+        non_types_env = self.collect_fields(non_types_env, typedef);
     }
 
     fn walk_interface(&mut self, interface: &'ast ast::Interface) {
@@ -491,21 +480,24 @@ impl<'ast> EnvironmentStack<'ast> {
 
     fn collect_fields(&self,
                       non_types_env: NonTypesEnvironment<'ast>,
-                      fields: &[&ast::Field],
                       typedef: TypeDefinitionRef<'ast>) -> NonTypesEnvironment<'ast> {
-        fields.iter().fold(non_types_env, |env, field| {
-            let field_ref = typedef.borrow().fields.get(&field.node.name.node).unwrap().clone();
-            let field_type = self.resolve_type(&field.node.ty, &env);
+        typedef.borrow()
+               .fields
+               .values()
+               .fold(non_types_env, |env, field| {
+            let ref field_ast = field.borrow().ast.node;
+            let field_ref = typedef.borrow().fields.get(&field_ast.name.node).unwrap().clone();
+            let field_type = self.resolve_type(&field_ast.ty, &env);
 
             let sym_table_item = SymTableItem::Field(field_ref.clone(), field_type);
-            let (new_env, existing) = env.insert(field.node.name.node,
+            let (new_env, existing) = env.insert(field_ast.name.node,
                                                  sym_table_item);
 
             if let Some(_) = existing {
                 // There should only be fields in the symbol table at the moment.
-                span_error!(field.node.name.span,
+                span_error!(field_ast.name.span,
                             "field {} already exists",
-                            field.node.name);
+                            field_ast.name);
 
                 // TODO: Add note about where the previous declaration is?
             }
@@ -623,7 +615,7 @@ impl<'ast> EnvironmentStack<'ast> {
 
     fn find_type(&self, ty: &Ident) -> Option<TypeDefinitionRef<'ast>> {
         self.types.get(&ty.node)
-                  .map(|typedef| typedef.clone())
+                  .cloned()
                   .or_else(|| {
             // If the type is not in the current environment, we can look in the
             // on-demand import packages.
