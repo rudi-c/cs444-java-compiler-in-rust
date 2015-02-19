@@ -301,7 +301,6 @@ pub fn fully_qualify_names<'ast>(toplevel: PackageRef<'ast>,
 #[derive(Show, Clone)]
 enum SymTableItem<'ast> {
     Type(TypeDefinitionRef<'ast>),
-    // TODO: Static imports.
     LocalVariable,
     Field(FieldRef<'ast>, Type<'ast>),
     Method(MethodRef<'ast>),
@@ -327,16 +326,17 @@ impl<'ast> Walker<'ast> for EnvironmentStack<'ast> {
         let ref class_name = class.node.name;
         let typedef = self.get_type_declaration(class_name).unwrap();
 
-        // TODO: Is this clone() very inefficient?
         let mut non_types_env = self.non_types.last().unwrap().clone();
 
         // Process the class' inheritance.
         if let Some(ref extension) = class.node.extends {
             self.resolve_extensions(typedef.clone(),
                                     &non_types_env,
-                                    &vec![extension.clone()]);
+                                    &[extension.clone()]);
         }
-        self.resolve_implements(typedef.clone(), &non_types_env, &class.node.implements);
+        self.resolve_implements(typedef.clone(),
+                                &non_types_env,
+                                class.node.implements.as_slice());
 
         // Add the class itself to the environment.
         self.types = insert_declared_type(&self.types, class_name, typedef.clone());
@@ -353,7 +353,7 @@ impl<'ast> Walker<'ast> for EnvironmentStack<'ast> {
                        None
                    }})
                  .collect();
-        self.resolve_fields(non_types_env, fields, typedef);
+        non_types_env = self.collect_fields(non_types_env, fields.as_slice(), typedef);
     }
 
     fn walk_interface(&mut self, interface: &'ast ast::Interface) {
@@ -363,7 +363,9 @@ impl<'ast> Walker<'ast> for EnvironmentStack<'ast> {
         let mut non_types_env = self.non_types.last().unwrap();
 
         // Process the interface's inheritance.
-        self.resolve_extensions(typedef.clone(), non_types_env, &interface.node.extends);
+        self.resolve_extensions(typedef.clone(),
+                                non_types_env,
+                                interface.node.extends.as_slice());
 
         // Add the interface itself to the environment.
         self.types = insert_declared_type(&self.types, interface_name, typedef);
@@ -397,7 +399,7 @@ impl<'ast> EnvironmentStack<'ast> {
     fn resolve_extensions(&self,
                           typedef: TypeDefinitionRef<'ast>,
                           non_types_env: &NonTypesEnvironment<'ast>,
-                          extensions: &Vec<QualifiedIdentifier>) {
+                          extensions: &[QualifiedIdentifier]) {
         for extension in extensions.iter() {
             match self.resolve_object_type(extension, non_types_env) {
                 Some(extended_type) => {
@@ -416,7 +418,7 @@ impl<'ast> EnvironmentStack<'ast> {
     fn resolve_implements(&self,
                           typedef: TypeDefinitionRef<'ast>,
                           non_types_env: &NonTypesEnvironment<'ast>,
-                          implements: &Vec<QualifiedIdentifier>) {
+                          implements: &[QualifiedIdentifier]) {
         for implement in implements.iter() {
             match self.resolve_object_type(implement, non_types_env) {
                 Some(implemented_type) => {
@@ -484,9 +486,9 @@ impl<'ast> EnvironmentStack<'ast> {
         }
     }
 
-    fn resolve_fields(&self,
+    fn collect_fields(&self,
                       non_types_env: NonTypesEnvironment<'ast>,
-                      fields: Vec<&ast::Field>,
+                      fields: &[&ast::Field],
                       typedef: TypeDefinitionRef<'ast>) -> NonTypesEnvironment<'ast> {
         fields.iter().fold(non_types_env, |env, field| {
             let field_ref = typedef.borrow().fields.get(&field.node.name.node).unwrap().clone();
@@ -496,7 +498,7 @@ impl<'ast> EnvironmentStack<'ast> {
             let (new_env, existing) = env.insert(field.node.name.node,
                                                  sym_table_item);
 
-            if let Some(x) = existing {
+            if let Some(_) = existing {
                 // There should only be fields in the symbol table at the moment.
                 span_error!(field.node.name.span,
                             "field {} already exists",
@@ -546,10 +548,10 @@ impl<'ast> EnvironmentStack<'ast> {
     fn resolve_expression_identifier(&self, qident: &[Ident],
                                      expression: &SymTableItem<'ast>)
             -> Option<SymTableItem<'ast>> {
-        match qident.first() {
+        match qident {
             // Just this expression
-            None => Some(expression.clone()),
-            Some(ref first) => {
+            [] => Some(expression.clone()),
+            [ref first, rest..] => {
                 // TODO
                 Some(expression.clone())
             }
@@ -559,18 +561,18 @@ impl<'ast> EnvironmentStack<'ast> {
     fn resolve_type_identifier(&self, qident: &[Ident],
                                typedef: TypeDefinitionRef<'ast>)
             -> Option<SymTableItem<'ast>> {
-        match qident.first() {
+        match qident {
             // Just this type
-            None => Some(SymTableItem::Type(typedef.clone())),
+            [] => Some(SymTableItem::Type(typedef.clone())),
             // Look in the type's members
-            Some(ref first) => {
+            [ref first, rest..] => {
                 if let Some(field) = typedef.borrow().fields.get(&first.node) {
                     // TODO: What should the type be here?
                     let item = SymTableItem::Field(field.clone(), Type::Unknown);
-                    self.resolve_expression_identifier(qident.tail(), &item)
+                    self.resolve_expression_identifier(rest, &item)
                 } else if let Some(method) = typedef.borrow().methods.get(&first.node) {
                     let item = SymTableItem::Method(method.clone());
-                    self.resolve_expression_identifier(qident.tail(), &item)
+                    self.resolve_expression_identifier(rest, &item)
                 } else {
                     span_error!(first.span,
                                 "member `{}` not found on type `{}`",
@@ -635,12 +637,12 @@ fn insert_declared_type<'ast>(env: &TypesEnvironment<'ast>,
 // Returns the PackageItem corresponding to a path of identifiers a.b.c
 pub fn resolve_import<'ast>(package: PackageRef<'ast>, path: &[Ident])
         -> Option<PackageItem<'ast>> {
-    match path.first() {
+    match path {
         // Base case
-        None => Some(PackageItem::Package(package)),
-        Some(first) => match package.borrow().contents.get(&first.node) {
+        [] => Some(PackageItem::Package(package)),
+        [ref first, rest..] => match package.borrow().contents.get(&first.node) {
             Some(&PackageItem::Package(ref found_package)) => {
-                resolve_import(found_package.clone(), path.tail())
+                resolve_import(found_package.clone(), rest)
             },
             Some(&PackageItem::TypeDefinition(ref typedef)) => {
                 if path.len() == 1 {

@@ -92,7 +92,7 @@ impl QualifiedIdentifier {
     // Returns a slice of all identifiers but the last.
     pub fn all_but_last(&self) -> &[Ident] {
         let length = self.node.parts.len();
-        self.node.parts[0..length - 1].as_slice()
+        &self.node.parts[0..length - 1]
     }
 
     // Returns a new QualifiedIdentifier with an identifier appended.
