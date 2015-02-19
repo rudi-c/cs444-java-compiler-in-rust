@@ -73,9 +73,47 @@ fn create_ast(ctx: &RefCell<Context>, filename: &str) -> Option<CompilationUnit>
     Some(ast)
 }
 
+fn create_multi_ast(ctx: &RefCell<Context>, filename: &str) -> Vec<CompilationUnit> {
+    let file_ix = ctx.borrow_mut().add_file(Path::new(filename)).unwrap();
+    let ctx_borrow = ctx.borrow(); // XXX: this will cause problems later maybe?
+    let file = ctx_borrow.file(file_ix);
+    let tokens = Tokenizer::new(&*file.contents, file_ix).collect::<Vec<_>>();
+    let mut slice = &*tokens;
+    let mut ret = vec![];
+    while !slice.is_empty() {
+        let (cur, next) = slice.split_at(
+            slice.iter()
+            .skip(1)
+            .position(|&(ref x, _)| if let tokenizer::Token::PACKAGE = *x { true } else { false })
+            .map(|x| x+1)
+            .unwrap_or_else(|| slice.len()));
+        slice = next;
+        let ast = match make_ast(cur.iter().cloned()) {
+            Ok(res) => res,
+            Err((Some((_, bad_span)), message)) => {
+                ctx.borrow().span_error(bad_span, format!("unexpected token; {}", message));
+                continue
+            }
+            Err((None, message)) => {
+                ctx.borrow().span_error(Span {
+                    lo: file.contents.len() as u32,
+                    hi: file.contents.len() as u32,
+                    file: file_ix
+                }, format!("unexpected EOF; {}", message));
+                continue
+            }
+        };
+        // skip weeding
+        ret.push(ast);
+    }
+
+    ret
+}
+
 fn driver(ctx: &RefCell<Context>) {
     let opts = &[
-        optflag("v", "verbose", "verbose - print parsing debug info")
+        optflag("v", "verbose", "verbose - print parsing debug info"),
+        optflag("", "multi", "accept concatenated compilation units"),
     ];
 
     let matches = match getopts(os::args().tail(), opts) {
@@ -101,7 +139,9 @@ fn driver(ctx: &RefCell<Context>) {
     for file in matches.free.iter() {
         println!("Parsing file {}...", file);
 
-        if let Some(ast) = create_ast(ctx, file.as_slice()) {
+        if matches.opt_present("multi") {
+            asts.extend(create_multi_ast(ctx, file.as_slice()).into_iter());
+        } else if let Some(ast) = create_ast(ctx, file.as_slice()) {
             asts.push(ast);
         } else {
             return;
