@@ -1,5 +1,7 @@
 package fruit.banana;
 
+import apples.*;
+
 public class MultiSample2
 {
     public int x = 0;

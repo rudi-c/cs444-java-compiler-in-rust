@@ -6,7 +6,7 @@ use span::Span;
 use rbtree::RbMap;
 
 use std::borrow::ToOwned;
-use std::collections::{hash_map, HashMap};
+use std::collections::{hash_map, HashMap, HashSet};
 use std::cell::RefCell;
 use std::cmp::{Ord, Ordering};
 use std::rc::{Rc, Weak};
@@ -414,6 +414,7 @@ type VariablesEnvironment<'ast> = RbMap<Symbol, Variable<'ast>>;
 type MethodsEnvironment<'ast> = RbMap<(Symbol, Vec<Type<'ast>>),
                                       (MethodRef<'ast>, Option<Type<'ast>>)>;
 
+#[derive(Show, Clone)]
 struct EnvironmentStack<'ast> {
     // Since there are no nested classes and only one type per file,
     // this is not a stack/vector and we just use mutation to add the
@@ -432,20 +433,13 @@ struct EnvironmentStack<'ast> {
     on_demand_packages: Vec<PackageRef<'ast>>
 }
 
+type TypeEnvironmentPair<'ast> = (TypeDefinitionRef<'ast>, EnvironmentStack<'ast>);
+
 impl<'ast> Walker<'ast> for EnvironmentStack<'ast> {
     fn walk_class(&mut self, class: &'ast ast::Class) {
         let ref class_name = class.node.name;
         let typedef = self.get_type_declaration(class_name).unwrap();
-
         let mut vars_env = self.variables.last().unwrap().clone();
-
-        // Process the class' inheritance.
-        if let Some(ref extension) = class.node.extends {
-            self.resolve_extensions(typedef.clone(),
-                                    &[extension.clone()]);
-        }
-        self.resolve_implements(typedef.clone(),
-                                class.node.implements.as_slice());
 
         // Add the class itself to the environment.
         self.types = insert_declared_type(&self.types, class_name, typedef.clone());
@@ -458,12 +452,7 @@ impl<'ast> Walker<'ast> for EnvironmentStack<'ast> {
     fn walk_interface(&mut self, interface: &'ast ast::Interface) {
         let ref interface_name = interface.node.name;
         let typedef = self.get_type_declaration(interface_name).unwrap();
-
         let mut vars_env = self.variables.last().unwrap().clone();
-
-        // Process the interface's inheritance.
-        self.resolve_extensions(typedef.clone(),
-                                interface.node.extends.as_slice());
 
         // Add the interface itself to the environment.
         self.types = insert_declared_type(&self.types, interface_name, typedef.clone());
@@ -487,6 +476,37 @@ impl<'ast> EnvironmentStack<'ast> {
             Some(typedef.clone())
         } else {
             None
+        }
+    }
+
+    // Resolve extends and implements. This is done separately from walking
+    // the AST because we need to process the compilations in topological
+    // order (with respect to inheritance).
+    //
+    // Returns the TypeDefinition that has just been resolved.
+    fn resolve_inheritance(&self, typedcl: &ast::TypeDeclaration)
+            -> TypeDefinitionRef<'ast> {
+        match typedcl.node {
+            ast::TypeDeclaration_::Class(ref class) => {
+                let ref class_name = class.node.name;
+                let typedef = self.get_type_declaration(class_name).unwrap();
+
+                if let Some(ref extension) = class.node.extends {
+                    self.resolve_extensions(typedef.clone(),
+                                            &[extension.clone()]);
+                }
+                self.resolve_implements(typedef.clone(),
+                                        class.node.implements.as_slice());
+                typedef.clone()
+            },
+            ast::TypeDeclaration_::Interface(ref interface) => {
+                let ref interface_name = interface.node.name;
+                let typedef = self.get_type_declaration(interface_name).unwrap();
+
+                self.resolve_extensions(typedef.clone(),
+                                        interface.node.extends.as_slice());
+                typedef.clone()
+            },
         }
     }
 
@@ -861,8 +881,78 @@ fn import_on_demand<'ast>(imported: &QualifiedIdentifier,
     }
 }
 
+fn inheritance_topological_sort_search<'ast>(typedef: TypeDefinitionRef<'ast>,
+                                             seen: &mut HashSet<Name>,
+                                             visited: &mut HashSet<Name>,
+                                             stack: &mut Vec<Name>,
+                                             sorted: &mut Vec<Name>)
+        -> Result<(), ()> {
+    let borrow = typedef.borrow();
+    let mut parents = borrow.extends.iter().chain(borrow.implements.iter());
+
+    stack.push(borrow.fq_name.clone());
+
+    if !seen.insert(borrow.fq_name.clone()) {
+        span_error!(borrow.ast.span,
+                    "found an inheritance cycle: {:?}",
+                    stack);
+        return Err(());
+    }
+
+    for parent in parents {
+        if !visited.contains(&parent.upgrade().unwrap().borrow().fq_name) {
+            try!(inheritance_topological_sort_search(parent.upgrade().unwrap(), seen,
+                                                     visited, stack, sorted));
+        }
+    }
+
+    sorted.push(borrow.fq_name.clone());
+    visited.insert(borrow.fq_name.clone());
+    stack.pop();
+    Ok(())
+}
+
+fn inheritance_topological_sort<'ast>(preprocessed_types: &[TypeEnvironmentPair<'ast>])
+        -> Option<Vec<TypeEnvironmentPair<'ast>>> {
+
+    // To find items in processed_types by fully-qualified names.
+    let mut lookup = HashMap::new();
+    for &(ref typedef, ref env) in preprocessed_types.iter() {
+        lookup.insert(typedef.borrow().fq_name.clone(), (typedef.clone(), env.clone()));
+    }
+
+    let mut sorted: Vec<Name> = vec![];
+
+    {
+        let mut seen: HashSet<Name> = HashSet::new();
+        let mut visited: HashSet<Name> = HashSet::new();
+
+        // Keep track of the depth-first search stack for error message
+        // purposes (it shows the user where the cycle is).
+        let mut stack: Vec<Name> = vec![];
+
+        for &(ref typedef, _) in preprocessed_types.iter() {
+            if !visited.contains(&typedef.borrow().fq_name) {
+                let result = inheritance_topological_sort_search(
+                    typedef.clone(), &mut seen, &mut visited,
+                    &mut stack, &mut sorted);
+                if let Err(_) = result {
+                    return None;
+                }
+            }
+        }
+    }
+
+    Some(sorted.iter().map(|name| lookup.get(name).unwrap().clone()).collect())
+    // Some(sorted.iter().map(|name| match lookup.get(name).unwrap() {
+    //     &(&typedef, &env) => (typedef.clone(), env.clone())
+    // }).collect())
+}
+
 fn build_environments<'ast>(toplevel: PackageRef<'ast>,
                             asts: &'ast [ast::CompilationUnit]) {
+    let mut preprocessed_types = vec![];
+
     for ast in asts.iter() {
         let mut types_env: TypesEnvironment<'ast> = RbMap::new();
 
@@ -887,14 +977,27 @@ fn build_environments<'ast>(toplevel: PackageRef<'ast>,
         // TODO: For testing - remove later.
         println!("{} types environment: {:?}", ast.types[0].name(), types_env);
 
-        EnvironmentStack {
+        let env_stack = EnvironmentStack {
             types: types_env,
             methods: RbMap::new(),
             variables: vec![RbMap::new()],
             toplevel: toplevel.clone(),
             package: ast.package.clone(),
             on_demand_packages: on_demand_packages,
-        }.walk_compilation_unit(ast);
+        };
+
+        let typedef = env_stack.resolve_inheritance(&ast.types[0]);
+        preprocessed_types.push((typedef, env_stack));
+    }
+
+    if let Some(sorted) = inheritance_topological_sort(preprocessed_types.as_slice()) {
+        preprocessed_types = sorted;
+    } else {
+        return;
+    }
+
+    for &(ref typedef, ref env) in preprocessed_types.iter() {
+        env.clone().walk_type_declaration(typedef.borrow().ast);
     }
 }
 
