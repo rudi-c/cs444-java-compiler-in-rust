@@ -319,6 +319,9 @@ struct EnvironmentStack<'ast> {
     non_types: Vec<NonTypesEnvironment<'ast>>,
     toplevel: PackageRef<'ast>,
     package: Option<QualifiedIdentifier>,
+
+    // Search here for more types.
+    on_demand_packages: Vec<PackageRef<'ast>>
 }
 
 impl<'ast> Walker<'ast> for EnvironmentStack<'ast> {
@@ -523,7 +526,7 @@ impl<'ast> EnvironmentStack<'ast> {
         if let Some(item) = non_types_env.get(&first.node) {
             // a is local variable or parameter or static import
             self.resolve_expression_identifier(rest, item)
-        } else if let Some(item) = self.types.get(&first.node) {
+        } else if let Some(item) = self.find_type(first) {
             // a is a type
             self.resolve_type_identifier(rest, item.clone())
         } else if let Some(item) = self.toplevel.borrow().contents.get(&first.node) {
@@ -617,6 +620,40 @@ impl<'ast> EnvironmentStack<'ast> {
             }
         }
     }
+
+    fn find_type(&self, ty: &Ident) -> Option<TypeDefinitionRef<'ast>> {
+        self.types.get(&ty.node)
+                  .map(|typedef| typedef.clone())
+                  .or_else(|| {
+            // If the type is not in the current environment, we can look in the
+            // on-demand import packages.
+            // It's necessary to look through every package to check for
+            // ambiguities.
+            let mut found_type: Option<TypeDefinitionRef<'ast>> = None;
+            for package in self.on_demand_packages.iter() {
+                match package.borrow().contents.get(&ty.node) {
+                    Some(&PackageItem::TypeDefinition(ref typedef)) => {
+                        // If we already have a type, then there's an ambiguity.
+                        if let Some(existing) = found_type {
+                            span_error!(ty.span,
+                                        "ambiguous type {} declared in {} and {}",
+                                        ty,
+                                        typedef.borrow().fq_name,
+                                        existing.borrow().fq_name);
+                            found_type = None;
+                            break;
+                        } else {
+                            found_type = Some(typedef.clone());
+                        }
+                    },
+                    // Ignore subpackages.
+                    Some(_) => {},
+                    None => {},
+                }
+            }
+            found_type
+        })
+    }
 }
 
 fn insert_declared_type<'ast>(env: &TypesEnvironment<'ast>,
@@ -703,36 +740,18 @@ fn import_single_type<'ast>(imported: &QualifiedIdentifier,
 
 fn import_on_demand<'ast>(imported: &QualifiedIdentifier,
                           toplevel: PackageRef<'ast>,
-                          current_env: TypesEnvironment<'ast>)
-        -> TypesEnvironment<'ast> {
+                          on_demand_packages: &mut Vec<PackageRef<'ast>>) {
     let resolved_import = resolve_import(toplevel,
                                           imported.all_but_last());
     match resolved_import {
         Some(PackageItem::Package(ref package)) => {
-            // Add every type and package to the environment.
-            package.borrow()
-                   .contents
-                   .iter()
-                   .fold(current_env, |env, (symbol, package_item)| {
-                // ($7.5.2) : A type-import-on-demand declaration allows all
-                //            accessible types declared in a type or package
-                //            to be imported as needed.
-                if let &PackageItem::TypeDefinition(ref typedef) = package_item {
-                    insert_type_import(symbol,
-                                       typedef,
-                                       imported,
-                                       env)
-                } else {
-                    env
-                }
-            })
+            on_demand_packages.push(package.clone());
         },
         Some(PackageItem::TypeDefinition(_)) |
         None => {
             span_error!(imported.span,
                         "cannot find package `{}` to import",
                         imported);
-            current_env
         }
     }
 }
@@ -741,6 +760,8 @@ fn build_environments<'ast>(toplevel: PackageRef<'ast>,
                             asts: &'ast [ast::CompilationUnit]) {
     for ast in asts.iter() {
         let mut types_env: TypesEnvironment<'ast> = RbMap::new();
+
+        let mut on_demand_packages = vec![];
 
         // Add all imports to initial environment for this compilation unit.
         for import in ast.imports.iter() {
@@ -751,9 +772,9 @@ fn build_environments<'ast>(toplevel: PackageRef<'ast>,
                                                    types_env);
                 },
                 ast::ImportDeclaration_::OnDemand(ref qident) => {
-                    types_env = import_on_demand(qident,
-                                                 toplevel.clone(),
-                                                 types_env);
+                    import_on_demand(qident,
+                                     toplevel.clone(),
+                                     &mut on_demand_packages);
                 },
             }
         }
@@ -766,6 +787,7 @@ fn build_environments<'ast>(toplevel: PackageRef<'ast>,
             non_types: vec![RbMap::new()],
             toplevel: toplevel.clone(),
             package: ast.package.clone(),
+            on_demand_packages: on_demand_packages,
         }.walk_compilation_unit(ast);
     }
 }
