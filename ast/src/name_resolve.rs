@@ -8,6 +8,7 @@ use rbtree::RbMap;
 use std::borrow::ToOwned;
 use std::collections::{hash_map, HashMap};
 use std::cell::RefCell;
+use std::cmp::{Ord, Ordering};
 use std::rc::{Rc, Weak};
 
 // In this file, the variable name prefix 'fq_' abbreviates fully_qualified_
@@ -86,17 +87,16 @@ impl<'ast> Field<'ast> {
 #[derive(Show)]
 pub struct Method<'ast> {
     fq_name: Name,
-    // TODO: Promote overloads to their own struct, maybe?
-    overloads: Vec<&'ast ast::Method>,
+    ast: &'ast ast::Method,
 }
 pub type MethodRef<'ast> = Rc<RefCell<Method<'ast>>>;
 pub type MethodWeak<'ast> = Weak<RefCell<Method<'ast>>>;
 
 impl<'ast> Method<'ast> {
-    pub fn new(name: String) -> MethodRef<'ast> {
+    pub fn new(name: String, ast: &'ast ast::Method) -> MethodRef<'ast> {
         rc_cell(Method {
             fq_name: Name::fresh(name),
-            overloads: vec![],
+            ast: ast,
         })
     }
 }
@@ -115,7 +115,9 @@ pub struct TypeDefinition<'ast> {
     // Note that fields and methods can have the same name, therefore
     // need to be be in separate namespaces.
     fields: HashMap<Symbol, FieldRef<'ast>>,
-    methods: HashMap<Symbol, MethodRef<'ast>>,
+
+    // Method overloads can have the same name.
+    methods: HashMap<Symbol, Vec<MethodRef<'ast>>>,
 
     extends: Vec<TypeDefinitionWeak<'ast>>,
     implements: Vec<TypeDefinitionWeak<'ast>>,
@@ -124,7 +126,6 @@ pub struct TypeDefinition<'ast> {
 }
 pub type TypeDefinitionRef<'ast> = Rc<RefCell<TypeDefinition<'ast>>>;
 pub type TypeDefinitionWeak<'ast> = Weak<RefCell<TypeDefinition<'ast>>>;
-
 
 impl<'ast> TypeDefinition<'ast> {
     pub fn new(name: String, kind: TypeKind, ast: &'ast ast::TypeDeclaration) -> TypeDefinitionRef<'ast> {
@@ -140,7 +141,27 @@ impl<'ast> TypeDefinition<'ast> {
     }
 }
 
-#[derive(Show, Clone)]
+impl<'ast> PartialEq for TypeDefinition<'ast> {
+    fn eq(&self, other: &Self) -> bool {
+        self.fq_name.eq(&other.fq_name)
+    }
+}
+
+impl<'ast> Eq for TypeDefinition<'ast> {}
+
+impl<'ast> PartialOrd for TypeDefinition<'ast> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.fq_name.partial_cmp(&other.fq_name)
+    }
+}
+
+impl<'ast> Ord for TypeDefinition<'ast> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.fq_name.cmp(&other.fq_name)
+    }
+}
+
+#[derive(Show, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Type<'ast> {
     SimpleType(SimpleType<'ast>),
     ArrayType(SimpleType<'ast>),
@@ -157,6 +178,53 @@ pub enum SimpleType<'ast> {
     Char,
     Byte,
     Other(TypeDefinitionWeak<'ast>),
+}
+
+impl<'ast> PartialEq for SimpleType<'ast> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (&SimpleType::Boolean, &SimpleType::Boolean) => true,
+            (&SimpleType::Int, &SimpleType::Int) => true,
+            (&SimpleType::Short, &SimpleType::Short) => true,
+            (&SimpleType::Char, &SimpleType::Char) => true,
+            (&SimpleType::Byte, &SimpleType::Byte) => true,
+            (&SimpleType::Other(ref typedef1), &SimpleType::Other(ref typedef2)) =>
+                typedef1.upgrade().unwrap().borrow().eq(
+                    &*typedef2.upgrade().unwrap().borrow()),
+            _ => false,
+        }
+    }
+}
+
+impl<'ast> Eq for SimpleType<'ast> {}
+
+impl<'ast> PartialOrd for SimpleType<'ast> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        fn int_val<'ast>(ty: &SimpleType<'ast>) -> i32 {
+            match ty {
+                &SimpleType::Boolean => 0,
+                &SimpleType::Int => 1,
+                &SimpleType::Short => 2,
+                &SimpleType::Char => 3,
+                &SimpleType::Byte => 4,
+                _ => panic!("should not be here"),
+            }
+        }
+        match (self, other) {
+            (&SimpleType::Other(ref typedef1), &SimpleType::Other(ref typedef2)) =>
+                typedef1.upgrade().unwrap().borrow().partial_cmp(
+                    &*typedef2.upgrade().unwrap().borrow()),
+            (&SimpleType::Other(_), _) => Some(Ordering::Greater),
+            (_, &SimpleType::Other(_)) => Some(Ordering::Less),
+           (type1, type2) => int_val(type1).partial_cmp(&int_val(type2)),
+        }
+    }
+}
+
+impl<'ast> Ord for SimpleType<'ast> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap()
+    }
 }
 
 struct Collector<'ast> {
@@ -178,15 +246,16 @@ impl<'ast> Walker<'ast> for Collector<'ast> {
         // no need to walk deeper
     }
     fn walk_class_method(&mut self, method_ast: &'ast ast::Method) {
-        // Note: Implementation is shared with interfaace methods
+        // Note: Implementation is shared with interface methods
 
         let mut tydef = self.type_definition.as_ref().unwrap().borrow_mut();
-        let method = tydef.methods.entry(method_ast.node.name.node).get().unwrap_or_else(|v| {
-            // First time seeing this method.
-            let method_name = format!("{}.{}", Qualified(self.scope.iter()), method_ast.node.name);
-            v.insert(Method::new(method_name))
+        let overloads = tydef.methods.entry(method_ast.node.name.node).get().unwrap_or_else(|v| {
+            // First time seeing this method name.
+            v.insert(vec![])
         });
-        method.borrow_mut().overloads.push(method_ast);
+
+        let method_name = format!("{}.{}", Qualified(self.scope.iter()), method_ast.node.name);
+        overloads.push(Method::new(method_name, method_ast));
 
         // no need to walk deeper
     }
@@ -342,6 +411,8 @@ enum Variable<'ast> {
 
 type TypesEnvironment<'ast> = RbMap<Symbol, TypeDefinitionRef<'ast>>;
 type VariablesEnvironment<'ast> = RbMap<Symbol, Variable<'ast>>;
+type MethodsEnvironment<'ast> = RbMap<(Symbol, Vec<Type<'ast>>),
+                                      (MethodRef<'ast>, Option<Type<'ast>>)>;
 
 struct EnvironmentStack<'ast> {
     // Since there are no nested classes and only one type per file,
@@ -349,6 +420,10 @@ struct EnvironmentStack<'ast> {
     // single class/interface in the file to the initial environment
     // containing imported types.
     types: TypesEnvironment<'ast>,
+
+    // Similarly, no stack for methods.
+    methods: MethodsEnvironment<'ast>,
+
     variables: Vec<VariablesEnvironment<'ast>>,
     toplevel: PackageRef<'ast>,
     package: Option<QualifiedIdentifier>,
@@ -376,21 +451,25 @@ impl<'ast> Walker<'ast> for EnvironmentStack<'ast> {
         self.types = insert_declared_type(&self.types, class_name, typedef.clone());
 
         // Process class body.
-        vars_env = self.collect_fields(vars_env, typedef);
+        vars_env = self.collect_fields(vars_env, typedef.clone());
+        self.methods = self.collect_methods(typedef.clone());
     }
 
     fn walk_interface(&mut self, interface: &'ast ast::Interface) {
         let ref interface_name = interface.node.name;
         let typedef = self.get_type_declaration(interface_name).unwrap();
 
-        let mut vars_env = self.variables.last().unwrap();
+        let mut vars_env = self.variables.last().unwrap().clone();
 
         // Process the interface's inheritance.
         self.resolve_extensions(typedef.clone(),
                                 interface.node.extends.as_slice());
 
         // Add the interface itself to the environment.
-        self.types = insert_declared_type(&self.types, interface_name, typedef);
+        self.types = insert_declared_type(&self.types, interface_name, typedef.clone());
+
+        // Process interface body.
+        self.methods = self.collect_methods(typedef.clone());
     }
 }
 
@@ -499,6 +578,31 @@ impl<'ast> EnvironmentStack<'ast> {
 
             new_env
         })
+    }
+
+    // Add the methods of the type to the environment.
+    fn collect_methods(&mut self, typedef: TypeDefinitionRef<'ast>)
+            -> MethodsEnvironment<'ast> {
+        let mut methods_env = self.methods.clone();
+
+        for (name, overloads) in typedef.borrow().methods.iter() {
+            for method in overloads.iter() {
+                let ref method_ast = method.borrow().ast.node;
+                let return_type = method_ast.return_type.as_ref()
+                                            .map(|ty| self.resolve_type(ty));
+                let argument_types: Vec<Type> =
+                    method_ast.params.iter()
+                              .map(|param| self.resolve_type(&param.node.ty))
+                              .collect();
+
+                let (new_env, existing) =
+                    self.methods.insert((name.clone(), argument_types),
+                                        (method.clone(), return_type));
+                methods_env = new_env;
+            }
+        }
+
+        methods_env
     }
 
     // Look up a package by its fully qualified name.
@@ -785,6 +889,7 @@ fn build_environments<'ast>(toplevel: PackageRef<'ast>,
 
         EnvironmentStack {
             types: types_env,
+            methods: RbMap::new(),
             variables: vec![RbMap::new()],
             toplevel: toplevel.clone(),
             package: ast.package.clone(),
