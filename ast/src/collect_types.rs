@@ -16,7 +16,7 @@ impl<'ast> Walker<'ast> for Collector<'ast> {
     fn walk_class_field(&mut self, field: &'ast ast::Field) {
         let field_name = format!("{}.{}", Qualified(self.scope.iter()), field.node.name);
         let tydef = self.type_definition.as_ref().unwrap();
-        if let Some(_) = tydef.borrow_mut().fields.insert(field.node.name.node, Field::new(field_name, field)) {
+        if let Some(_) = tydef.fields.borrow_mut().insert(field.node.name.node, Field::new(field_name, field)) {
             // something with the same name was already there!
             span_error!(field.span, "field `{}` already exists in `{}`",
                         field.node.name, Qualified(self.scope.iter()));
@@ -27,8 +27,9 @@ impl<'ast> Walker<'ast> for Collector<'ast> {
     fn walk_class_method(&mut self, method_ast: &'ast ast::Method) {
         // Note: Implementation is shared with interface methods
 
-        let mut tydef = self.type_definition.as_ref().unwrap().borrow_mut();
-        let overloads = tydef.methods.entry(method_ast.node.name.node).get().unwrap_or_else(|v| {
+        let tydef = self.type_definition.as_ref().unwrap();
+        let mut methods = tydef.methods.borrow_mut();
+        let overloads = methods.entry(method_ast.node.name.node).get().unwrap_or_else(|v| {
             // First time seeing this method name.
             v.insert(vec![])
         });
@@ -56,28 +57,22 @@ impl<'ast> Walker<'ast> for Collector<'ast> {
         let tydef = TypeDefinition::new(fq_type, kind, ty_decl);
 
         // Insert `tydef` into the package
-        {
-            let mut package = self.package.borrow_mut();
-            // XXX: Need to go through some contortions here to make rustc recognize the mutable
-            // deref
-            let &mut Package { ref fq_name, ref mut contents } = &mut *package;
-            match contents.entry(name.node) {
-                hash_map::Entry::Occupied(v) => {
-                    match *v.get() {
-                        PackageItem::Package(..) => {
-                            type_package_conflict(&*tydef.borrow());
-                        }
-                        PackageItem::TypeDefinition(..) => {
-                            span_error!(name.span,
-                                        "type `{}` already exists in package `{}`",
-                                        name, fq_name);
-                        }
+        match self.package.contents.borrow_mut().entry(name.node) {
+            hash_map::Entry::Occupied(v) => {
+                match *v.get() {
+                    PackageItem::Package(..) => {
+                        type_package_conflict(&*tydef);
                     }
-                    return
+                    PackageItem::TypeDefinition(..) => {
+                        span_error!(name.span,
+                                    "type `{}` already exists in package `{}`",
+                                    name, self.package.fq_name);
+                    }
                 }
-                hash_map::Entry::Vacant(v) => {
-                    v.insert(PackageItem::TypeDefinition(tydef.clone()));
-                }
+                return
+            }
+            hash_map::Entry::Vacant(v) => {
+                v.insert(PackageItem::TypeDefinition(tydef.clone()));
             }
         }
 
@@ -103,14 +98,14 @@ fn type_package_conflict(tydef: &TypeDefinition) {
 fn resolve_create_package<'ast>(toplevel: PackageRef<'ast>, id: &[Ident]) -> PackageRef<'ast> {
     id.iter().enumerate().fold(toplevel, |package, (ix, ident)| {
         let new = |:| Package::new(Qualified(id[0..ix+1].iter()).to_string());
-        match package.borrow_mut().contents.entry(ident.node) {
+        match package.contents.borrow_mut().entry(ident.node) {
             hash_map::Entry::Occupied(mut v) => {
                 let slot = v.get_mut();
                 match *slot {
                     PackageItem::Package(ref it) => return it.clone(), // Found it
                     PackageItem::TypeDefinition(ref tydef) => {
                         // There was a type instead!
-                        type_package_conflict(&*tydef.borrow());
+                        type_package_conflict(&**tydef);
                     }
                 }
                 // Kick out the type and put a package instead.

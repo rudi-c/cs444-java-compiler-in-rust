@@ -90,7 +90,7 @@ impl<'ast> EnvironmentStack<'ast> {
         };
         // FIXME: This is kinda bad
         if let Some(&PackageItem::TypeDefinition(ref typedef)) =
-                p.borrow().contents.get(&ident.node) {
+                p.contents.borrow().get(&ident.node) {
             Some(typedef.clone())
         } else {
             None
@@ -134,7 +134,7 @@ impl<'ast> EnvironmentStack<'ast> {
         for extension in extensions.iter() {
             match self.resolve_type_name(&*extension.node.parts) {
                 Some(extended_type) => {
-                    typedef.borrow_mut().extends.push(extended_type.downgrade());
+                    typedef.extends.borrow_mut().push(extended_type.downgrade());
                 },
                 None => {
                     // an error was already printed
@@ -149,7 +149,7 @@ impl<'ast> EnvironmentStack<'ast> {
         for implement in implements.iter() {
             match self.resolve_type_name(&*implement.node.parts) {
                 Some(implemented_type) => {
-                    typedef.borrow_mut().implements.push(implemented_type.downgrade());
+                    typedef.implements.borrow_mut().push(implemented_type.downgrade());
                 },
                 None => {
                     // an error was already printed
@@ -193,12 +193,12 @@ impl<'ast> EnvironmentStack<'ast> {
     fn collect_fields(&self,
                       vars_env: VariablesEnvironment<'ast>,
                       typedef: TypeDefinitionRef<'ast>) -> VariablesEnvironment<'ast> {
-        typedef.borrow()
-               .fields
+        typedef.fields
+               .borrow()
                .values()
                .fold(vars_env, |env, field| {
-            let ref field_ast = field.borrow().ast.node;
-            let field_ref = typedef.borrow().fields.get(&field_ast.name.node).unwrap().clone();
+            let ref field_ast = field.ast.node;
+            let field_ref = typedef.fields.borrow().get(&field_ast.name.node).unwrap().clone();
             let field_type = self.resolve_type(&field_ast.ty);
 
             let variable = Variable::Field(field_ref.clone(), field_type);
@@ -223,9 +223,9 @@ impl<'ast> EnvironmentStack<'ast> {
             -> MethodsEnvironment<'ast> {
         let mut methods_env = self.methods.clone();
 
-        for (name, overloads) in typedef.borrow().methods.iter() {
+        for (name, overloads) in typedef.methods.borrow().iter() {
             for method in overloads.iter() {
-                let ref method_ast = method.borrow().ast.node;
+                let ref method_ast = method.ast.node;
                 let return_type = method_ast.return_type.as_ref()
                                             .map(|ty| self.resolve_type(ty));
                 let argument_types: Vec<Type> =
@@ -266,7 +266,7 @@ impl<'ast> EnvironmentStack<'ast> {
             // fully-qualified name
             // in Joos, `init` must refer to a package
             [init.., ref last] => self.resolve_package_name(init).and_then(|package| {
-                match package.borrow().contents.get(&last.node) {
+                match package.contents.borrow().get(&last.node) {
                     Some(&PackageItem::TypeDefinition(ref tydef)) => Some(tydef.clone()),
                     _ => {
                         span_error!(Span::range(&init[0], last),
@@ -295,7 +295,7 @@ impl<'ast> EnvironmentStack<'ast> {
         } else if let Some(item) = self.find_type(first) {
             // a is a type
             self.resolve_type_identifier(rest, item.clone())
-        } else if let Some(item) = self.toplevel.borrow().contents.get(&first.node) {
+        } else if let Some(item) = self.toplevel.contents.borrow().get(&first.node) {
             // a is a package
             if let &PackageItem::Package(ref package) = item {
                 self.resolve_package_identifier(rest, package.clone())
@@ -335,18 +335,18 @@ impl<'ast> EnvironmentStack<'ast> {
             [] => Some(Referent::Type(typedef.clone())),
             // Look in the type's members
             [ref first, rest..] => {
-                if let Some(field) = typedef.borrow().fields.get(&first.node) {
+                if let Some(field) = typedef.fields.borrow().get(&first.node) {
                     // TODO: What should the type be here?
                     let item = Referent::Variable(Variable::Field(field.clone(), Type::Unknown));
                     self.resolve_expression_identifier(rest, &item)
-                } else if let Some(method) = typedef.borrow().methods.get(&first.node) {
+                } else if let Some(method) = typedef.methods.borrow().get(&first.node) {
                     let item = Referent::Method(method.clone());
                     self.resolve_expression_identifier(rest, &item)
                 } else {
                     span_error!(first.span,
                                 "member `{}` not found on type `{}`",
                                 first,
-                                typedef.borrow().fq_name);
+                                typedef.fq_name);
                     None
                 }
             }
@@ -361,13 +361,13 @@ impl<'ast> EnvironmentStack<'ast> {
         // a valid name resolution. Caller functions should catch this case.
         let first = qident.first().unwrap();
 
-        match package.borrow().contents.get(&first.node) {
+        match package.contents.borrow().get(&first.node) {
             Some(&PackageItem::Package(ref found_package)) => {
                 if qident.len() == 1 {
                     // Can't resolve to a package.
                     span_error!(first.span,
                                 "package {} is not a valid name resolution",
-                                found_package.borrow().fq_name);
+                                found_package.fq_name);
                     None
                 } else {
                     self.resolve_package_identifier(qident.tail(),
@@ -381,7 +381,7 @@ impl<'ast> EnvironmentStack<'ast> {
                 span_error!(first.span,
                             "type or package `{}` not found in package `{}`",
                             first,
-                            package.borrow().fq_name);
+                            package.fq_name);
                 None
             }
         }
@@ -401,17 +401,17 @@ impl<'ast> EnvironmentStack<'ast> {
             println!("here for {}", ty);
             let mut found_type: Option<TypeDefinitionRef<'ast>> = None;
             for package in self.on_demand_packages.iter() {
-                println!("try {}", package.borrow().fq_name);
-                match package.borrow().contents.get(&ty.node) {
+                println!("try {}", package.fq_name);
+                match package.contents.borrow().get(&ty.node) {
                     Some(&PackageItem::TypeDefinition(ref typedef)) => {
-                        println!("found {}", typedef.borrow().fq_name);
+                        println!("found {}", typedef.fq_name);
                         // If we already have a type, then there's an ambiguity.
                         if let Some(existing) = found_type {
                             span_error!(ty.span,
                                         "ambiguous type name `{}`: could refer to `{}` or `{}`",
                                         ty,
-                                        typedef.borrow().fq_name,
-                                        existing.borrow().fq_name);
+                                        typedef.fq_name,
+                                        existing.fq_name);
                             found_type = None;
                             break;
                         } else {
@@ -432,7 +432,7 @@ impl<'ast> EnvironmentStack<'ast> {
 fn resolve_package<'ast>(toplevel: PackageRef<'ast>, id: &[Ident]) -> Option<PackageRef<'ast>> {
     let mut package = toplevel;
     for (ix, ident) in id.iter().enumerate() {
-        package = match package.borrow().contents.get(&ident.node) {
+        package = match package.contents.borrow().get(&ident.node) {
             Some(&PackageItem::Package(ref it)) => {
                 it.clone() // Found it
             }
@@ -464,7 +464,7 @@ fn insert_declared_type<'ast>(env: &TypesEnvironment<'ast>,
         span_error!(ident.span,
                     "type `{}` declared in this file conflicts with import `{}`",
                     ident,
-                    previous_item.borrow().fq_name);
+                    previous_item.fq_name);
     }
     new_env
 }
@@ -477,7 +477,7 @@ fn insert_type_import<'ast>(symbol: &Symbol,
     let (new_env, previous_opt) = current_env.insert(symbol.clone(),
                                                      typedef.clone());
     if let Some(previous) = previous_opt {
-        if previous.1.borrow().fq_name != typedef.borrow().fq_name {
+        if previous.1.fq_name != typedef.fq_name {
             span_error!(imported.span,
                         "importing `{}` from `{}` conflicts with previous import",
                         symbol,
@@ -502,7 +502,7 @@ fn import_single_type<'ast>(imported: &QualifiedIdentifier,
         // (factor into `resole_fq_type_name` or something)
         [init.., ref last] => match resolve_package(toplevel.clone(), init) {
             None => current_env,
-            Some(package) => match package.borrow().contents.get(&last.node) {
+            Some(package) => match package.contents.borrow().get(&last.node) {
                 Some(&PackageItem::TypeDefinition(ref tydef)) => {
                     insert_type_import(&last.node, tydef, imported, current_env)
                 }
@@ -531,27 +531,28 @@ fn inheritance_topological_sort_search<'ast>(typedef: TypeDefinitionRef<'ast>,
                                              stack: &mut Vec<Name>,
                                              sorted: &mut Vec<Name>)
         -> Result<(), ()> {
-    let borrow = typedef.borrow();
-    let mut parents = borrow.extends.iter().chain(borrow.implements.iter());
+    let extends_borrow = typedef.extends.borrow();
+    let implements_borrow = typedef.implements.borrow();
+    let mut parents = extends_borrow.iter().chain(implements_borrow.iter());
 
-    stack.push(borrow.fq_name.clone());
+    stack.push(typedef.fq_name);
 
-    if !seen.insert(borrow.fq_name.clone()) {
-        span_error!(borrow.ast.span,
+    if !seen.insert(typedef.fq_name) {
+        span_error!(typedef.ast.span,
                     "found an inheritance cycle: {:?}",
                     stack);
         return Err(());
     }
 
     for parent in parents {
-        if !visited.contains(&parent.upgrade().unwrap().borrow().fq_name) {
+        if !visited.contains(&parent.upgrade().unwrap().fq_name) {
             try!(inheritance_topological_sort_search(parent.upgrade().unwrap(), seen,
                                                      visited, stack, sorted));
         }
     }
 
-    sorted.push(borrow.fq_name.clone());
-    visited.insert(borrow.fq_name.clone());
+    sorted.push(typedef.fq_name);
+    visited.insert(typedef.fq_name);
     stack.pop();
     Ok(())
 }
@@ -562,7 +563,7 @@ fn inheritance_topological_sort<'ast>(preprocessed_types: &[TypeEnvironmentPair<
     // To find items in processed_types by fully-qualified names.
     let mut lookup = HashMap::new();
     for &(ref typedef, ref env) in preprocessed_types.iter() {
-        lookup.insert(typedef.borrow().fq_name.clone(), (typedef.clone(), env.clone()));
+        lookup.insert(typedef.fq_name.clone(), (typedef.clone(), env.clone()));
     }
 
     let mut sorted: Vec<Name> = vec![];
@@ -576,7 +577,7 @@ fn inheritance_topological_sort<'ast>(preprocessed_types: &[TypeEnvironmentPair<
         let mut stack: Vec<Name> = vec![];
 
         for &(ref typedef, _) in preprocessed_types.iter() {
-            if !visited.contains(&typedef.borrow().fq_name) {
+            if !visited.contains(&typedef.fq_name) {
                 let result = inheritance_topological_sort_search(
                     typedef.clone(), &mut seen, &mut visited,
                     &mut stack, &mut sorted);
@@ -641,7 +642,7 @@ fn build_environments<'ast>(toplevel: PackageRef<'ast>,
     }
 
     for &(ref typedef, ref env) in preprocessed_types.iter() {
-        env.clone().walk_type_declaration(typedef.borrow().ast);
+        env.clone().walk_type_declaration(typedef.ast);
     }
 }
 

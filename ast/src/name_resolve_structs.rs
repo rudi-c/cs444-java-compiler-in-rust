@@ -8,10 +8,8 @@ use std::rc::{Rc, Weak};
 
 // In this file, the variable name prefix 'fq_' abbreviates fully_qualified_
 
-fn rc_cell<T>(x: T) -> Rc<RefCell<T>> { Rc::new(RefCell::new(x)) }
-
 // The idea here is to have an object graph represented using Rc pointers.
-// RefCell allows the graph to be mutated by later passes.
+// RefCell allows fields in the graph to be mutated by later passes.
 // To avoid cycles, Rc pointers should be used for objects that are conceptually "children" (e.g.
 // types in a package, methods in a type); weak pointers elsewhere.
 // Every object has a unique `Name`, which can be used as an key for external maps. There is
@@ -30,15 +28,15 @@ pub enum PackageItem<'ast> {
 impl<'ast> PackageItem<'ast> {
     pub fn fq_name(&self) -> Name {
         match self {
-            &PackageItem::Package(ref package) => package.borrow().fq_name,
-            &PackageItem::TypeDefinition(ref typedef) => typedef.borrow().fq_name,
+            &PackageItem::Package(ref package) => package.fq_name,
+            &PackageItem::TypeDefinition(ref typedef) => typedef.fq_name,
         }
     }
 
     pub fn print_light(&self) {
         println!("{}", self.fq_name());
         if let &PackageItem::Package(ref package) = self {
-            for package_item in package.borrow().contents.values() {
+            for package_item in package.contents.borrow().values() {
                 package_item.print_light();
             }
         }
@@ -48,16 +46,16 @@ impl<'ast> PackageItem<'ast> {
 #[derive(Show)]
 pub struct Package<'ast> {
     pub fq_name: Name,
-    pub contents: HashMap<Symbol, PackageItem<'ast>>
+    pub contents: RefCell<HashMap<Symbol, PackageItem<'ast>>>
 }
-pub type PackageRef<'ast> = Rc<RefCell<Package<'ast>>>;
-pub type PackageWeak<'ast> = Weak<RefCell<Package<'ast>>>;
+pub type PackageRef<'ast> = Rc<Package<'ast>>;
+pub type PackageWeak<'ast> = Weak<Package<'ast>>;
 
 impl<'ast> Package<'ast> {
     pub fn new(name: String) -> PackageRef<'ast> {
-        rc_cell(Package {
+        Rc::new(Package {
             fq_name: Name::fresh(name),
-            contents: HashMap::new(),
+            contents: RefCell::new(HashMap::new()),
         })
     }
 }
@@ -67,12 +65,12 @@ pub struct Field<'ast> {
     pub fq_name: Name,
     pub ast: &'ast ast::Field,
 }
-pub type FieldRef<'ast> = Rc<RefCell<Field<'ast>>>;
-pub type FieldWeak<'ast> = Weak<RefCell<Field<'ast>>>;
+pub type FieldRef<'ast> = Rc<Field<'ast>>;
+pub type FieldWeak<'ast> = Weak<Field<'ast>>;
 
 impl<'ast> Field<'ast> {
     pub fn new(name: String, ast: &'ast ast::Field) -> FieldRef<'ast> {
-        rc_cell(Field {
+        Rc::new(Field {
             fq_name: Name::fresh(name),
             ast: ast,
         })
@@ -84,12 +82,12 @@ pub struct Method<'ast> {
     pub fq_name: Name,
     pub ast: &'ast ast::Method,
 }
-pub type MethodRef<'ast> = Rc<RefCell<Method<'ast>>>;
-pub type MethodWeak<'ast> = Weak<RefCell<Method<'ast>>>;
+pub type MethodRef<'ast> = Rc<Method<'ast>>;
+pub type MethodWeak<'ast> = Weak<Method<'ast>>;
 
 impl<'ast> Method<'ast> {
     pub fn new(name: String, ast: &'ast ast::Method) -> MethodRef<'ast> {
-        rc_cell(Method {
+        Rc::new(Method {
             fq_name: Name::fresh(name),
             ast: ast,
         })
@@ -109,28 +107,28 @@ pub struct TypeDefinition<'ast> {
 
     // Note that fields and methods can have the same name, therefore
     // need to be be in separate namespaces.
-    pub fields: HashMap<Symbol, FieldRef<'ast>>,
+    pub fields: RefCell<HashMap<Symbol, FieldRef<'ast>>>,
 
     // Method overloads can have the same name.
-    pub methods: HashMap<Symbol, Vec<MethodRef<'ast>>>,
+    pub methods: RefCell<HashMap<Symbol, Vec<MethodRef<'ast>>>>,
 
-    pub extends: Vec<TypeDefinitionWeak<'ast>>,
-    pub implements: Vec<TypeDefinitionWeak<'ast>>,
+    pub extends: RefCell<Vec<TypeDefinitionWeak<'ast>>>,
+    pub implements: RefCell<Vec<TypeDefinitionWeak<'ast>>>,
 
     pub ast: &'ast ast::TypeDeclaration,
 }
-pub type TypeDefinitionRef<'ast> = Rc<RefCell<TypeDefinition<'ast>>>;
-pub type TypeDefinitionWeak<'ast> = Weak<RefCell<TypeDefinition<'ast>>>;
+pub type TypeDefinitionRef<'ast> = Rc<TypeDefinition<'ast>>;
+pub type TypeDefinitionWeak<'ast> = Weak<TypeDefinition<'ast>>;
 
 impl<'ast> TypeDefinition<'ast> {
     pub fn new(name: String, kind: TypeKind, ast: &'ast ast::TypeDeclaration) -> TypeDefinitionRef<'ast> {
-        rc_cell(TypeDefinition {
+        Rc::new(TypeDefinition {
             fq_name: Name::fresh(name),
             kind: kind,
-            fields: HashMap::new(),
-            methods: HashMap::new(),
-            extends: vec![],
-            implements: vec![],
+            fields: RefCell::new(HashMap::new()),
+            methods: RefCell::new(HashMap::new()),
+            extends: RefCell::new(vec![]),
+            implements: RefCell::new(vec![]),
             ast: ast,
         })
     }
@@ -184,8 +182,7 @@ impl<'ast> PartialEq for SimpleType<'ast> {
             (&SimpleType::Char, &SimpleType::Char) => true,
             (&SimpleType::Byte, &SimpleType::Byte) => true,
             (&SimpleType::Other(ref typedef1), &SimpleType::Other(ref typedef2)) =>
-                typedef1.upgrade().unwrap().borrow().eq(
-                    &*typedef2.upgrade().unwrap().borrow()),
+                typedef1.upgrade().unwrap().eq(&typedef2.upgrade().unwrap()),
             _ => false,
         }
     }
@@ -207,8 +204,7 @@ impl<'ast> PartialOrd for SimpleType<'ast> {
         }
         match (self, other) {
             (&SimpleType::Other(ref typedef1), &SimpleType::Other(ref typedef2)) =>
-                typedef1.upgrade().unwrap().borrow().partial_cmp(
-                    &*typedef2.upgrade().unwrap().borrow()),
+                typedef1.upgrade().unwrap().partial_cmp(&typedef2.upgrade().unwrap()),
             (&SimpleType::Other(_), _) => Some(Ordering::Greater),
             (_, &SimpleType::Other(_)) => Some(Ordering::Less),
            (type1, type2) => int_val(type1).partial_cmp(&int_val(type2)),
