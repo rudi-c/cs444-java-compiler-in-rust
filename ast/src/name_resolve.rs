@@ -3,397 +3,15 @@ use name::*;
 use walker::*;
 use span::Span;
 
+use name_resolve_structs::*;
+use collect_types::collect_types;
+
 use rbtree::RbMap;
 
 use std::borrow::ToOwned;
-use std::collections::{hash_map, HashMap, HashSet};
 use std::cell::RefCell;
-use std::cmp::{Ord, Ordering};
+use std::collections::{HashMap, HashSet};
 use std::rc::{Rc, Weak};
-
-// In this file, the variable name prefix 'fq_' abbreviates fully_qualified_
-
-fn rc_cell<T>(x: T) -> Rc<RefCell<T>> { Rc::new(RefCell::new(x)) }
-
-// The idea here is to have an object graph represented using Rc pointers.
-// RefCell allows the graph to be mutated by later passes.
-// To avoid cycles, Rc pointers should be used for objects that are conceptually "children" (e.g.
-// types in a package, methods in a type); weak pointers elsewhere.
-// Every object has a unique `Name`, which can be used as an key for external maps. There is
-// intentionally no way to go from a `Name` back to the object: if you need it, just store the
-// pointer! `Name`s are also generally associated with fully-qualified identifiers, suitable for
-// printing in error messages.
-// Many objects also hold references to their associated AST nodes, hence the 'ast lifetime
-// everywhere.
-
-#[derive(Show, Clone)]
-pub enum PackageItem<'ast> {
-    Package(PackageRef<'ast>),
-    TypeDefinition(TypeDefinitionRef<'ast>),
-}
-
-impl<'ast> PackageItem<'ast> {
-    pub fn fq_name(&self) -> Name {
-        match self {
-            &PackageItem::Package(ref package) => package.borrow().fq_name,
-            &PackageItem::TypeDefinition(ref typedef) => typedef.borrow().fq_name,
-        }
-    }
-
-    pub fn print_light(&self) {
-        println!("{}", self.fq_name());
-        if let &PackageItem::Package(ref package) = self {
-            for package_item in package.borrow().contents.values() {
-                package_item.print_light();
-            }
-        }
-    }
-}
-
-#[derive(Show)]
-pub struct Package<'ast> {
-    fq_name: Name,
-    contents: HashMap<Symbol, PackageItem<'ast>>
-}
-pub type PackageRef<'ast> = Rc<RefCell<Package<'ast>>>;
-pub type PackageWeak<'ast> = Weak<RefCell<Package<'ast>>>;
-
-impl<'ast> Package<'ast> {
-    pub fn new(name: String) -> PackageRef<'ast> {
-        rc_cell(Package {
-            fq_name: Name::fresh(name),
-            contents: HashMap::new(),
-        })
-    }
-}
-
-#[derive(Show)]
-pub struct Field<'ast> {
-    fq_name: Name,
-    ast: &'ast ast::Field,
-}
-pub type FieldRef<'ast> = Rc<RefCell<Field<'ast>>>;
-pub type FieldWeak<'ast> = Weak<RefCell<Field<'ast>>>;
-
-impl<'ast> Field<'ast> {
-    pub fn new(name: String, ast: &'ast ast::Field) -> FieldRef<'ast> {
-        rc_cell(Field {
-            fq_name: Name::fresh(name),
-            ast: ast,
-        })
-    }
-}
-
-#[derive(Show)]
-pub struct Method<'ast> {
-    fq_name: Name,
-    ast: &'ast ast::Method,
-}
-pub type MethodRef<'ast> = Rc<RefCell<Method<'ast>>>;
-pub type MethodWeak<'ast> = Weak<RefCell<Method<'ast>>>;
-
-impl<'ast> Method<'ast> {
-    pub fn new(name: String, ast: &'ast ast::Method) -> MethodRef<'ast> {
-        rc_cell(Method {
-            fq_name: Name::fresh(name),
-            ast: ast,
-        })
-    }
-}
-
-#[derive(Show, Copy)]
-pub enum TypeKind {
-    Class,
-    Interface,
-}
-
-#[derive(Show)]
-pub struct TypeDefinition<'ast> {
-    fq_name: Name,
-    kind: TypeKind,
-
-    // Note that fields and methods can have the same name, therefore
-    // need to be be in separate namespaces.
-    fields: HashMap<Symbol, FieldRef<'ast>>,
-
-    // Method overloads can have the same name.
-    methods: HashMap<Symbol, Vec<MethodRef<'ast>>>,
-
-    extends: Vec<TypeDefinitionWeak<'ast>>,
-    implements: Vec<TypeDefinitionWeak<'ast>>,
-
-    ast: &'ast ast::TypeDeclaration,
-}
-pub type TypeDefinitionRef<'ast> = Rc<RefCell<TypeDefinition<'ast>>>;
-pub type TypeDefinitionWeak<'ast> = Weak<RefCell<TypeDefinition<'ast>>>;
-
-impl<'ast> TypeDefinition<'ast> {
-    pub fn new(name: String, kind: TypeKind, ast: &'ast ast::TypeDeclaration) -> TypeDefinitionRef<'ast> {
-        rc_cell(TypeDefinition {
-            fq_name: Name::fresh(name),
-            kind: kind,
-            fields: HashMap::new(),
-            methods: HashMap::new(),
-            extends: vec![],
-            implements: vec![],
-            ast: ast,
-        })
-    }
-}
-
-impl<'ast> PartialEq for TypeDefinition<'ast> {
-    fn eq(&self, other: &Self) -> bool {
-        self.fq_name.eq(&other.fq_name)
-    }
-}
-
-impl<'ast> Eq for TypeDefinition<'ast> {}
-
-impl<'ast> PartialOrd for TypeDefinition<'ast> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.fq_name.partial_cmp(&other.fq_name)
-    }
-}
-
-impl<'ast> Ord for TypeDefinition<'ast> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.fq_name.cmp(&other.fq_name)
-    }
-}
-
-#[derive(Show, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Type<'ast> {
-    SimpleType(SimpleType<'ast>),
-    ArrayType(SimpleType<'ast>),
-
-    // Placeholder when name resolution fails.
-    Unknown,
-}
-
-#[derive(Show, Clone)]
-pub enum SimpleType<'ast> {
-    Boolean,
-    Int,
-    Short,
-    Char,
-    Byte,
-    Other(TypeDefinitionWeak<'ast>),
-}
-
-impl<'ast> PartialEq for SimpleType<'ast> {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (&SimpleType::Boolean, &SimpleType::Boolean) => true,
-            (&SimpleType::Int, &SimpleType::Int) => true,
-            (&SimpleType::Short, &SimpleType::Short) => true,
-            (&SimpleType::Char, &SimpleType::Char) => true,
-            (&SimpleType::Byte, &SimpleType::Byte) => true,
-            (&SimpleType::Other(ref typedef1), &SimpleType::Other(ref typedef2)) =>
-                typedef1.upgrade().unwrap().borrow().eq(
-                    &*typedef2.upgrade().unwrap().borrow()),
-            _ => false,
-        }
-    }
-}
-
-impl<'ast> Eq for SimpleType<'ast> {}
-
-impl<'ast> PartialOrd for SimpleType<'ast> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        fn int_val<'ast>(ty: &SimpleType<'ast>) -> i32 {
-            match ty {
-                &SimpleType::Boolean => 0,
-                &SimpleType::Int => 1,
-                &SimpleType::Short => 2,
-                &SimpleType::Char => 3,
-                &SimpleType::Byte => 4,
-                _ => panic!("should not be here"),
-            }
-        }
-        match (self, other) {
-            (&SimpleType::Other(ref typedef1), &SimpleType::Other(ref typedef2)) =>
-                typedef1.upgrade().unwrap().borrow().partial_cmp(
-                    &*typedef2.upgrade().unwrap().borrow()),
-            (&SimpleType::Other(_), _) => Some(Ordering::Greater),
-            (_, &SimpleType::Other(_)) => Some(Ordering::Less),
-           (type1, type2) => int_val(type1).partial_cmp(&int_val(type2)),
-        }
-    }
-}
-
-impl<'ast> Ord for SimpleType<'ast> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).unwrap()
-    }
-}
-
-struct Collector<'ast> {
-    package: PackageRef<'ast>,
-    scope: Vec<Symbol>,
-    type_definition: Option<TypeDefinitionRef<'ast>>,
-}
-
-impl<'ast> Walker<'ast> for Collector<'ast> {
-    fn walk_class_field(&mut self, field: &'ast ast::Field) {
-        let field_name = format!("{}.{}", Qualified(self.scope.iter()), field.node.name);
-        let tydef = self.type_definition.as_ref().unwrap();
-        if let Some(_) = tydef.borrow_mut().fields.insert(field.node.name.node, Field::new(field_name, field)) {
-            // something with the same name was already there!
-            span_error!(field.span, "field `{}` already exists in `{}`",
-                        field.node.name, Qualified(self.scope.iter()));
-        }
-
-        // no need to walk deeper
-    }
-    fn walk_class_method(&mut self, method_ast: &'ast ast::Method) {
-        // Note: Implementation is shared with interface methods
-
-        let mut tydef = self.type_definition.as_ref().unwrap().borrow_mut();
-        let overloads = tydef.methods.entry(method_ast.node.name.node).get().unwrap_or_else(|v| {
-            // First time seeing this method name.
-            v.insert(vec![])
-        });
-
-        let method_name = format!("{}.{}", Qualified(self.scope.iter()), method_ast.node.name);
-        overloads.push(Method::new(method_name, method_ast));
-
-        // no need to walk deeper
-    }
-    fn walk_interface_method(&mut self, method: &'ast ast::Method) {
-        // same as a class method
-        self.walk_class_method(method);
-    }
-
-    fn walk_type_declaration(&mut self, ty_decl: &'ast ast::TypeDeclaration) {
-        assert!(self.type_definition.is_none());
-
-        let name = ty_decl.name();
-        let kind = match ty_decl.node {
-            ast::TypeDeclaration_::Class(..) => TypeKind::Class,
-            ast::TypeDeclaration_::Interface(..) => TypeKind::Interface,
-        };
-        self.scope.push(name.node);
-        let fq_type = Qualified(self.scope.iter()).to_string();
-        let tydef = TypeDefinition::new(fq_type, kind, ty_decl);
-
-        // Insert `tydef` into the package
-        {
-            let mut package = self.package.borrow_mut();
-            // XXX: Need to go through some contortions here to make rustc recognize the mutable
-            // deref
-            let &mut Package { ref fq_name, ref mut contents } = &mut *package;
-            match contents.entry(name.node) {
-                hash_map::Entry::Occupied(v) => {
-                    match *v.get() {
-                        PackageItem::Package(..) => {
-                            type_package_conflict(&*tydef.borrow());
-                        }
-                        PackageItem::TypeDefinition(..) => {
-                            span_error!(name.span,
-                                        "type `{}` already exists in package `{}`",
-                                        name, fq_name);
-                        }
-                    }
-                    return
-                }
-                hash_map::Entry::Vacant(v) => {
-                    v.insert(PackageItem::TypeDefinition(tydef.clone()));
-                }
-            }
-        }
-
-        self.type_definition = Some(tydef);
-
-        default_walk_type_declaration(self, ty_decl);
-
-        self.type_definition = None;
-        self.scope.pop();
-    }
-}
-
-fn type_package_conflict(tydef: &TypeDefinition) {
-    span_error!(tydef.ast.name().span,
-                // Technically this is the name of the type, not the package,
-                // but the point is that they're the same...
-                "type name conflicts with package `{}`",
-                tydef.fq_name);
-}
-
-// Looks up a package by qualified identifier, creating it if necessary.
-// If a name conflict occurs, this will create a dummy package.
-fn resolve_create_package<'ast>(toplevel: PackageRef<'ast>, id: &[Ident]) -> PackageRef<'ast> {
-    id.iter().enumerate().fold(toplevel, |package, (ix, ident)| {
-        let new = |:| Package::new(Qualified(id[0..ix+1].iter()).to_string());
-        match package.borrow_mut().contents.entry(ident.node) {
-            hash_map::Entry::Occupied(mut v) => {
-                let slot = v.get_mut();
-                match *slot {
-                    PackageItem::Package(ref it) => return it.clone(), // Found it
-                    PackageItem::TypeDefinition(ref tydef) => {
-                        // There was a type instead!
-                        type_package_conflict(&*tydef.borrow());
-                    }
-                }
-                // Kick out the type and put a package instead.
-                // This prevents a spray of errors in case one type conflicts with a package with
-                // many compilation units
-                let next = new();
-                *slot = PackageItem::Package(next.clone());
-                next
-            }
-            hash_map::Entry::Vacant(v) => {
-                let next = new();
-                v.insert(PackageItem::Package(next.clone()));
-                next
-            }
-        }
-    })
-}
-
-// Look up a package by its fully-qualified name.
-fn resolve_package<'ast>(toplevel: PackageRef<'ast>, id: &[Ident]) -> Option<PackageRef<'ast>> {
-    let mut package = toplevel;
-    for (ix, ident) in id.iter().enumerate() {
-        package = match package.borrow().contents.get(&ident.node) {
-            Some(&PackageItem::Package(ref it)) => {
-                it.clone() // Found it
-            }
-            Some(&PackageItem::TypeDefinition(..)) => {
-                // There was a type instead!
-                span_error!(Span::range(&id[0], &id[ix]),
-                            "no such package `{}`; found a type instead",
-                            Qualified(id[0..ix+1].iter()));
-                return None
-            }
-            None => {
-                span_error!(Span::range(&id[0], &id[ix]),
-                            "no such package `{}`",
-                            Qualified(id[0..ix+1].iter()));
-                return None
-            }
-        };
-    }
-    Some(package)
-}
-
-// Phase 1.
-fn collect_types<'ast>(toplevel: PackageRef<'ast>,
-                       asts: &'ast [ast::CompilationUnit]) {
-    for ast in asts.iter() {
-        let (package, scope) = if let Some(ref package_identifier) = ast.package {
-            (resolve_create_package(toplevel.clone(), &*package_identifier.node.parts),
-             package_identifier.node.parts.iter().map(|x| x.node).collect())
-        } else {
-            (toplevel.clone(), vec![])
-        };
-
-        Collector {
-            package: package,
-            scope: scope,
-            type_definition: None,
-        }.walk_compilation_unit(ast);
-    }
-}
 
 #[derive(Show, Clone)]
 enum Referent<'ast> {
@@ -810,6 +428,32 @@ impl<'ast> EnvironmentStack<'ast> {
     }
 }
 
+// Look up a package by its fully-qualified name.
+fn resolve_package<'ast>(toplevel: PackageRef<'ast>, id: &[Ident]) -> Option<PackageRef<'ast>> {
+    let mut package = toplevel;
+    for (ix, ident) in id.iter().enumerate() {
+        package = match package.borrow().contents.get(&ident.node) {
+            Some(&PackageItem::Package(ref it)) => {
+                it.clone() // Found it
+            }
+            Some(&PackageItem::TypeDefinition(..)) => {
+                // There was a type instead!
+                span_error!(Span::range(&id[0], &id[ix]),
+                            "no such package `{}`; found a type instead",
+                            Qualified(id[0..ix+1].iter()));
+                return None
+            }
+            None => {
+                span_error!(Span::range(&id[0], &id[ix]),
+                            "no such package `{}`",
+                            Qualified(id[0..ix+1].iter()));
+                return None
+            }
+        };
+    }
+    Some(package)
+}
+
 fn insert_declared_type<'ast>(env: &TypesEnvironment<'ast>,
                               ident: &Ident,
                               typedef: TypeDefinitionRef<'ast>) -> TypesEnvironment<'ast> {
@@ -1020,3 +664,4 @@ pub fn name_resolve<'ast>(asts: &'ast [ast::CompilationUnit]) -> PackageRef<'ast
     println!("{:?}", toplevel);
     toplevel
 }
+
