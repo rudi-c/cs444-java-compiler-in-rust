@@ -5,66 +5,65 @@ use span::Span;
 
 use name_resolve_structs::*;
 use collect_types::collect_types;
+use arena::Arena;
 
 use rbtree::RbMap;
 
 use std::borrow::ToOwned;
-use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::rc::{Rc, Weak};
 
 #[derive(Show, Clone)]
-enum Referent<'ast> {
-    Type(TypeDefinitionRef<'ast>),
-    Variable(Variable<'ast>),
-    Method(MethodRef<'ast>),
+enum Referent<'a, 'ast: 'a> {
+    Type(TypeDefinitionRef<'a, 'ast>),
+    Variable(Variable<'a, 'ast>),
+    Method(MethodRef<'a, 'ast>),
 }
 
 #[derive(Show, Clone)]
-enum Variable<'ast> {
+enum Variable<'a, 'ast: 'a> {
     LocalVariable,
-    Field(FieldRef<'ast>, Type<'ast>),
+    Field(FieldRef<'a, 'ast>, Type<'a, 'ast>),
 }
 
 
-type TypesEnvironment<'ast> = RbMap<Symbol, TypeDefinitionRef<'ast>>;
-type VariablesEnvironment<'ast> = RbMap<Symbol, Variable<'ast>>;
-type MethodsEnvironment<'ast> = RbMap<(Symbol, Vec<Type<'ast>>),
-                                      (MethodRef<'ast>, Option<Type<'ast>>)>;
+type TypesEnvironment<'a, 'ast> = RbMap<Symbol, TypeDefinitionRef<'a, 'ast>>;
+type VariablesEnvironment<'a, 'ast> = RbMap<Symbol, Variable<'a, 'ast>>;
+type MethodsEnvironment<'a, 'ast> = RbMap<(Symbol, Vec<Type<'a, 'ast>>),
+                                      (MethodRef<'a, 'ast>, Option<Type<'a, 'ast>>)>;
 
 #[derive(Show, Clone)]
-struct EnvironmentStack<'ast> {
+struct EnvironmentStack<'a, 'ast: 'a> {
     // Since there are no nested classes and only one type per file,
     // this is not a stack/vector and we just use mutation to add the
     // single class/interface in the file to the initial environment
     // containing imported types.
-    types: TypesEnvironment<'ast>,
+    types: TypesEnvironment<'a, 'ast>,
 
     // Similarly, no stack for methods.
-    methods: MethodsEnvironment<'ast>,
+    methods: MethodsEnvironment<'a, 'ast>,
 
-    variables: Vec<VariablesEnvironment<'ast>>,
-    toplevel: PackageRef<'ast>,
+    variables: Vec<VariablesEnvironment<'a, 'ast>>,
+    toplevel: PackageRef<'a, 'ast>,
     package: Option<QualifiedIdentifier>,
 
     // Search here for more types.
-    on_demand_packages: Vec<PackageRef<'ast>>
+    on_demand_packages: Vec<PackageRef<'a, 'ast>>
 }
 
-type TypeEnvironmentPair<'ast> = (TypeDefinitionRef<'ast>, EnvironmentStack<'ast>);
+type TypeEnvironmentPair<'a, 'ast> = (TypeDefinitionRef<'a, 'ast>, EnvironmentStack<'a, 'ast>);
 
-impl<'ast> Walker<'ast> for EnvironmentStack<'ast> {
+impl<'a, 'ast> Walker<'ast> for EnvironmentStack<'a, 'ast> {
     fn walk_class(&mut self, class: &'ast ast::Class) {
         let ref class_name = class.node.name;
         let typedef = self.get_type_declaration(class_name).unwrap();
         let mut vars_env = self.variables.last().unwrap().clone();
 
         // Add the class itself to the environment.
-        self.types = insert_declared_type(&self.types, class_name, typedef.clone());
+        self.types = insert_declared_type(&self.types, class_name, typedef);
 
         // Process class body.
-        vars_env = self.collect_fields(vars_env, typedef.clone());
-        self.methods = self.collect_methods(typedef.clone());
+        vars_env = self.collect_fields(vars_env, typedef);
+        self.methods = self.collect_methods(typedef);
     }
 
     fn walk_interface(&mut self, interface: &'ast ast::Interface) {
@@ -73,25 +72,25 @@ impl<'ast> Walker<'ast> for EnvironmentStack<'ast> {
         let mut vars_env = self.variables.last().unwrap().clone();
 
         // Add the interface itself to the environment.
-        self.types = insert_declared_type(&self.types, interface_name, typedef.clone());
+        self.types = insert_declared_type(&self.types, interface_name, typedef);
 
         // Process interface body.
-        self.methods = self.collect_methods(typedef.clone());
+        self.methods = self.collect_methods(typedef);
     }
 }
 
-impl<'ast> EnvironmentStack<'ast> {
-    fn get_type_declaration(&self, ident: &Ident) -> Option<TypeDefinitionRef<'ast>> {
+impl<'a, 'ast> EnvironmentStack<'a, 'ast> {
+    fn get_type_declaration(&self, ident: &Ident) -> Option<TypeDefinitionRef<'a, 'ast>> {
         let p = if let Some(ref package) = self.package {
             self.resolve_package_name(&*package.node.parts).unwrap()
         } else {
             // Top level.
-            self.toplevel.clone()
+            self.toplevel
         };
         // FIXME: This is kinda bad
-        if let Some(&PackageItem::TypeDefinition(ref typedef)) =
+        if let Some(&PackageItem::TypeDefinition(typedef)) =
                 p.contents.borrow().get(&ident.node) {
-            Some(typedef.clone())
+            Some(typedef)
         } else {
             None
         }
@@ -103,38 +102,38 @@ impl<'ast> EnvironmentStack<'ast> {
     //
     // Returns the TypeDefinition that has just been resolved.
     fn resolve_inheritance(&self, typedcl: &ast::TypeDeclaration)
-            -> TypeDefinitionRef<'ast> {
+            -> TypeDefinitionRef<'a, 'ast> {
         match typedcl.node {
             ast::TypeDeclaration_::Class(ref class) => {
                 let ref class_name = class.node.name;
                 let typedef = self.get_type_declaration(class_name).unwrap();
 
                 if let Some(ref extension) = class.node.extends {
-                    self.resolve_extensions(typedef.clone(),
+                    self.resolve_extensions(typedef,
                                             &[extension.clone()]);
                 }
-                self.resolve_implements(typedef.clone(),
+                self.resolve_implements(typedef,
                                         class.node.implements.as_slice());
-                typedef.clone()
+                typedef
             },
             ast::TypeDeclaration_::Interface(ref interface) => {
                 let ref interface_name = interface.node.name;
                 let typedef = self.get_type_declaration(interface_name).unwrap();
 
-                self.resolve_extensions(typedef.clone(),
+                self.resolve_extensions(typedef,
                                         interface.node.extends.as_slice());
-                typedef.clone()
+                typedef
             },
         }
     }
 
     fn resolve_extensions(&self,
-                          typedef: TypeDefinitionRef<'ast>,
+                          typedef: TypeDefinitionRef<'a, 'ast>,
                           extensions: &[QualifiedIdentifier]) {
         for extension in extensions.iter() {
             match self.resolve_type_name(&*extension.node.parts) {
                 Some(extended_type) => {
-                    typedef.extends.borrow_mut().push(extended_type.downgrade());
+                    typedef.extends.borrow_mut().push(extended_type);
                 },
                 None => {
                     // an error was already printed
@@ -144,12 +143,12 @@ impl<'ast> EnvironmentStack<'ast> {
     }
 
     fn resolve_implements(&self,
-                          typedef: TypeDefinitionRef<'ast>,
+                          typedef: TypeDefinitionRef<'a, 'ast>,
                           implements: &[QualifiedIdentifier]) {
         for implement in implements.iter() {
             match self.resolve_type_name(&*implement.node.parts) {
                 Some(implemented_type) => {
-                    typedef.implements.borrow_mut().push(implemented_type.downgrade());
+                    typedef.implements.borrow_mut().push(implemented_type);
                 },
                 None => {
                     // an error was already printed
@@ -158,7 +157,7 @@ impl<'ast> EnvironmentStack<'ast> {
         }
     }
 
-    fn resolve_type(&self, ty: &ast::Type) -> Type<'ast> {
+    fn resolve_type(&self, ty: &ast::Type) -> Type<'a, 'ast> {
         match ty.node {
             ast::Type_::SimpleType(ref simple_type) =>
                 if let Some(ty) = self.resolve_simple_type(simple_type) {
@@ -177,7 +176,7 @@ impl<'ast> EnvironmentStack<'ast> {
 
     fn resolve_simple_type(&self,
                            ty: &ast::SimpleType)
-            -> Option<SimpleType<'ast>> {
+            -> Option<SimpleType<'a, 'ast>> {
         match ty.node {
             ast::SimpleType_::Boolean => Some(SimpleType::Boolean),
             ast::SimpleType_::Int => Some(SimpleType::Int),
@@ -186,22 +185,22 @@ impl<'ast> EnvironmentStack<'ast> {
             ast::SimpleType_::Byte => Some(SimpleType::Byte),
             ast::SimpleType_::Other(ref qident) =>
                 self.resolve_type_name(&*qident.node.parts)
-                    .map(|ty| SimpleType::Other(ty.downgrade())),
+                    .map(|ty| SimpleType::Other(ty)),
         }
     }
 
     fn collect_fields(&self,
-                      vars_env: VariablesEnvironment<'ast>,
-                      typedef: TypeDefinitionRef<'ast>) -> VariablesEnvironment<'ast> {
+                      vars_env: VariablesEnvironment<'a, 'ast>,
+                      typedef: TypeDefinitionRef<'a, 'ast>) -> VariablesEnvironment<'a, 'ast> {
         typedef.fields
                .borrow()
                .values()
                .fold(vars_env, |env, field| {
             let ref field_ast = field.ast.node;
-            let field_ref = typedef.fields.borrow().get(&field_ast.name.node).unwrap().clone();
+            let field_ref = *typedef.fields.borrow().get(&field_ast.name.node).unwrap();
             let field_type = self.resolve_type(&field_ast.ty);
 
-            let variable = Variable::Field(field_ref.clone(), field_type);
+            let variable = Variable::Field(field_ref, field_type);
             let (new_env, existing) = env.insert(field_ast.name.node,
                                                  variable);
 
@@ -219,12 +218,12 @@ impl<'ast> EnvironmentStack<'ast> {
     }
 
     // Add the methods of the type to the environment.
-    fn collect_methods(&mut self, typedef: TypeDefinitionRef<'ast>)
-            -> MethodsEnvironment<'ast> {
+    fn collect_methods(&mut self, typedef: TypeDefinitionRef<'a, 'ast>)
+            -> MethodsEnvironment<'a, 'ast> {
         let mut methods_env = self.methods.clone();
 
-        for (name, overloads) in typedef.methods.borrow().iter() {
-            for method in overloads.iter() {
+        for (&name, overloads) in typedef.methods.borrow().iter() {
+            for &method in overloads.iter() {
                 let ref method_ast = method.ast.node;
                 let return_type = method_ast.return_type.as_ref()
                                             .map(|ty| self.resolve_type(ty));
@@ -234,8 +233,8 @@ impl<'ast> EnvironmentStack<'ast> {
                               .collect();
 
                 let (new_env, existing) =
-                    self.methods.insert((name.clone(), argument_types),
-                                        (method.clone(), return_type));
+                    self.methods.insert((name, argument_types),
+                                        (method, return_type));
                 methods_env = new_env;
             }
         }
@@ -245,19 +244,19 @@ impl<'ast> EnvironmentStack<'ast> {
 
     // Look up a package by its fully qualified name.
     // Emits an error on failure.
-    fn resolve_package_name(&self, id: &[Ident]) -> Option<PackageRef<'ast>> {
+    fn resolve_package_name(&self, id: &[Ident]) -> Option<PackageRef<'a, 'ast>> {
         assert!(!id.is_empty());
-        resolve_package(self.toplevel.clone(), id)
+        resolve_package(self.toplevel, id)
     }
 
     // Look up a (user-defined) type by either a qualified or simple name.
     // Emits an error on failure.
-    fn resolve_type_name(&self, id: &[Ident]) -> Option<TypeDefinitionRef<'ast>> {
+    fn resolve_type_name(&self, id: &[Ident]) -> Option<TypeDefinitionRef<'a, 'ast>> {
         match id {
             [] => panic!("bug: tried to resolve an empty type name"),
             // simple name
             [ref ident] => match self.find_type(ident) {
-                Some(tydef) => Some(tydef.clone()),
+                Some(tydef) => Some(tydef),
                 None => {
                     span_error!(ident.span, "unresolved type name");
                     None
@@ -267,7 +266,7 @@ impl<'ast> EnvironmentStack<'ast> {
             // in Joos, `init` must refer to a package
             [init.., ref last] => self.resolve_package_name(init).and_then(|package| {
                 match package.contents.borrow().get(&last.node) {
-                    Some(&PackageItem::TypeDefinition(ref tydef)) => Some(tydef.clone()),
+                    Some(&PackageItem::TypeDefinition(tydef)) => Some(tydef),
                     _ => {
                         span_error!(Span::range(&init[0], last),
                                     "no such type `{}` in package `{}`",
@@ -283,8 +282,8 @@ impl<'ast> EnvironmentStack<'ast> {
     // Tries to resolve a non-fully qualified identifier to a symbol table
     // item. Spans an error upon failure.
     fn resolve_identifier(&self, qident: &QualifiedIdentifier,
-                          vars_env: &VariablesEnvironment<'ast>)
-            -> Option<Referent<'ast>> {
+                          vars_env: &VariablesEnvironment<'a, 'ast>)
+            -> Option<Referent<'a, 'ast>> {
         // For qident = a.b.c.d...
         let first = qident.node.parts.first().unwrap();
         let rest = qident.node.parts.tail();
@@ -315,8 +314,8 @@ impl<'ast> EnvironmentStack<'ast> {
     }
 
     fn resolve_expression_identifier(&self, qident: &[Ident],
-                                     expression: &Referent<'ast>)
-            -> Option<Referent<'ast>> {
+                                     expression: &Referent<'a, 'ast>)
+            -> Option<Referent<'a, 'ast>> {
         match qident {
             // Just this expression
             [] => Some(expression.clone()),
@@ -328,8 +327,8 @@ impl<'ast> EnvironmentStack<'ast> {
     }
 
     fn resolve_type_identifier(&self, qident: &[Ident],
-                               typedef: TypeDefinitionRef<'ast>)
-            -> Option<Referent<'ast>> {
+                               typedef: TypeDefinitionRef<'a, 'ast>)
+            -> Option<Referent<'a, 'ast>> {
         match qident {
             // Just this type
             [] => Some(Referent::Type(typedef.clone())),
@@ -354,8 +353,8 @@ impl<'ast> EnvironmentStack<'ast> {
     }
 
     fn resolve_package_identifier(&self, qident: &[Ident],
-                                  package: PackageRef<'ast>)
-            -> Option<Referent<'ast>> {
+                                  package: PackageRef<'a, 'ast>)
+            -> Option<Referent<'a, 'ast>> {
         // This function should not be called on an empty qident, because
         // it would imply that we are returning a package, which is not
         // a valid name resolution. Caller functions should catch this case.
@@ -390,7 +389,7 @@ impl<'ast> EnvironmentStack<'ast> {
 
     // Look up a type by simple name, using the current environment.
     // TODO: Clean up the error story here (don't want to emit multiple errors)
-    fn find_type(&self, ty: &Ident) -> Option<TypeDefinitionRef<'ast>> {
+    fn find_type(&self, ty: &Ident) -> Option<TypeDefinitionRef<'a, 'ast>> {
         self.types.get(&ty.node)
                   .cloned()
                   .or_else(|| {
@@ -399,11 +398,11 @@ impl<'ast> EnvironmentStack<'ast> {
             // It's necessary to look through every package to check for
             // ambiguities.
             println!("here for {}", ty);
-            let mut found_type: Option<TypeDefinitionRef<'ast>> = None;
+            let mut found_type: Option<TypeDefinitionRef<'a, 'ast>> = None;
             for package in self.on_demand_packages.iter() {
                 println!("try {}", package.fq_name);
                 match package.contents.borrow().get(&ty.node) {
-                    Some(&PackageItem::TypeDefinition(ref typedef)) => {
+                    Some(&PackageItem::TypeDefinition(typedef)) => {
                         println!("found {}", typedef.fq_name);
                         // If we already have a type, then there's an ambiguity.
                         if let Some(existing) = found_type {
@@ -415,7 +414,7 @@ impl<'ast> EnvironmentStack<'ast> {
                             found_type = None;
                             break;
                         } else {
-                            found_type = Some(typedef.clone());
+                            found_type = Some(typedef);
                         }
                     },
                     // Ignore subpackages.
@@ -429,12 +428,12 @@ impl<'ast> EnvironmentStack<'ast> {
 }
 
 // Look up a package by its fully-qualified name.
-fn resolve_package<'ast>(toplevel: PackageRef<'ast>, id: &[Ident]) -> Option<PackageRef<'ast>> {
+fn resolve_package<'a, 'ast>(toplevel: PackageRef<'a, 'ast>, id: &[Ident]) -> Option<PackageRef<'a, 'ast>> {
     let mut package = toplevel;
     for (ix, ident) in id.iter().enumerate() {
         package = match package.contents.borrow().get(&ident.node) {
-            Some(&PackageItem::Package(ref it)) => {
-                it.clone() // Found it
+            Some(&PackageItem::Package(it)) => {
+                it // Found it
             }
             Some(&PackageItem::TypeDefinition(..)) => {
                 // There was a type instead!
@@ -454,9 +453,9 @@ fn resolve_package<'ast>(toplevel: PackageRef<'ast>, id: &[Ident]) -> Option<Pac
     Some(package)
 }
 
-fn insert_declared_type<'ast>(env: &TypesEnvironment<'ast>,
-                              ident: &Ident,
-                              typedef: TypeDefinitionRef<'ast>) -> TypesEnvironment<'ast> {
+fn insert_declared_type<'a, 'ast>(env: &TypesEnvironment<'a, 'ast>,
+                                  ident: &Ident,
+                                  typedef: TypeDefinitionRef<'a, 'ast>) -> TypesEnvironment<'a, 'ast> {
 
     let (new_env, previous) = env.insert(ident.node, typedef);
     if let Some(&(_, ref previous_item)) = previous {
@@ -469,13 +468,12 @@ fn insert_declared_type<'ast>(env: &TypesEnvironment<'ast>,
     new_env
 }
 
-fn insert_type_import<'ast>(symbol: &Symbol,
-                            typedef: &TypeDefinitionRef<'ast>,
-                            imported: &QualifiedIdentifier,
-                            current_env: TypesEnvironment<'ast>)
-        -> TypesEnvironment<'ast> {
-    let (new_env, previous_opt) = current_env.insert(symbol.clone(),
-                                                     typedef.clone());
+fn insert_type_import<'a, 'ast>(symbol: Symbol,
+                                typedef: TypeDefinitionRef<'a, 'ast>,
+                                imported: &QualifiedIdentifier,
+                                current_env: TypesEnvironment<'a, 'ast>)
+        -> TypesEnvironment<'a, 'ast> {
+    let (new_env, previous_opt) = current_env.insert(symbol, typedef);
     if let Some(previous) = previous_opt {
         if previous.1.fq_name != typedef.fq_name {
             span_error!(imported.span,
@@ -487,10 +485,10 @@ fn insert_type_import<'ast>(symbol: &Symbol,
     new_env
 }
 
-fn import_single_type<'ast>(imported: &QualifiedIdentifier,
-                            toplevel: PackageRef<'ast>,
-                            current_env: TypesEnvironment<'ast>)
-        -> TypesEnvironment<'ast> {
+fn import_single_type<'a, 'ast>(imported: &QualifiedIdentifier,
+                                toplevel: PackageRef<'a, 'ast>,
+                                current_env: TypesEnvironment<'a, 'ast>)
+        -> TypesEnvironment<'a, 'ast> {
     match &*imported.node.parts {
         [] => panic!("impossible: imported empty type"),
         [ref id] => {
@@ -500,11 +498,11 @@ fn import_single_type<'ast>(imported: &QualifiedIdentifier,
         },
         // FIXME: Deduplicate this code with `resolve_type_name`
         // (factor into `resole_fq_type_name` or something)
-        [init.., ref last] => match resolve_package(toplevel.clone(), init) {
+        [init.., ref last] => match resolve_package(toplevel, init) {
             None => current_env,
             Some(package) => match package.contents.borrow().get(&last.node) {
-                Some(&PackageItem::TypeDefinition(ref tydef)) => {
-                    insert_type_import(&last.node, tydef, imported, current_env)
+                Some(&PackageItem::TypeDefinition(tydef)) => {
+                    insert_type_import(last.node, tydef, imported, current_env)
                 }
                 _ => {
                     span_error!(Span::range(&init[0], last),
@@ -517,19 +515,19 @@ fn import_single_type<'ast>(imported: &QualifiedIdentifier,
     }
 }
 
-fn import_on_demand<'ast>(imported: &QualifiedIdentifier,
-                          toplevel: PackageRef<'ast>,
-                          on_demand_packages: &mut Vec<PackageRef<'ast>>) {
+fn import_on_demand<'a, 'ast>(imported: &QualifiedIdentifier,
+                              toplevel: PackageRef<'a, 'ast>,
+                              on_demand_packages: &mut Vec<PackageRef<'a, 'ast>>) {
     if let Some(package) = resolve_package(toplevel, &*imported.node.parts) {
         on_demand_packages.push(package);
     }
 }
 
-fn inheritance_topological_sort_search<'ast>(typedef: TypeDefinitionRef<'ast>,
-                                             seen: &mut HashSet<Name>,
-                                             visited: &mut HashSet<Name>,
-                                             stack: &mut Vec<Name>,
-                                             sorted: &mut Vec<Name>)
+fn inheritance_topological_sort_search<'a, 'ast>(typedef: TypeDefinitionRef<'a, 'ast>,
+                                                 seen: &mut HashSet<Name>,
+                                                 visited: &mut HashSet<Name>,
+                                                 stack: &mut Vec<Name>,
+                                                 sorted: &mut Vec<Name>)
         -> Result<(), ()> {
     let extends_borrow = typedef.extends.borrow();
     let implements_borrow = typedef.implements.borrow();
@@ -545,8 +543,8 @@ fn inheritance_topological_sort_search<'ast>(typedef: TypeDefinitionRef<'ast>,
     }
 
     for parent in parents {
-        if !visited.contains(&parent.upgrade().unwrap().fq_name) {
-            try!(inheritance_topological_sort_search(parent.upgrade().unwrap(), seen,
+        if !visited.contains(&parent.fq_name) {
+            try!(inheritance_topological_sort_search(*parent, seen,
                                                      visited, stack, sorted));
         }
     }
@@ -557,13 +555,13 @@ fn inheritance_topological_sort_search<'ast>(typedef: TypeDefinitionRef<'ast>,
     Ok(())
 }
 
-fn inheritance_topological_sort<'ast>(preprocessed_types: &[TypeEnvironmentPair<'ast>])
-        -> Option<Vec<TypeEnvironmentPair<'ast>>> {
+fn inheritance_topological_sort<'a, 'ast>(preprocessed_types: &[TypeEnvironmentPair<'a, 'ast>])
+        -> Option<Vec<TypeEnvironmentPair<'a, 'ast>>> {
 
     // To find items in processed_types by fully-qualified names.
     let mut lookup = HashMap::new();
-    for &(ref typedef, ref env) in preprocessed_types.iter() {
-        lookup.insert(typedef.fq_name.clone(), (typedef.clone(), env.clone()));
+    for &(typedef, ref env) in preprocessed_types.iter() {
+        lookup.insert(typedef.fq_name, (typedef, env.clone()));
     }
 
     let mut sorted: Vec<Name> = vec![];
@@ -576,10 +574,10 @@ fn inheritance_topological_sort<'ast>(preprocessed_types: &[TypeEnvironmentPair<
         // purposes (it shows the user where the cycle is).
         let mut stack: Vec<Name> = vec![];
 
-        for &(ref typedef, _) in preprocessed_types.iter() {
+        for &(typedef, _) in preprocessed_types.iter() {
             if !visited.contains(&typedef.fq_name) {
                 let result = inheritance_topological_sort_search(
-                    typedef.clone(), &mut seen, &mut visited,
+                    typedef, &mut seen, &mut visited,
                     &mut stack, &mut sorted);
                 if let Err(_) = result {
                     return None;
@@ -594,12 +592,12 @@ fn inheritance_topological_sort<'ast>(preprocessed_types: &[TypeEnvironmentPair<
     // }).collect())
 }
 
-fn build_environments<'ast>(toplevel: PackageRef<'ast>,
-                            asts: &'ast [ast::CompilationUnit]) {
+fn build_environments<'a, 'ast>(toplevel: PackageRef<'a, 'ast>,
+                                asts: &'ast [ast::CompilationUnit]) {
     let mut preprocessed_types = vec![];
 
     for ast in asts.iter() {
-        let mut types_env: TypesEnvironment<'ast> = RbMap::new();
+        let mut types_env: TypesEnvironment<'a, 'ast> = RbMap::new();
 
         let mut on_demand_packages = vec![];
 
@@ -608,12 +606,12 @@ fn build_environments<'ast>(toplevel: PackageRef<'ast>,
             match import.node {
                 ast::ImportDeclaration_::SingleType(ref qident) => {
                     types_env = import_single_type(qident,
-                                                   toplevel.clone(),
+                                                   toplevel,
                                                    types_env);
                 },
                 ast::ImportDeclaration_::OnDemand(ref qident) => {
                     import_on_demand(qident,
-                                     toplevel.clone(),
+                                     toplevel,
                                      &mut on_demand_packages);
                 },
             }
@@ -626,7 +624,7 @@ fn build_environments<'ast>(toplevel: PackageRef<'ast>,
             types: types_env,
             methods: RbMap::new(),
             variables: vec![RbMap::new()],
-            toplevel: toplevel.clone(),
+            toplevel: toplevel,
             package: ast.package.clone(),
             on_demand_packages: on_demand_packages,
         };
@@ -641,28 +639,18 @@ fn build_environments<'ast>(toplevel: PackageRef<'ast>,
         return;
     }
 
-    for &(ref typedef, ref env) in preprocessed_types.iter() {
+    for &(typedef, ref env) in preprocessed_types.iter() {
         env.clone().walk_type_declaration(typedef.ast);
     }
 }
 
-#[derive(Show)]
-pub struct VariableDefinition<'ast> {
-    fq_name: Name,
-    ty: Type<'ast>,
-    ast: &'ast ast::VariableDeclaration,
-}
-pub type VariableDefinitionRef<'ast> = Rc<RefCell<VariableDefinition<'ast>>>;
-pub type VariableDefinitionWeak<'ast> = Weak<RefCell<VariableDefinition<'ast>>>;
-
-pub fn name_resolve<'ast>(asts: &'ast [ast::CompilationUnit]) -> PackageRef<'ast> {
-    let toplevel = Package::new("top level".to_owned());
-    collect_types(toplevel.clone(), asts);
-    build_environments(toplevel.clone(), asts);
+pub fn name_resolve<'a, 'ast>(arena: &'a Arena<'a, 'ast>, asts: &'ast [ast::CompilationUnit]) -> PackageRef<'a, 'ast> {
+    let toplevel = arena.alloc(Package::new("top level".to_owned()));
+    collect_types(arena, toplevel, asts);
+    build_environments(toplevel, asts);
 
     // TODO: For testing - remove when name resolution is finished.
-    PackageItem::Package(toplevel.clone()).print_light();
-    println!("{:?}", toplevel);
+    PackageItem::Package(toplevel).print_light();
     toplevel
 }
 

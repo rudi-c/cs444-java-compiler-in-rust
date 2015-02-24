@@ -1,22 +1,24 @@
 use ast;
 use name::*;
 use walker::*;
+use arena::Arena;
 
 use std::collections::hash_map;
 
 use name_resolve_structs::*;
 
-struct Collector<'ast> {
-    package: PackageRef<'ast>,
+struct Collector<'a, 'ast: 'a> {
+    arena: &'a Arena<'a, 'ast>,
+    package: PackageRef<'a, 'ast>,
     scope: Vec<Symbol>,
-    type_definition: Option<TypeDefinitionRef<'ast>>,
+    type_definition: Option<TypeDefinitionRef<'a, 'ast>>,
 }
 
-impl<'ast> Walker<'ast> for Collector<'ast> {
+impl<'a, 'ast> Walker<'ast> for Collector<'a, 'ast> {
     fn walk_class_field(&mut self, field: &'ast ast::Field) {
         let field_name = format!("{}.{}", Qualified(self.scope.iter()), field.node.name);
         let tydef = self.type_definition.as_ref().unwrap();
-        if let Some(_) = tydef.fields.borrow_mut().insert(field.node.name.node, Field::new(field_name, field)) {
+        if let Some(_) = tydef.fields.borrow_mut().insert(field.node.name.node, self.arena.alloc(Field::new(field_name, field))) {
             // something with the same name was already there!
             span_error!(field.span, "field `{}` already exists in `{}`",
                         field.node.name, Qualified(self.scope.iter()));
@@ -35,7 +37,7 @@ impl<'ast> Walker<'ast> for Collector<'ast> {
         });
 
         let method_name = format!("{}.{}", Qualified(self.scope.iter()), method_ast.node.name);
-        overloads.push(Method::new(method_name, method_ast));
+        overloads.push(self.arena.alloc(Method::new(method_name, method_ast)));
 
         // no need to walk deeper
     }
@@ -54,7 +56,7 @@ impl<'ast> Walker<'ast> for Collector<'ast> {
         };
         self.scope.push(name.node);
         let fq_type = Qualified(self.scope.iter()).to_string();
-        let tydef = TypeDefinition::new(fq_type, kind, ty_decl);
+        let tydef = self.arena.alloc(TypeDefinition::new(fq_type, kind, ty_decl));
 
         // Insert `tydef` into the package
         match self.package.contents.borrow_mut().entry(name.node) {
@@ -72,7 +74,7 @@ impl<'ast> Walker<'ast> for Collector<'ast> {
                 return
             }
             hash_map::Entry::Vacant(v) => {
-                v.insert(PackageItem::TypeDefinition(tydef.clone()));
+                v.insert(PackageItem::TypeDefinition(tydef));
             }
         }
 
@@ -95,14 +97,14 @@ fn type_package_conflict(tydef: &TypeDefinition) {
 
 // Looks up a package by qualified identifier, creating it if necessary.
 // If a name conflict occurs, this will create a dummy package.
-fn resolve_create_package<'ast>(toplevel: PackageRef<'ast>, id: &[Ident]) -> PackageRef<'ast> {
+fn resolve_create_package<'a, 'ast>(arena: &'a Arena<'a, 'ast>, toplevel: PackageRef<'a, 'ast>, id: &[Ident]) -> PackageRef<'a, 'ast> {
     id.iter().enumerate().fold(toplevel, |package, (ix, ident)| {
-        let new = |:| Package::new(Qualified(id[0..ix+1].iter()).to_string());
+        let new = |:| arena.alloc(Package::new(Qualified(id[0..ix+1].iter()).to_string()));
         match package.contents.borrow_mut().entry(ident.node) {
             hash_map::Entry::Occupied(mut v) => {
                 let slot = v.get_mut();
                 match *slot {
-                    PackageItem::Package(ref it) => return it.clone(), // Found it
+                    PackageItem::Package(it) => return it, // Found it
                     PackageItem::TypeDefinition(ref tydef) => {
                         // There was a type instead!
                         type_package_conflict(&**tydef);
@@ -112,12 +114,12 @@ fn resolve_create_package<'ast>(toplevel: PackageRef<'ast>, id: &[Ident]) -> Pac
                 // This prevents a spray of errors in case one type conflicts with a package with
                 // many compilation units
                 let next = new();
-                *slot = PackageItem::Package(next.clone());
+                *slot = PackageItem::Package(next);
                 next
             }
             hash_map::Entry::Vacant(v) => {
                 let next = new();
-                v.insert(PackageItem::Package(next.clone()));
+                v.insert(PackageItem::Package(next));
                 next
             }
         }
@@ -125,17 +127,19 @@ fn resolve_create_package<'ast>(toplevel: PackageRef<'ast>, id: &[Ident]) -> Pac
 }
 
 // Phase 1.
-pub fn collect_types<'ast>(toplevel: PackageRef<'ast>,
-                       asts: &'ast [ast::CompilationUnit]) {
+pub fn collect_types<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
+                               toplevel: PackageRef<'a, 'ast>,
+                               asts: &'ast [ast::CompilationUnit]) {
     for ast in asts.iter() {
         let (package, scope) = if let Some(ref package_identifier) = ast.package {
-            (resolve_create_package(toplevel.clone(), &*package_identifier.node.parts),
+            (resolve_create_package(arena, toplevel, &*package_identifier.node.parts),
              package_identifier.node.parts.iter().map(|x| x.node).collect())
         } else {
-            (toplevel.clone(), vec![])
+            (toplevel, vec![])
         };
 
         Collector {
+            arena: arena,
             package: package,
             scope: scope,
             type_definition: None,

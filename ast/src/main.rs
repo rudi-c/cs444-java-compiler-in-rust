@@ -32,6 +32,7 @@ pub mod parser;
 pub mod tokenizer;
 pub mod walker;
 pub mod weed;
+pub mod arena;
 pub mod name_resolve;
 pub mod name_resolve_structs;
 pub mod collect_types;
@@ -165,7 +166,7 @@ fn driver(ctx: &RefCell<Context>) {
             */
     }
 
-    name_resolve(&*asts);
+    name_resolve(&arena::Arena::new(), &*asts);
 }
 
 fn main() {
