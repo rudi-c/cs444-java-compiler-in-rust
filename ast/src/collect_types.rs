@@ -3,6 +3,7 @@ use name::*;
 use walker::*;
 use arena::Arena;
 
+use std::borrow::ToOwned;
 use std::collections::hash_map;
 
 use name_resolve_structs::*;
@@ -12,6 +13,7 @@ struct Collector<'a, 'ast: 'a> {
     package: PackageRef<'a, 'ast>,
     scope: Vec<Symbol>,
     type_definition: Option<TypeDefinitionRef<'a, 'ast>>,
+    all_tydefs: Vec<TypeDefinitionRef<'a, 'ast>>,
 }
 
 impl<'a, 'ast> Walker<'ast> for Collector<'a, 'ast> {
@@ -79,6 +81,7 @@ impl<'a, 'ast> Walker<'ast> for Collector<'a, 'ast> {
         }
 
         self.type_definition = Some(tydef);
+        self.all_tydefs.push(tydef);
 
         default_walk_type_declaration(self, ty_decl);
 
@@ -129,21 +132,27 @@ fn resolve_create_package<'a, 'ast>(arena: &'a Arena<'a, 'ast>, toplevel: Packag
 // Phase 1.
 pub fn collect_types<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
                                toplevel: PackageRef<'a, 'ast>,
-                               asts: &'ast [ast::CompilationUnit]) {
-    for ast in asts.iter() {
+                               asts: &'ast [ast::CompilationUnit])
+-> Vec<(PackageRef<'a, 'ast>, &'ast ast::CompilationUnit, Vec<TypeDefinitionRef<'a, 'ast>>)> {
+    let default_package: PackageRef<'a, 'ast> = arena.alloc(Package::new("default package".to_owned()));
+    asts.iter().map(|ast| {
         let (package, scope) = if let Some(ref package_identifier) = ast.package {
             (resolve_create_package(arena, toplevel, &*package_identifier.node.parts),
              package_identifier.node.parts.iter().map(|x| x.node).collect())
         } else {
-            (toplevel, vec![])
+            (default_package, vec![])
         };
 
-        Collector {
+        let mut collector = Collector {
             arena: arena,
             package: package,
             scope: scope,
             type_definition: None,
-        }.walk_compilation_unit(ast);
-    }
+            all_tydefs: vec![],
+        };
+        collector.walk_compilation_unit(ast);
+
+        (package, ast, collector.all_tydefs)
+    }).collect()
 }
 

@@ -1,7 +1,6 @@
 use ast;
 use name::*;
-use walker::*;
-use span::Span;
+use span::{DUMMY, Span, spanned};
 
 use name_resolve_structs::*;
 use collect_types::collect_types;
@@ -52,78 +51,36 @@ struct EnvironmentStack<'a, 'ast: 'a> {
 
 type TypeEnvironmentPair<'a, 'ast> = (TypeDefinitionRef<'a, 'ast>, EnvironmentStack<'a, 'ast>);
 
-impl<'a, 'ast> Walker<'ast> for EnvironmentStack<'a, 'ast> {
-    fn walk_class(&mut self, class: &'ast ast::Class) {
-        let ref class_name = class.node.name;
-        let typedef = self.get_type_declaration(class_name).unwrap();
-        let mut vars_env = self.variables.last().unwrap().clone();
-
-        // Add the class itself to the environment.
-        self.types = insert_declared_type(&self.types, class_name, typedef);
-
-        // Process class body.
-        vars_env = self.collect_fields(vars_env, typedef);
-        self.methods = self.collect_methods(typedef);
-    }
-
-    fn walk_interface(&mut self, interface: &'ast ast::Interface) {
-        let ref interface_name = interface.node.name;
-        let typedef = self.get_type_declaration(interface_name).unwrap();
-        let mut vars_env = self.variables.last().unwrap().clone();
-
-        // Add the interface itself to the environment.
-        self.types = insert_declared_type(&self.types, interface_name, typedef);
-
-        // Process interface body.
-        self.methods = self.collect_methods(typedef);
-    }
-}
-
 impl<'a, 'ast> EnvironmentStack<'a, 'ast> {
-    fn get_type_declaration(&self, ident: &Ident) -> Option<TypeDefinitionRef<'a, 'ast>> {
-        let p = if let Some(ref package) = self.package {
-            self.resolve_package_name(&*package.node.parts).unwrap()
-        } else {
-            // Top level.
-            self.toplevel
-        };
-        // FIXME: This is kinda bad
-        if let Some(&PackageItem::TypeDefinition(typedef)) =
-                p.contents.borrow().get(&ident.node) {
-            Some(typedef)
-        } else {
-            None
-        }
+    fn walk_tydef(&mut self, tydef: TypeDefinitionRef<'a, 'ast>) {
+        let name = tydef.ast.name();
+        let mut vars_env = self.variables.last().unwrap().clone();
+
+        // Add the type itself to the environment.
+        self.types = insert_declared_type(&self.types, name, tydef);
+
+        // Process type body.
+        vars_env = self.collect_fields(vars_env, tydef);
+        self.methods = self.collect_methods(tydef);
     }
 
     // Resolve extends and implements. This is done separately from walking
     // the AST because we need to process the compilations in topological
     // order (with respect to inheritance).
-    //
-    // Returns the TypeDefinition that has just been resolved.
-    fn resolve_inheritance(&self, typedcl: &ast::TypeDeclaration)
-            -> TypeDefinitionRef<'a, 'ast> {
-        match typedcl.node {
+    fn resolve_inheritance(&self, tydef: TypeDefinitionRef<'a, 'ast>) {
+        match tydef.ast.node {
             ast::TypeDeclaration_::Class(ref class) => {
-                let ref class_name = class.node.name;
-                let typedef = self.get_type_declaration(class_name).unwrap();
-
                 if let Some(ref extension) = class.node.extends {
-                    self.resolve_extensions(typedef,
+                    self.resolve_extensions(tydef,
                                             &[extension.clone()]);
                 }
-                self.resolve_implements(typedef,
+                self.resolve_implements(tydef,
                                         class.node.implements.as_slice());
-                typedef
-            },
+            }
             ast::TypeDeclaration_::Interface(ref interface) => {
-                let ref interface_name = interface.node.name;
-                let typedef = self.get_type_declaration(interface_name).unwrap();
-
-                self.resolve_extensions(typedef,
+                self.resolve_extensions(tydef,
                                         interface.node.extends.as_slice());
-                typedef
-            },
+            }
         }
     }
 
@@ -595,13 +552,15 @@ fn inheritance_topological_sort<'a, 'ast>(preprocessed_types: &[TypeEnvironmentP
 }
 
 fn build_environments<'a, 'ast>(toplevel: PackageRef<'a, 'ast>,
-                                asts: &'ast [ast::CompilationUnit]) {
+                                default_packages: &[PackageRef<'a, 'ast>],
+                                units: &[(PackageRef<'a, 'ast>, &'ast ast::CompilationUnit, Vec<TypeDefinitionRef<'a, 'ast>>)]) {
     let mut preprocessed_types = vec![];
 
-    for ast in asts.iter() {
+    for &(package, ast, ref tydefs) in units.iter() {
         let mut types_env: TypesEnvironment<'a, 'ast> = RbMap::new();
 
-        let mut on_demand_packages = vec![];
+        let mut on_demand_packages = default_packages.to_owned();
+        on_demand_packages.push(package);
 
         // Add all imports to initial environment for this compilation unit.
         for import in ast.imports.iter() {
@@ -619,6 +578,14 @@ fn build_environments<'a, 'ast>(toplevel: PackageRef<'a, 'ast>,
             }
         }
 
+        // Uniquify `on_demand_packages`.
+        let on_demand_packages = on_demand_packages.into_iter()
+            .map(|package| (package.fq_name, package))
+            .collect::<HashMap<_, _> >()
+            .into_iter()
+            .map(|(_, package)| package)
+            .collect();
+
         // TODO: For testing - remove later.
         println!("{} types environment: {:?}", ast.types[0].name(), types_env);
 
@@ -631,8 +598,13 @@ fn build_environments<'a, 'ast>(toplevel: PackageRef<'a, 'ast>,
             on_demand_packages: on_demand_packages,
         };
 
-        let typedef = env_stack.resolve_inheritance(&ast.types[0]);
-        preprocessed_types.push((typedef, env_stack));
+        match &**tydefs {
+            [tydef] => {
+                env_stack.resolve_inheritance(tydef);
+                preprocessed_types.push((tydef, env_stack));
+            }
+            _ => panic!("wrong number of types")
+        }
     }
 
     if let Some(sorted) = inheritance_topological_sort(preprocessed_types.as_slice()) {
@@ -642,14 +614,18 @@ fn build_environments<'a, 'ast>(toplevel: PackageRef<'a, 'ast>,
     }
 
     for &(typedef, ref env) in preprocessed_types.iter() {
-        env.clone().walk_type_declaration(typedef.ast);
+        env.clone().walk_tydef(typedef);
     }
 }
 
 pub fn name_resolve<'a, 'ast>(arena: &'a Arena<'a, 'ast>, asts: &'ast [ast::CompilationUnit]) -> PackageRef<'a, 'ast> {
     let toplevel = arena.alloc(Package::new("top level".to_owned()));
-    collect_types(arena, toplevel, asts);
-    build_environments(toplevel, asts);
+    let types = collect_types(arena, toplevel, asts);
+    let java_lang = resolve_package(toplevel, &[
+        spanned(DUMMY, Symbol::from_str("java")),
+        spanned(DUMMY, Symbol::from_str("lang")),
+    ]).unwrap();
+    build_environments(toplevel, &[java_lang], &*types);
 
     // TODO: For testing - remove when name resolution is finished.
     PackageItem::Package(toplevel).print_light();

@@ -11,6 +11,8 @@ pub struct Span {
     pub file: FileId,
 }
 
+pub const DUMMY: Span = Span { lo: 0, hi: 0, file: 0 };
+
 pub trait IntoSpan {
     fn into_span(self) -> Span;
 }
@@ -44,7 +46,7 @@ pub fn spanned<T: IntoSpan, U>(sp: T, n: U) -> Spanned<U> {
 
 #[macro_export]
 macro_rules! node {
-    ($x: pat) => (Spanned { span: _, node: $x });
+    ($x: pat) => ($crate::span::Spanned { span: _, node: $x });
 }
 
 impl<T: Show> Show for Spanned<T> {
