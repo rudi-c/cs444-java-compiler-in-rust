@@ -28,8 +28,6 @@ enum Variable<'a, 'ast: 'a> {
 
 type TypesEnvironment<'a, 'ast> = RbMap<Symbol, TypeDefinitionRef<'a, 'ast>>;
 type VariablesEnvironment<'a, 'ast> = RbMap<Symbol, Variable<'a, 'ast>>;
-type MethodsEnvironment<'a, 'ast> = RbMap<(Symbol, Vec<Type<'a, 'ast>>),
-                                      (MethodRef<'a, 'ast>, Option<Type<'a, 'ast>>)>;
 
 #[derive(Show, Clone)]
 struct EnvironmentStack<'a, 'ast: 'a> {
@@ -38,9 +36,6 @@ struct EnvironmentStack<'a, 'ast: 'a> {
     // single class/interface in the file to the initial environment
     // containing imported types.
     types: TypesEnvironment<'a, 'ast>,
-
-    // Similarly, no stack for methods.
-    methods: MethodsEnvironment<'a, 'ast>,
 
     variables: Vec<VariablesEnvironment<'a, 'ast>>,
     toplevel: PackageRef<'a, 'ast>,
@@ -63,7 +58,7 @@ impl<'a, 'ast> Walker<'ast> for EnvironmentStack<'a, 'ast> {
 
         // Process class body.
         vars_env = self.collect_fields(vars_env, typedef);
-        self.methods = self.collect_methods(typedef);
+        self.collect_class_methods(typedef);
     }
 
     fn walk_interface(&mut self, interface: &'ast ast::Interface) {
@@ -75,7 +70,7 @@ impl<'a, 'ast> Walker<'ast> for EnvironmentStack<'a, 'ast> {
         self.types = insert_declared_type(&self.types, interface_name, typedef);
 
         // Process interface body.
-        self.methods = self.collect_methods(typedef);
+        *typedef.all_methods.borrow_mut() = self.collect_interface_methods(typedef);
     }
 }
 
@@ -217,6 +212,78 @@ impl<'a, 'ast> EnvironmentStack<'a, 'ast> {
         })
     }
 
+    fn collect_class_methods(&self, class: TypeDefinitionRef<'a, 'ast>) {
+
+    }
+
+    fn collect_interface_methods(&self, interface: TypeDefinitionRef<'a, 'ast>)
+            -> MethodMap<'a, 'ast> {
+        let mut all_methods = RbMap::new();
+
+        // Pull in all the parent's methods first.
+        for parent in interface.extends.borrow().iter() {
+            all_methods = parent.all_methods.borrow().iter()
+                                            .fold(all_methods, |methods, method| {
+                let &(ref signature, ref method_info) = method;
+                self.interface_method_add_check_conflicts(&methods, signature,
+                                                          method_info, interface)
+            });
+        }
+
+        // Then add the interface's own methods.
+        for (method_name, ref method_group) in interface.methods.borrow().iter() {
+            all_methods = method_group.iter().fold(all_methods, |methods, &method| {
+                let types: Vec<Type> =
+                    method.ast.node.params.iter()
+                          .map(|dcl| self.resolve_type(&dcl.node.ty))
+                          .collect();
+                let signature = (method_name.clone(), types);
+                let method_info = MethodInfo {
+                    method: method,
+                    source: interface,
+                    return_type: method.ast.node.return_type
+                                       .as_ref().map(|ty| self.resolve_type(ty)),
+                };
+
+                self.interface_method_add_check_conflicts(&methods, &signature,
+                                                          &method_info, interface)
+            });
+        }
+
+        all_methods
+    }
+
+    // Adds a interface method to a list of existing interface methods.
+    // Raise an error if this would cause a conflict.
+    fn interface_method_add_check_conflicts(&self,
+        methods: &MethodMap<'a, 'ast>,
+        signature: &MethodSignature<'a, 'ast>,
+        method_info: &MethodInfo<'a, 'ast>,
+        interface: TypeDefinitionRef<'a, 'ast>) -> MethodMap<'a, 'ast> {
+
+        let (new_methods, existing_method) =
+            methods.insert(signature.clone(), method_info.clone());
+
+        // Check if the interface's method conflicts with another
+        // parent interface's method (same signature, different return types).
+        if let Some(&(_, ref existing_info)) = existing_method {
+            if method_info.return_type != existing_info.return_type {
+                span_error!(interface.ast.span,
+                            "method conflict: `{}` declared in `{}` and `{}`",
+                            method_signature_string(signature),
+                            method_info.source.fq_name,
+                            existing_info.source.fq_name);
+                span_note!(interface.ast.span,
+                           "the return types {:?} and {:?} are incompatible",
+                           type_as_string(&method_info.return_type),
+                           type_as_string(&existing_info.return_type));
+            }
+        }
+
+        new_methods
+    }
+
+/*
     // Add the methods of the type to the environment.
     fn collect_methods(&mut self, typedef: TypeDefinitionRef<'a, 'ast>)
             -> MethodsEnvironment<'a, 'ast> {
@@ -241,6 +308,7 @@ impl<'a, 'ast> EnvironmentStack<'a, 'ast> {
 
         methods_env
     }
+*/
 
     // Look up a package by its fully qualified name.
     // Emits an error on failure.
@@ -622,7 +690,6 @@ fn build_environments<'a, 'ast>(toplevel: PackageRef<'a, 'ast>,
 
         let env_stack = EnvironmentStack {
             types: types_env,
-            methods: RbMap::new(),
             variables: vec![RbMap::new()],
             toplevel: toplevel,
             package: ast.package.clone(),
