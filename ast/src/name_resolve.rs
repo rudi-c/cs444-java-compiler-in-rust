@@ -459,11 +459,13 @@ fn insert_declared_type<'a, 'ast>(env: &TypesEnvironment<'a, 'ast>,
 
     let (new_env, previous) = env.insert(ident.node, typedef);
     if let Some(&(_, ref previous_item)) = previous {
-        // TODO: Shouldn't continue after this error - how to do that?
-        span_error!(ident.span,
-                    "type `{}` declared in this file conflicts with import `{}`",
-                    ident,
-                    previous_item.fq_name);
+        if previous_item.fq_name != typedef.fq_name {
+            // TODO: Shouldn't continue after this error - how to do that?
+            span_error!(ident.span,
+                        "type `{}` declared in this file conflicts with import `{}`",
+                        ident,
+                        previous_item.fq_name);
+        }
     }
     new_env
 }
