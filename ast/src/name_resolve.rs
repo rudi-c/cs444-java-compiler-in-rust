@@ -84,6 +84,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
     fn resolve_interface_extensions(&self,
                                     typedef: TypeDefinitionRef<'a, 'ast>,
                                     extensions: &[QualifiedIdentifier]) {
+        let mut seen = HashSet::new();
         for extension in extensions.iter() {
             match self.resolve_type_name(&*extension.node.parts) {
                 Some(extended_type) => {
@@ -91,6 +92,13 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                         // ($9.1.2)
                         span_error!(extension.span,
                                     "interface cannot extend class");
+                    }
+                    // An interface must not be repeated in an implements clause,
+                    // or in an extends clause of an interface.
+                    // (JLS 8.1.4, dOvs simple constraint 3)
+                    if !seen.insert(&extended_type.fq_name) {
+                        span_error!(extension.span,
+                                    "duplicate extended interface");
                     }
                     typedef.extends.borrow_mut().push(extended_type);
                 },
@@ -104,13 +112,21 @@ impl<'a, 'ast> Environment<'a, 'ast> {
     fn resolve_implements(&self,
                           typedef: TypeDefinitionRef<'a, 'ast>,
                           implements: &[QualifiedIdentifier]) {
+        let mut seen = HashSet::new();
         for implement in implements.iter() {
-            match self.resolve_type_name(&*implement.node.parts) {
+            match self.resolve_type_name(&*implement.parts) {
                 Some(implemented_type) => {
                     if implemented_type.kind == TypeKind::Class {
                         // ($8.1.4, dOvs simple constraint 2)
                         span_error!(implement.span,
                                     "class cannot implement class");
+                    }
+                    // An interface must not be repeated in an implements clause,
+                    // or in an extends clause of an interface.
+                    // (JLS 8.1.4, dOvs simple constraint 3)
+                    if !seen.insert(&implemented_type.fq_name) {
+                        span_error!(implement.span,
+                                    "duplicate implemented interface");
                     }
                     typedef.implements.borrow_mut().push(implemented_type);
                 },
@@ -153,11 +169,43 @@ impl<'a, 'ast> Environment<'a, 'ast> {
         }
     }
 
-    // Look up a package by its fully qualified name.
+    // Look up a package or type name, but always fails when a type is found.
+    // (This is because types in Joos never contain types.)
     // Emits an error on failure.
-    fn resolve_package_name(&self, id: &[Ident]) -> Option<PackageRef<'a, 'ast>> {
-        assert!(!id.is_empty());
-        resolve_package(self.toplevel, id)
+    fn resolve_package_or_type(&self, id: &[Ident]) -> Option<PackageRef<'a, 'ast>> {
+        (match id {
+            [] => panic!("bug: tried to resolve an empty package name"),
+            [ref ident] => {
+                // Because Java has nested types, we first have to check if
+                // there is a type obscuring `ident`.
+                match self.find_type(ident) {
+                    Some(tydef) => {
+                        span_error!(ident.span,
+                                    "`{}` is a type, not a package",
+                                    tydef.fq_name);
+                        None
+                    },
+                    None => Some((self.toplevel, ident)),
+                }
+            }
+            [init.., ref last] => self.resolve_package_or_type(init).map(|package| (package, last)),
+        }).and_then(|(package, name)| match package.contents.borrow().get(&name.node) {
+            // FIXME: duplicated code with `resolve_package`...
+            Some(&PackageItem::Package(package)) => Some(package),
+            Some(&PackageItem::TypeDefinition(..)) => {
+                // There was a type instead!
+                span_error!(Span::range(&id[0], id.last().unwrap()),
+                            "no such package `{}`; found a type instead",
+                            Qualified(id.iter()));
+                None
+            }
+            None => {
+                span_error!(Span::range(&id[0], id.last().unwrap()),
+                            "no such package `{}`",
+                            Qualified(id.iter()));
+                None
+            }
+        })
     }
 
     // Look up a (user-defined) type by either a qualified or simple name.
@@ -174,8 +222,8 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                 }
             },
             // fully-qualified name
-            // in Joos, `init` must refer to a package
-            [init.., ref last] => self.resolve_package_name(init).and_then(|package| {
+            // in Joos, `init` must refer to a package... but if it's a type, we need to error
+            [init.., ref last] => self.resolve_package_or_type(init).and_then(|package| {
                 match package.contents.borrow().get(&last.node) {
                     Some(&PackageItem::TypeDefinition(tydef)) => Some(tydef),
                     _ => {

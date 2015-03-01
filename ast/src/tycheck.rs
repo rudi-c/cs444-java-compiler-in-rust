@@ -120,6 +120,7 @@ impl<'a, 'ast> Typer<'a, 'ast> {
                 let e = self.expr(expr);
                 let ty = self.env.resolve_type(to);
                 // FIXME check valid cast
+                // TODO distinguish between down and upcasts, for codegen
                 (TypedExpression_::Cast(ty.clone(), box e), ty)
             }
             _ => {
