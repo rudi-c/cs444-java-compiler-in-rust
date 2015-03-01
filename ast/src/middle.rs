@@ -69,6 +69,7 @@ pub struct Field<'a, 'ast: 'a> {
     pub fq_name: Name,
     pub origin: TypeDefinitionRef<'a, 'ast>,
     pub ty: Type<'a, 'ast>,
+    pub initializer: RefCell<Option<TypedExpression<'a, 'ast>>>,
     pub ast: &'ast ast::Field,
 }
 pub type FieldRef<'a, 'ast> = &'a Field<'a, 'ast>;
@@ -79,15 +80,17 @@ impl<'a, 'ast> Field<'a, 'ast> {
             fq_name: Name::fresh(name),
             origin: origin,
             ty: ty,
+            initializer: RefCell::new(None),
             ast: ast,
         }
     }
 }
 
+pub type Arguments<'a, 'ast> = Vec<Type<'a, 'ast>>;
 #[derive(Show, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct MethodSignature<'a, 'ast: 'a> {
     pub name: Symbol,
-    pub args: Vec<Type<'a, 'ast>>,
+    pub args: Arguments<'a, 'ast>,
 }
 
 #[derive(Show, Clone, Copy, PartialEq, Eq)]
@@ -142,6 +145,26 @@ impl<'a, 'ast> fmt::String for MethodSignature<'a, 'ast> {
     }
 }
 
+#[derive(Show)]
+pub struct Constructor<'a, 'ast: 'a> {
+    pub fq_name: Name,
+    pub body: RefCell<Option<TypedBlock<'a, 'ast>>>,
+    pub args: RefCell<Vec<VariableRef<'a, 'ast>>>,
+    pub ast: &'ast ast::Constructor,
+}
+pub type ConstructorRef<'a, 'ast> = &'a Constructor<'a, 'ast>;
+
+impl<'a, 'ast> Constructor<'a, 'ast> {
+    pub fn new(name: String, ast: &'ast ast::Constructor) -> Self {
+        Constructor {
+            fq_name: Name::fresh(name),
+            body: RefCell::new(None),
+            args: RefCell::new(vec![]),
+            ast: ast,
+        }
+    }
+}
+
 #[derive(Show, Copy, Eq, PartialEq)]
 pub enum TypeKind {
     Class,
@@ -159,6 +182,9 @@ pub struct TypeDefinition<'a, 'ast: 'a> {
 
     // Method overloads can have the same name, but must have different signatures.
     pub methods: RefCell<HashMap<MethodSignature<'a, 'ast>, MethodRef<'a, 'ast>>>,
+    // Similarly, we can have multiple constructors, as long as their arguments have different
+    // types.
+    pub constructors: RefCell<HashMap<Arguments<'a, 'ast>, ConstructorRef<'a, 'ast>>>,
 
     pub extends: RefCell<Vec<TypeDefinitionRef<'a, 'ast>>>,
     pub implements: RefCell<Vec<TypeDefinitionRef<'a, 'ast>>>,
@@ -174,6 +200,7 @@ impl<'a, 'ast> TypeDefinition<'a, 'ast> {
             kind: kind,
             fields: RefCell::new(HashMap::new()),
             methods: RefCell::new(HashMap::new()),
+            constructors: RefCell::new(HashMap::new()),
             extends: RefCell::new(vec![]),
             implements: RefCell::new(vec![]),
             ast: ast,

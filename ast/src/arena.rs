@@ -34,5 +34,6 @@ make_arena! {
     field: Field,
     method: Method,
     tydef: TypeDefinition,
-    var: VariableDef
+    var: VariableDef,
+    ctor: Constructor
 }

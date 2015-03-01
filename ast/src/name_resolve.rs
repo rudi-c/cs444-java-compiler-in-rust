@@ -5,7 +5,7 @@ use span::{DUMMY, Span, spanned};
 use middle::*;
 use collect_types::collect_types;
 use collect_members::collect_members;
-use tycheck::populate_method;
+use tycheck::{populate_method, populate_constructor, populate_field};
 use arena::Arena;
 use walker::*;
 
@@ -250,7 +250,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                 span_error!(var.ast.span,
                             "variable `{}` already defined",
                             name);
-                span_note!(v.ast.span, "the old declaration is here");
+                span_note!(v.ast.span, "the old definition is here");
             }
         }
     }
@@ -422,7 +422,7 @@ fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
                                 toplevel: PackageRef<'a, 'ast>,
                                 java_lang: PackageRef<'a, 'ast>,
                                 units: &[(PackageRef<'a, 'ast>, &'ast ast::CompilationUnit, Vec<TypeDefinitionRef<'a, 'ast>>)])
--> Vec<(Environment<'a, 'ast>, MethodRef<'a, 'ast>)> {
+-> Vec<(Environment<'a, 'ast>, ToPopulate<'a, 'ast>)> {
     let java_lang_object = match java_lang.contents.borrow().get(&Symbol::from_str("Object")) {
         Some(&PackageItem::TypeDefinition(tydef)) => tydef,
         _ => panic!("java.lang.Object not found"),
@@ -517,15 +517,31 @@ fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
         }
 
         for (_, &method) in tydef.methods.borrow().iter() {
-            r.push((env.clone(), method));
+            r.push((env.clone(), ToPopulate::Method(method)));
+        }
+        for (_, &constructor) in tydef.constructors.borrow().iter() {
+            r.push((env.clone(), ToPopulate::Constructor(constructor)));
+        }
+        for (_, &field) in tydef.fields.borrow().iter() {
+            r.push((env.clone(), ToPopulate::Field(field)));
         }
     }
     r
 }
 
-fn populate_methods<'a, 'ast>(arena: &'a Arena<'a, 'ast>, methods: Vec<(Environment<'a, 'ast>, MethodRef<'a, 'ast>)>) {
-    for (env, method) in methods.into_iter() {
-        populate_method(arena, env, method);
+enum ToPopulate<'a, 'ast: 'a> {
+    Method(MethodRef<'a, 'ast>),
+    Constructor(ConstructorRef<'a, 'ast>),
+    Field(FieldRef<'a, 'ast>),
+}
+
+fn populate<'a, 'ast>(arena: &'a Arena<'a, 'ast>, methods: Vec<(Environment<'a, 'ast>, ToPopulate<'a, 'ast>)>) {
+    for (env, thing) in methods.into_iter() {
+        match thing {
+            ToPopulate::Method(method) => populate_method(arena, env, method),
+            ToPopulate::Constructor(constructor) => populate_constructor(arena, env, constructor),
+            ToPopulate::Field(field) => populate_field(arena, env, field),
+        }
     }
 }
 
@@ -537,7 +553,7 @@ pub fn name_resolve<'a, 'ast>(arena: &'a Arena<'a, 'ast>, asts: &'ast [ast::Comp
         spanned(DUMMY, Symbol::from_str("lang")),
     ]).unwrap();
     let methods = build_environments(arena, toplevel, java_lang, &*types);
-    populate_methods(arena, methods);
+    populate(arena, methods);
 
     // TODO: For testing - remove when name resolution is finished.
     PackageItem::Package(toplevel).print_light();

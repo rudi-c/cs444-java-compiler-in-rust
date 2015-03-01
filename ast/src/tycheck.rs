@@ -154,3 +154,28 @@ pub fn populate_method<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
         *method.body.borrow_mut() = Some(typer.block(block));
     }
 }
+
+pub fn populate_constructor<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
+                                      env: Environment<'a, 'ast>,
+                                      ctor: ConstructorRef<'a, 'ast>) {
+    let mut typer = Typer {
+        arena: arena,
+        env: env,
+    };
+    *ctor.args.borrow_mut() = ctor.ast.params.iter().map(|decl| typer.new_var(decl)).collect();
+    *ctor.body.borrow_mut() = Some(typer.block(&ctor.ast.body));
+}
+
+pub fn populate_field<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
+                                env: Environment<'a, 'ast>,
+                                field: FieldRef<'a, 'ast>) {
+    if let Some(ref expr) = field.ast.initializer {
+        let mut typer = Typer {
+            arena: arena,
+            env: env,
+        };
+        let texpr = typer.expr(expr);
+        unify(&field.ty, texpr.ty(), &texpr);
+        *field.initializer.borrow_mut() = Some(texpr);
+    }
+}

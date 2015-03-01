@@ -100,7 +100,7 @@ impl<'env, 'a, 'ast> Walker<'ast> for Collector<'env, 'a, 'ast> {
         };
         let ret_ty = method_ast.node.return_type.as_ref()
             .map(|ty| self.env.resolve_type(ty));
-        let fq_name = format!("{}.{}", tydef.fq_name, method_name);
+        let fq_name = format!("{}.{}", tydef.fq_name, signature);
 
         let impled = match tydef.kind {
             TypeKind::Class => if method_ast.node.has_modifier(ast::Modifier_::Abstract) {
@@ -119,6 +119,17 @@ impl<'env, 'a, 'ast> Walker<'ast> for Collector<'env, 'a, 'ast> {
     fn walk_interface_method(&mut self, method: &'ast ast::Method) {
         // same as a class method
         self.walk_class_method(method);
+    }
+    fn walk_constructor(&mut self, ast: &'ast ast::Constructor) {
+        let tydef = self.type_definition;
+        let args: Vec<_> = ast.params.iter().map(|arg| self.env.resolve_type(&arg.ty)).collect();
+        // XXX
+        let fq_name = format!("{}.{}", tydef.fq_name, MethodSignature { name: Symbol::from_str("<ctor>"), args: args.clone() });
+        let ctor = self.arena.alloc(Constructor::new(fq_name, ast));
+        if let Some(old) = tydef.constructors.borrow_mut().insert(args.clone(), ctor) {
+            span_error!(ast.span, "constructor is already defined in `{}`", tydef.fq_name);
+            span_note!(old.ast.span, "the old definition is here");
+        }
     }
 }
 
