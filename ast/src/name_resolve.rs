@@ -131,6 +131,12 @@ impl<'a, 'ast> EnvironmentStack<'a, 'ast> {
                     span_error!(extension.span,
                                 "class cannot extend interface");
                 }
+                if extended_type.has_modifier(ast::Modifier_::Final) {
+                    // ($8.1.1.2/$8.1.3 dOvs simple constraint 4)
+                    span_error!(extension.span,
+                                "cannot extend final class `{}`",
+                                extended_type.fq_name);
+                }
                 typedef.extends.borrow_mut().push(extended_type);
             },
             None => {

@@ -156,6 +156,15 @@ impl<'a, 'ast> TypeDefinition<'a, 'ast> {
             ast: ast,
         }
     }
+
+    pub fn has_modifier(&self, modifier: ast::Modifier_) -> bool {
+        match self.ast.node {
+            ast::TypeDeclaration_::Class(ref class) =>
+                class.node.modifiers.iter().any(|spanned| spanned.node == modifier),
+            ast::TypeDeclaration_::Interface(ref interface) =>
+                interface.node.modifiers.iter().any(|spanned| spanned.node == modifier),
+        }
+    }
 }
 
 impl<'a, 'ast> PartialEq for TypeDefinitionRef<'a, 'ast> {
