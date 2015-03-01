@@ -389,6 +389,25 @@ impl<'a, 'ast> EnvironmentStack<'a, 'ast> {
                            type_as_string(&method_info.return_type),
                            type_as_string(&existing_info.return_type));
             }
+
+            // dOvs well-formedness constraint 7
+            if method_info.method.has_modifier(ast::Modifier_::Protected) &&
+               existing_info.method.has_modifier(ast::Modifier_::Public) {
+                span_error!(method_info.method.ast.span,
+                            "protected method `{}` in `{}` cannot replace same public method in `{}`",
+                            method_signature_string(signature),
+                            method_info.source.fq_name,
+                            existing_info.source.fq_name);
+            }
+
+            // dOvs well-formedness constraint 9
+            if existing_info.method.has_modifier(ast::Modifier_::Final) {
+                span_error!(method_info.method.ast.span,
+                            "method `{}` in `{}` cannot replace same final method in `{}`",
+                            method_signature_string(signature),
+                            method_info.source.fq_name,
+                            existing_info.source.fq_name);
+            }
         }
 
         new_methods
