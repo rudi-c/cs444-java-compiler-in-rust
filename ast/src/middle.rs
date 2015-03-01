@@ -373,7 +373,7 @@ pub enum TypedExpression_<'a, 'ast: 'a> {
     This,
     NewStaticClass(Type<'a, 'ast>, Vec<TypedExpression<'a, 'ast>>),
     NewDynamicClass(Box<TypedExpression<'a, 'ast>>, Ident, Vec<TypedExpression<'a, 'ast>>),
-    NewArray(Type<'a, 'ast>, Box<TypedExpression<'a, 'ast>>),
+    NewArray(SimpleType<'a, 'ast>, Box<TypedExpression<'a, 'ast>>),
     Variable(VariableRef<'a, 'ast>),
     StaticFieldAccess(FieldRef<'a, 'ast>),
     FieldAccess(Box<TypedExpression<'a, 'ast>>, FieldRef<'a, 'ast>),

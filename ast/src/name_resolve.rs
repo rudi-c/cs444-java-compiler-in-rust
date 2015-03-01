@@ -154,7 +154,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
         }
     }
 
-    fn resolve_simple_type(&self,
+    pub fn resolve_simple_type(&self,
                            ty: &ast::SimpleType)
             -> Option<SimpleType<'a, 'ast>> {
         match ty.node {

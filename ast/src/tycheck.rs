@@ -93,6 +93,7 @@ impl<'a, 'ast> Typer<'a, 'ast> {
 
     fn expr(&mut self, expr: &'ast ast::Expression) -> TypedExpression<'a, 'ast> {
         use ast::Expression_::*;
+        static NULL: ast::Literal = ast::Literal::Null;
         spanned(expr.span, match expr.node {
             Literal(ref lit) => self.lit(lit),
             This => (TypedExpression_::This, Type::object(Some(self.env.ty))),
@@ -104,28 +105,101 @@ impl<'a, 'ast> Typer<'a, 'ast> {
                     args.iter().map(|arg| self.expr(arg)).collect()
                 ), ty)
             }
-            /*
-            NewDynamicClass(Box<Expression>, Ident, Vec<Expression>),
-            NewArray(SimpleType, Box<Expression>),
-            FieldAccess(Box<Expression>, Ident),
-            MethodInvocation(Option<Box<Expression>>, Ident, Vec<Expression>),
-            ArrayAccess(Box<Expression>, Box<Expression>),
-            Name(QualifiedIdentifier),
-            Assignment(Box<Expression>, Box<Expression>),
-            InstanceOf(Box<Expression>, Type),
-            Prefix(PrefixOperator, Box<Expression>),
-            Infix(InfixOperator, Box<Expression>, Box<Expression>),
-            */
+            NewDynamicClass(box _, _, _) => panic!("dynamic class"),
+            NewArray(ref tyname, box ref size) => {
+                let sty = self.env.resolve_simple_type(tyname);
+                let tsize = self.expr(size);
+                unify(&Type::SimpleType(SimpleType::Int), tsize.ty(), &tsize);
+                match sty {
+                    Some(sty) => {
+                        let ty = Type::ArrayType(sty.clone());
+                        (TypedExpression_::NewArray(sty, box tsize), ty)
+                    }
+                    None => {
+                        // TODO: more reasonable dummy value
+                        let mut r = self.lit(&NULL);
+                        r.1 = Type::Unknown;
+                        r
+                    }
+                }
+            }
+            FieldAccess(box ref expr, ref _name) => {
+                let _texpr = self.expr(expr);
+                // TODO
+                self.lit(&NULL)
+            }
+            MethodInvocation(ref callee, ref _name, ref args) => {
+                let _tcallee = callee.as_ref().map(|&box ref c| box self.expr(c));
+                let _targs: Vec<_> = args.iter()
+                    .map(|arg| self.expr(arg))
+                    .collect();
+                // TODO
+                self.lit(&NULL)
+            }
+            ArrayAccess(box ref array, box ref ix) => {
+                let tarray = self.expr(array);
+                let tix = self.expr(ix);
+                unify(&Type::SimpleType(SimpleType::Int), tix.ty(), &tix);
+                match tarray.ty().clone() {
+                    Type::ArrayType(sty) =>
+                        (TypedExpression_::ArrayAccess(box tarray, box tix),
+                        Type::SimpleType(sty)),
+                    Type::Unknown => {
+                        // TODO: more reasonable dummy value
+                        let mut r = self.lit(&NULL);
+                        r.1 = Type::Unknown;
+                        r
+                    }
+                    // TODO: how to handle null
+                    ty => {
+                        // TODO: as in `unify`, needs to be an error later
+                        span_warning!(array.span,
+                                    "type mismatch: expected array, found `{}`",
+                                    ty);
+                        // TODO: more reasonable dummy value
+                        let mut r = self.lit(&NULL);
+                        r.1 = Type::Unknown;
+                        r
+                    }
+                }
+            }
+            Name(ref _ident) => {
+                // TODO
+                self.lit(&NULL)
+            }
+            Assignment(box ref lhs, box ref rhs) => {
+                let tlhs = self.expr(lhs);
+                let trhs = self.expr(rhs);
+                unify(tlhs.ty(), trhs.ty(), trhs.span);
+                let ty = tlhs.ty().clone();
+                // TODO: check if this is the right type
+                (TypedExpression_::Assignment(box tlhs, box trhs),
+                 ty)
+            }
+            InstanceOf(box ref obj, ref tyname) => {
+                let tobj = self.expr(obj);
+                let ty = self.env.resolve_type(tyname);
+                // TODO: do we need to check that `ty` is anything in particular?
+                (TypedExpression_::InstanceOf(box tobj, ty),
+                 Type::SimpleType(SimpleType::Boolean))
+            }
+            Prefix(ref _op, box ref arg) => {
+                let _targ = self.expr(arg);
+                // TODO
+                self.lit(&NULL)
+            }
+            Infix(ref _op, box ref l, box ref r) => {
+                let _tl = self.expr(l);
+                let _tr = self.expr(r);
+                // TODO
+                self.lit(&NULL)
+            }
             Cast(ref to, box ref expr) => {
                 let e = self.expr(expr);
                 let ty = self.env.resolve_type(to);
                 // FIXME check valid cast
                 // TODO distinguish between down and upcasts, for codegen
                 (TypedExpression_::Cast(ty.clone(), box e), ty)
-            }
-            _ => {
-                static NULL: ast::Literal = ast::Literal::Null;
-                self.lit(&NULL)
             }
         })
     }
