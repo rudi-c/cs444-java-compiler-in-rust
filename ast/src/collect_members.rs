@@ -33,7 +33,9 @@ fn insert_method<'a, 'ast>(tydef: TypeDefinitionRef<'a, 'ast>,
                            method: MethodRef<'a, 'ast>) {
     if let Some(old) = tydef.methods.borrow_mut().insert(signature.clone(), method) {
         // override
-        if old.origin == tydef {
+        if old.fq_name == method.fq_name {
+            // this is okay
+        } else if old.origin == tydef {
             assert_eq!(method.origin, tydef);
             // not really an override
             span_error!(method.ast.span, "method `{}` already defined in `{}`",
@@ -41,7 +43,7 @@ fn insert_method<'a, 'ast>(tydef: TypeDefinitionRef<'a, 'ast>,
         } else if old.ret_ty != method.ret_ty {
             // dOvs well-formedness constraint 6
             span_error!(method.ast.span, "overrided method `{}` has the wrong return type (expected `{}`, found `{}`)",
-                        signature.name,
+                        signature,
                         old.ret_ty, method.ret_ty);
         } else if !method.has_modifier(ast::Modifier_::Static) &&
             old.has_modifier(ast::Modifier_::Static) {
