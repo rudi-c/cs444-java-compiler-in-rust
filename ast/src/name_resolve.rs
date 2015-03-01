@@ -214,12 +214,35 @@ impl<'a, 'ast> EnvironmentStack<'a, 'ast> {
 
     fn collect_class_methods(&self, class: TypeDefinitionRef<'a, 'ast>)
             -> MethodMap<'a, 'ast> {
-        let mut interface_methods = self.collect_parent_interface_methods(class);
-
-        let mut all_methods = match class.extends.borrow().first() {
+        let parent_class_methods = match class.extends.borrow().first() {
             Some(parent) => parent.all_methods.borrow().clone(),
             None => RbMap::new()
         };
+
+        let interface_methods = self.collect_parent_interface_methods(class);
+
+        // Add interface's methods to parent class' methods.
+        // This may replace a parent class' method. This is fine, because we still
+        // expect the class to implement the interface and thus to have this method.
+        let parent_methods = interface_methods.iter().fold(parent_class_methods, |methods, method| {
+            let &(ref signature, ref method_info) = method;
+            self.method_add_check_conflicts(&methods, signature,
+                                            method_info, class)
+        });
+
+        let own_methods = self.collect_own_methods(class);
+
+        // Merge the classe's own methods with the parent's.
+        // The may replace a parent class's method (override) or an interface
+        // method (implement).
+        let all_methods = own_methods.iter().fold(parent_methods, |methods, method| {
+            let &(ref signature, ref method_info) = method;
+            self.method_add_check_conflicts(&methods, signature,
+                                            method_info, class)
+        });
+
+        // TODO: This would be a good place to check that all methods have
+        // been implemented (no method with no body that isn't abstract).
 
         all_methods
     }
@@ -227,43 +250,15 @@ impl<'a, 'ast> EnvironmentStack<'a, 'ast> {
     fn collect_interface_methods(&self, interface: TypeDefinitionRef<'a, 'ast>)
             -> MethodMap<'a, 'ast> {
         // Pull in all the parent's methods first.
-        let mut parent_methods = self.collect_parent_interface_methods(interface);
+        let parent_methods = self.collect_parent_interface_methods(interface);
 
-        // Collect the interface's own methods.
-        let mut own_methods = RbMap::new();
-        for (method_name, ref method_group) in interface.methods.borrow().iter() {
-            own_methods = method_group.iter().fold(own_methods, |methods, &method| {
-                let types: Vec<Type> =
-                    method.ast.node.params.iter()
-                          .map(|dcl| self.resolve_type(&dcl.node.ty))
-                          .collect();
-                let signature = (method_name.clone(), types);
-                let method_info = MethodInfo {
-                    method: method,
-                    source: interface,
-                    return_type: method.ast.node.return_type
-                                       .as_ref().map(|ty| self.resolve_type(ty)),
-                };
+        let own_methods = self.collect_own_methods(interface);
 
-                let (new_methods, existing_method) =
-                    methods.insert(signature.clone(), method_info.clone());
-
-                // Check for duplicate method signatures.
-                if let Some(&(_, ref existing_info)) = existing_method {
-                    span_error!(interface.ast.span,
-                                "method conflict: `{}` declared in previously",
-                                method_signature_string(&signature));
-                }
-
-                new_methods
-            });
-        }
-
-        // Add interface's own methods to parent.
+        // Merge interface's own methods with the parent's.
         own_methods.iter().fold(parent_methods, |methods, method| {
             let &(ref signature, ref method_info) = method;
-            self.interface_method_add_check_conflicts(&methods, signature,
-                                                      method_info, interface)
+            self.method_add_check_conflicts(&methods, signature,
+                                            method_info, interface)
         })
     }
 
@@ -280,17 +275,51 @@ impl<'a, 'ast> EnvironmentStack<'a, 'ast> {
             all_methods = parent.all_methods.borrow().iter()
                                             .fold(all_methods, |methods, method| {
                 let &(ref signature, ref method_info) = method;
-                self.interface_method_add_check_conflicts(&methods, signature,
-                                                          method_info, typedef)
+                self.method_add_check_conflicts(&methods, signature,
+                                                method_info, typedef)
             });
         }
 
         all_methods
     }
 
-    // Adds a interface method to a list of existing interface methods.
-    // Raise an error if this would cause a conflict.
-    fn interface_method_add_check_conflicts(&self,
+    fn collect_own_methods(&self, typedef: TypeDefinitionRef<'a, 'ast>) -> MethodMap<'a, 'ast> {
+        let mut own_methods = RbMap::new();
+        for (method_name, ref method_group) in typedef.methods.borrow().iter() {
+            own_methods = method_group.iter().fold(own_methods, |methods, &method| {
+                let types: Vec<Type> =
+                    method.ast.node.params.iter()
+                          .map(|dcl| self.resolve_type(&dcl.node.ty))
+                          .collect();
+                let signature = (method_name.clone(), types);
+                let method_info = MethodInfo {
+                    method: method,
+                    source: typedef,
+                    return_type: method.ast.node.return_type
+                                       .as_ref().map(|ty| self.resolve_type(ty)),
+                };
+
+                let (new_methods, existing_method) =
+                    methods.insert(signature.clone(), method_info.clone());
+
+                // Check for duplicate method signatures.
+                if let Some(_) = existing_method {
+                    span_error!(typedef.ast.span,
+                                "method conflict: `{}` declared in previously",
+                                method_signature_string(&signature));
+                }
+
+                new_methods
+            });
+        }
+
+        own_methods
+    }
+
+    // Adds a method to an existing set of methods.
+    // Raise an error if there is already a method with the same signature,
+    // but different return types, otherwise replace it.
+    fn method_add_check_conflicts(&self,
         methods: &MethodMap<'a, 'ast>,
         signature: &MethodSignature<'a, 'ast>,
         method_info: &MethodInfo<'a, 'ast>,
