@@ -124,9 +124,12 @@ impl<'env, 'a, 'ast> Walker<'ast> for Collector<'env, 'a, 'ast> {
 
 pub fn collect_members<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
                                  env: &Environment<'a, 'ast>,
-                                 tydef: TypeDefinitionRef<'a, 'ast>) {
+                                 tydef: TypeDefinitionRef<'a, 'ast>,
+                                 java_lang_object: TypeDefinitionRef<'a, 'ast>) {
     // Bring in parent members
-    for &parent in tydef.implements.borrow().iter().chain(tydef.extends.borrow().iter()) {
+    for &parent in Some(&java_lang_object).into_iter()
+        .chain(tydef.implements.borrow().iter())
+        .chain(tydef.extends.borrow().iter()) {
         for (signature, &method) in parent.methods.borrow().iter() {
             insert_method(tydef, signature.clone(), method);
         }

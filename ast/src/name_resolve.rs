@@ -420,15 +420,20 @@ fn inheritance_topological_sort<'a, 'ast>(preprocessed_types: &[TypeEnvironmentP
 
 fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
                                 toplevel: PackageRef<'a, 'ast>,
-                                default_packages: &[PackageRef<'a, 'ast>],
+                                java_lang: PackageRef<'a, 'ast>,
                                 units: &[(PackageRef<'a, 'ast>, &'ast ast::CompilationUnit, Vec<TypeDefinitionRef<'a, 'ast>>)])
 -> Vec<(Environment<'a, 'ast>, MethodRef<'a, 'ast>)> {
+    let java_lang_object = match java_lang.contents.borrow().get(&Symbol::from_str("Object")) {
+        Some(&PackageItem::TypeDefinition(tydef)) => tydef,
+        _ => panic!("java.lang.Object not found"),
+    };
+
     let mut preprocessed_types = vec![];
 
     for &(package, ast, ref tydefs) in units.iter() {
         let mut types_env: TypesEnvironment<'a, 'ast> = RbMap::new();
 
-        let mut on_demand_packages = default_packages.to_owned();
+        let mut on_demand_packages = vec![java_lang];
 
         // Add all imports to initial environment for this compilation unit.
         for import in ast.imports.iter() {
@@ -470,6 +475,12 @@ fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
 
                 env.resolve_inheritance(tydef);
                 preprocessed_types.push((tydef, env));
+                if tydef == java_lang_object {
+                    // Make sure `java.lang.Object` is processed first...
+                    // XXX: This is such a hack!
+                    let ix = preprocessed_types.len()-1;
+                    preprocessed_types.swap(0, ix);
+                }
             }
             [] => {}
             _ => panic!("wrong number of types: {}", tydefs.len())
@@ -490,7 +501,7 @@ fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
         // Add the type itself to the environment.
         env.types = insert_declared_type(&env.types, name, tydef);
 
-        collect_members(arena, &env, tydef);
+        collect_members(arena, &env, tydef, java_lang_object);
 
         env.add_fields(tydef);
 
@@ -525,7 +536,7 @@ pub fn name_resolve<'a, 'ast>(arena: &'a Arena<'a, 'ast>, asts: &'ast [ast::Comp
         spanned(DUMMY, Symbol::from_str("java")),
         spanned(DUMMY, Symbol::from_str("lang")),
     ]).unwrap();
-    let methods = build_environments(arena, toplevel, &[java_lang], &*types);
+    let methods = build_environments(arena, toplevel, java_lang, &*types);
     populate_methods(arena, methods);
 
     // TODO: For testing - remove when name resolution is finished.
