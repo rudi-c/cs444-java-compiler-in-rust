@@ -104,8 +104,7 @@ impl<'a, 'ast> EnvironmentStack<'a, 'ast> {
                 let typedef = self.get_type_declaration(class_name).unwrap();
 
                 if let Some(ref extension) = class.node.extends {
-                    self.resolve_extensions(typedef,
-                                            &[extension.clone()]);
+                    self.resolve_class_extension(typedef, extension);
                 }
                 self.resolve_implements(typedef,
                                         class.node.implements.as_slice());
@@ -115,19 +114,42 @@ impl<'a, 'ast> EnvironmentStack<'a, 'ast> {
                 let ref interface_name = interface.node.name;
                 let typedef = self.get_type_declaration(interface_name).unwrap();
 
-                self.resolve_extensions(typedef,
-                                        interface.node.extends.as_slice());
+                self.resolve_interface_extensions(typedef,
+                                                  interface.node.extends.as_slice());
                 typedef
             },
         }
     }
 
-    fn resolve_extensions(&self,
-                          typedef: TypeDefinitionRef<'a, 'ast>,
-                          extensions: &[QualifiedIdentifier]) {
+    fn resolve_class_extension(&self,
+                               typedef: TypeDefinitionRef<'a, 'ast>,
+                               extension: &QualifiedIdentifier) {
+        match self.resolve_type_name(&*extension.node.parts) {
+            Some(extended_type) => {
+                if extended_type.kind == TypeKind::Interface {
+                    // ($8.1.3, dOvs simple constraint 1)
+                    span_error!(extension.span,
+                                "class cannot extend interface");
+                }
+                typedef.extends.borrow_mut().push(extended_type);
+            },
+            None => {
+                // an error was already printed
+            },
+        }
+    }
+
+    fn resolve_interface_extensions(&self,
+                                    typedef: TypeDefinitionRef<'a, 'ast>,
+                                    extensions: &[QualifiedIdentifier]) {
         for extension in extensions.iter() {
             match self.resolve_type_name(&*extension.node.parts) {
                 Some(extended_type) => {
+                    if extended_type.kind == TypeKind::Class {
+                        // ($9.1.2)
+                        span_error!(extension.span,
+                                    "interface cannot extend class");
+                    }
                     typedef.extends.borrow_mut().push(extended_type);
                 },
                 None => {
@@ -143,6 +165,11 @@ impl<'a, 'ast> EnvironmentStack<'a, 'ast> {
         for implement in implements.iter() {
             match self.resolve_type_name(&*implement.node.parts) {
                 Some(implemented_type) => {
+                    if implemented_type.kind == TypeKind::Class {
+                        // ($8.1.4, dOvs simple constraint 2)
+                        span_error!(implement.span,
+                                    "class cannot implement class");
+                    }
                     typedef.implements.borrow_mut().push(implemented_type);
                 },
                 None => {

@@ -117,7 +117,7 @@ pub struct MethodInfo<'a, 'ast: 'a> {
 }
 pub type MethodMap<'a, 'ast> = RbMap<MethodSignature<'a, 'ast>, MethodInfo<'a, 'ast>>;
 
-#[derive(Show, Copy)]
+#[derive(Show, Copy, Eq, PartialEq)]
 pub enum TypeKind {
     Class,
     Interface,
