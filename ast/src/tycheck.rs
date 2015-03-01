@@ -145,10 +145,12 @@ impl<'a, 'ast> Typer<'a, 'ast> {
 pub fn populate_method<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
                                  env: Environment<'a, 'ast>,
                                  method: MethodRef<'a, 'ast>) {
+    let mut typer = Typer {
+        arena: arena,
+        env: env,
+    };
+    *method.args.borrow_mut() = method.ast.params.iter().map(|decl| typer.new_var(decl)).collect();
     if let Some(ref block) = method.ast.body {
-        *method.body.borrow_mut() = Some(Typer {
-            arena: arena,
-            env: env,
-        }.block(block));
+        *method.body.borrow_mut() = Some(typer.block(block));
     }
 }

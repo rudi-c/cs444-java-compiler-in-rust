@@ -102,9 +102,10 @@ pub struct Method<'a, 'ast: 'a> {
     pub origin: TypeDefinitionRef<'a, 'ast>,
     pub ret_ty: Option<Type<'a, 'ast>>, // None = void
     pub impled: Impled,
-    /// This can be None if the method has no implementation, or if we simply haven't reached the
+    /// These can be None if the method has no implementation, or if we simply haven't reached the
     /// typechecking phase yet.
     pub body: RefCell<Option<TypedBlock<'a, 'ast>>>,
+    pub args: RefCell<Vec<VariableRef<'a, 'ast>>>,
     pub ast: &'ast ast::Method,
 }
 pub type MethodRef<'a, 'ast> = &'a Method<'a, 'ast>;
@@ -121,6 +122,7 @@ impl<'a, 'ast> Method<'a, 'ast> {
             ret_ty: ret_ty,
             impled: impled,
             body: RefCell::new(None),
+            args: RefCell::new(vec![]),
             ast: ast,
         }
     }
