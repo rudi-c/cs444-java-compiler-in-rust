@@ -28,6 +28,7 @@ pub struct Environment<'a, 'ast: 'a> {
     pub types: TypesEnvironment<'a, 'ast>,
     pub variables: VariablesEnvironment<'a, 'ast>,
     pub toplevel: PackageRef<'a, 'ast>,
+    pub package: PackageRef<'a, 'ast>,
     pub ty: TypeDefinitionRef<'a, 'ast>,
 
     // Search here for more types.
@@ -192,8 +193,15 @@ impl<'a, 'ast> Environment<'a, 'ast> {
     // TODO: Clean up the error story here (don't want to emit multiple errors)
     fn find_type(&self, ty: &Ident) -> Option<TypeDefinitionRef<'a, 'ast>> {
         self.types.get(&ty.node)
-                  .cloned()
-                  .or_else(|| {
+        .cloned()
+        .or_else(|| {
+            // Check the current package. This has higher precedence than on-demand imports.
+            match self.package.contents.borrow().get(&ty.node) {
+                Some(&PackageItem::TypeDefinition(tydef)) => Some(tydef),
+                _ => None,
+            }
+        })
+        .or_else(|| {
             // If the type is not in the current environment, we can look in the
             // on-demand import packages.
             // It's necessary to look through every package to check for
@@ -421,7 +429,6 @@ fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
         let mut types_env: TypesEnvironment<'a, 'ast> = RbMap::new();
 
         let mut on_demand_packages = default_packages.to_owned();
-        on_demand_packages.push(package);
 
         // Add all imports to initial environment for this compilation unit.
         for import in ast.imports.iter() {
@@ -456,6 +463,7 @@ fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
                     types: types_env,
                     variables: RbMap::new(),
                     toplevel: toplevel,
+                    package: package,
                     ty: tydef,
                     on_demand_packages: on_demand_packages,
                 };
