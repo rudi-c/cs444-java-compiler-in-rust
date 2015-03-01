@@ -142,14 +142,6 @@ impl<'a, 'ast> fmt::String for MethodSignature<'a, 'ast> {
     }
 }
 
-#[derive(Show, Clone)]
-pub struct MethodInfo<'a, 'ast: 'a> {
-    pub method: MethodRef<'a, 'ast>,
-    pub source: TypeDefinitionRef<'a, 'ast>,
-    pub return_type: Option<Type<'a, 'ast>>,
-}
-pub type MethodMap<'a, 'ast> = RbMap<MethodSignature<'a, 'ast>, MethodInfo<'a, 'ast>>;
-
 #[derive(Show, Copy, Eq, PartialEq)]
 pub enum TypeKind {
     Class,
