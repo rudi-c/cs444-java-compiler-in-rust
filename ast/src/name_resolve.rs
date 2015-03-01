@@ -59,6 +59,15 @@ impl<'a, 'ast> Walker<'ast> for EnvironmentStack<'a, 'ast> {
         // Process class body.
         vars_env = self.collect_fields(vars_env, typedef);
         *typedef.all_methods.borrow_mut() = self.collect_class_methods(typedef);
+
+        // ($8.1.1.1) well-formedness contraint 4 - abstract methods => abstract class
+        let should_be_abstract =
+            typedef.all_methods.borrow().iter()
+                   .any(|&(_, ref info)| info.method.has_modifier(ast::Modifier_::Abstract));
+        if should_be_abstract && !typedef.has_modifier(ast::Modifier_::Abstract) {
+            span_error!(typedef.ast.span,
+                        "class with abstract methods should be abstract");
+        }
     }
 
     fn walk_interface(&mut self, interface: &'ast ast::Interface) {
