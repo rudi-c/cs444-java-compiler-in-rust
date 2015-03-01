@@ -77,6 +77,12 @@ pub struct Method_ {
 }
 pub type Method = Spanned<Method_>;
 
+impl Method_ {
+    pub fn has_modifier(&self, modifier: Modifier_) -> bool {
+        self.modifiers.iter().any(|spanned| spanned.node == modifier)
+    }
+}
+
 #[derive(Show)]
 pub struct Field_ {
     pub name: Ident,
@@ -133,12 +139,18 @@ pub enum SimpleType_ {
 pub type SimpleType = Spanned<SimpleType_>;
 
 #[derive(Show)]
-pub enum BlockStatement_ {
-    LocalVariable(LocalVariable),
-    LocalClass(Class),
-    Statement(Statement),
+pub struct LocalVariable_ {
+    pub variable: VariableDeclaration,
+    pub initializer: Expression,
 }
-pub type BlockStatement = Spanned<BlockStatement_>;
+pub type LocalVariable = Spanned<LocalVariable_>;
+
+pub trait ExprRefs {
+    type TypeRef;
+    type MethodRef;
+    type VariableDef;
+    type VariableRef;
+}
 
 #[derive(Show)]
 pub struct Block_ {
@@ -147,11 +159,12 @@ pub struct Block_ {
 pub type Block = Spanned<Block_>;
 
 #[derive(Show)]
-pub struct LocalVariable_ {
-    pub variable: VariableDeclaration,
-    pub initializer: Expression,
+pub enum BlockStatement_ {
+    LocalVariable(LocalVariable),
+    LocalClass(Class),
+    Statement(Statement),
 }
-pub type LocalVariable = Spanned<LocalVariable_>;
+pub type BlockStatement = Spanned<BlockStatement_>;
 
 #[derive(Show)]
 pub enum Statement_ {

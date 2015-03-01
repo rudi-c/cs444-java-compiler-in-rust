@@ -12,45 +12,11 @@ struct Collector<'a, 'ast: 'a> {
     arena: &'a Arena<'a, 'ast>,
     package: PackageRef<'a, 'ast>,
     scope: Vec<Symbol>,
-    type_definition: Option<TypeDefinitionRef<'a, 'ast>>,
     all_tydefs: Vec<TypeDefinitionRef<'a, 'ast>>,
 }
 
 impl<'a, 'ast> Walker<'ast> for Collector<'a, 'ast> {
-    fn walk_class_field(&mut self, field: &'ast ast::Field) {
-        let field_name = format!("{}.{}", Qualified(self.scope.iter()), field.node.name);
-        let tydef = self.type_definition.as_ref().unwrap();
-        if let Some(_) = tydef.fields.borrow_mut().insert(field.node.name.node, self.arena.alloc(Field::new(field_name, field))) {
-            // something with the same name was already there!
-            span_error!(field.span, "field `{}` already exists in `{}`",
-                        field.node.name, Qualified(self.scope.iter()));
-        }
-
-        // no need to walk deeper
-    }
-    fn walk_class_method(&mut self, method_ast: &'ast ast::Method) {
-        // Note: Implementation is shared with interface methods
-
-        let tydef = self.type_definition.as_ref().unwrap();
-        let mut methods = tydef.methods.borrow_mut();
-        let overloads = methods.entry(method_ast.node.name.node).get().unwrap_or_else(|v| {
-            // First time seeing this method name.
-            v.insert(vec![])
-        });
-
-        let method_name = format!("{}.{}", Qualified(self.scope.iter()), method_ast.node.name);
-        overloads.push(self.arena.alloc(Method::new(method_name, method_ast)));
-
-        // no need to walk deeper
-    }
-    fn walk_interface_method(&mut self, method: &'ast ast::Method) {
-        // same as a class method
-        self.walk_class_method(method);
-    }
-
     fn walk_type_declaration(&mut self, ty_decl: &'ast ast::TypeDeclaration) {
-        assert!(self.type_definition.is_none());
-
         let name = ty_decl.name();
         let kind = match ty_decl.node {
             ast::TypeDeclaration_::Class(..) => TypeKind::Class,
@@ -80,12 +46,7 @@ impl<'a, 'ast> Walker<'ast> for Collector<'a, 'ast> {
             }
         }
 
-        self.type_definition = Some(tydef);
         self.all_tydefs.push(tydef);
-
-        default_walk_type_declaration(self, ty_decl);
-
-        self.type_definition = None;
         self.scope.pop();
     }
 }
@@ -134,8 +95,7 @@ pub fn collect_types<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
                                toplevel: PackageRef<'a, 'ast>,
                                asts: &'ast [ast::CompilationUnit])
 -> Vec<(PackageRef<'a, 'ast>, &'ast ast::CompilationUnit, Vec<TypeDefinitionRef<'a, 'ast>>)> {
-    // FIXME
-    let default_package: PackageRef<'a, 'ast> = toplevel; //arena.alloc(Package::new("default package".to_owned()));
+    let default_package = arena.alloc(Package::new("default package".to_owned()));
     asts.iter().map(|ast| {
         let (package, scope) = if let Some(ref package_identifier) = ast.package {
             (resolve_create_package(arena, toplevel, &*package_identifier.node.parts),
@@ -148,7 +108,6 @@ pub fn collect_types<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
             arena: arena,
             package: package,
             scope: scope,
-            type_definition: None,
             all_tydefs: vec![],
         };
         collector.walk_compilation_unit(ast);

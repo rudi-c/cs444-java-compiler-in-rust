@@ -36,6 +36,7 @@ pub mod arena;
 pub mod name_resolve;
 pub mod name_resolve_structs;
 pub mod collect_types;
+pub mod collect_members;
 
 fn create_ast(ctx: &RefCell<Context>, filename: &str) -> Option<CompilationUnit> {
     let file_ix = ctx.borrow_mut().add_file(Path::new(filename)).unwrap();

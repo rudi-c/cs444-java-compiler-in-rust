@@ -6,7 +6,9 @@ use rbtree::RbMap;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::cmp::{Ord, Ordering};
-use std::fmt::{Show, Formatter, Error};
+use std::{fmt, hash};
+
+pub use self::Impled::*;
 
 // In this file, the variable name prefix 'fq_' abbreviates fully_qualified_
 
@@ -64,53 +66,73 @@ impl<'a, 'ast> Package<'a, 'ast> {
 #[derive(Show)]
 pub struct Field<'a, 'ast: 'a> {
     pub fq_name: Name,
+    pub origin: TypeDefinitionRef<'a, 'ast>,
+    pub ty: Type<'a, 'ast>,
     pub ast: &'ast ast::Field,
 }
 pub type FieldRef<'a, 'ast> = &'a Field<'a, 'ast>;
 
 impl<'a, 'ast> Field<'a, 'ast> {
-    pub fn new(name: String, ast: &'ast ast::Field) -> Field<'a, 'ast> {
+    pub fn new(name: String, origin: TypeDefinitionRef<'a, 'ast>, ty: Type<'a, 'ast>, ast: &'ast ast::Field) -> Field<'a, 'ast> {
         Field {
             fq_name: Name::fresh(name),
+            origin: origin,
+            ty: ty,
             ast: ast,
         }
     }
+}
+
+#[derive(Show, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct MethodSignature<'a, 'ast: 'a> {
+    pub name: Symbol,
+    pub args: Vec<Type<'a, 'ast>>,
+}
+
+#[derive(Show, Clone, Copy, PartialEq, Eq)]
+pub enum Impled {
+    Abstract,
+    Concrete,
 }
 
 #[derive(Show)]
 pub struct Method<'a, 'ast: 'a> {
     pub fq_name: Name,
+    pub origin: TypeDefinitionRef<'a, 'ast>,
+    pub ret_ty: Option<Type<'a, 'ast>>, // None = void
+    pub impled: Impled,
     pub ast: &'ast ast::Method,
 }
 pub type MethodRef<'a, 'ast> = &'a Method<'a, 'ast>;
 
 impl<'a, 'ast> Method<'a, 'ast> {
-    pub fn new(name: String, ast: &'ast ast::Method) -> Method<'a, 'ast> {
+    pub fn new(name: String,
+               origin: TypeDefinitionRef<'a, 'ast>,
+               ret_ty: Option<Type<'a, 'ast>>,
+               impled: Impled,
+               ast: &'ast ast::Method) -> Method<'a, 'ast> {
         Method {
             fq_name: Name::fresh(name),
+            origin: origin,
+            ret_ty: ret_ty,
+            impled: impled,
             ast: ast,
         }
     }
 
     pub fn has_modifier(&self, modifier: ast::Modifier_) -> bool {
-        self.ast.node.modifiers.iter().any(|spanned| spanned.node == modifier)
+        self.ast.node.has_modifier(modifier)
     }
 }
 
-pub type MethodSignature<'a, 'ast> = (Symbol, Vec<Type<'a, 'ast>>);
-
-pub fn method_signature_string(signature: &MethodSignature) -> String {
-    let mut string = String::new();
-    let &(ref name, ref types) = signature;
-
-    string.push_str(name.as_slice());
-    string.push('(');
-    for t in types.iter() {
-        string.push_str(format!("{:?}, ", t).as_slice());
+impl<'a, 'ast> fmt::String for MethodSignature<'a, 'ast> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        try!(write!(f, "{}(", self.name));
+        for t in self.args.iter() {
+            try!(write!(f, "{}, ", t));
+        }
+        write!(f, ")")
     }
-    string.push(')');
-
-    string
 }
 
 #[derive(Show, Clone)]
@@ -136,9 +158,8 @@ pub struct TypeDefinition<'a, 'ast: 'a> {
     // need to be be in separate namespaces.
     pub fields: RefCell<HashMap<Symbol, FieldRef<'a, 'ast>>>,
 
-    // Method overloads can have the same name.
-    pub methods: RefCell<HashMap<Symbol, Vec<MethodRef<'a, 'ast>>>>,
-    pub all_methods: RefCell<MethodMap<'a, 'ast>>,
+    // Method overloads can have the same name, but must have different signatures.
+    pub methods: RefCell<HashMap<MethodSignature<'a, 'ast>, MethodRef<'a, 'ast>>>,
 
     pub extends: RefCell<Vec<TypeDefinitionRef<'a, 'ast>>>,
     pub implements: RefCell<Vec<TypeDefinitionRef<'a, 'ast>>>,
@@ -154,7 +175,6 @@ impl<'a, 'ast> TypeDefinition<'a, 'ast> {
             kind: kind,
             fields: RefCell::new(HashMap::new()),
             methods: RefCell::new(HashMap::new()),
-            all_methods: RefCell::new(RbMap::new()),
             extends: RefCell::new(vec![]),
             implements: RefCell::new(vec![]),
             ast: ast,
@@ -192,15 +212,23 @@ impl<'a, 'ast> Ord for TypeDefinitionRef<'a, 'ast> {
 }
 
 // Helper function for printing a Type, handles the void case.
-pub fn type_as_string(ty: &Option<Type>) -> String {
-    if let &Some(ref t) = ty {
-        format!("{:?}", t)
-    } else {
-        format!("void")
+impl<'a, 'ast> fmt::String for Option<Type<'a, 'ast>> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        if let Some(ref t) = *self {
+            t.fmt(f)
+        } else {
+            "void".fmt(f)
+        }
     }
 }
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+impl<'a, 'ast, H: hash::Hasher + hash::Writer> hash::Hash<H> for TypeDefinition<'a, 'ast> {
+    fn hash(&self, state: &mut H) {
+        self.fq_name.hash(state)
+    }
+}
+
+#[derive(Show, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Type<'a, 'ast: 'a> {
     SimpleType(SimpleType<'a, 'ast>),
     ArrayType(SimpleType<'a, 'ast>),
@@ -209,23 +237,17 @@ pub enum Type<'a, 'ast: 'a> {
     Unknown,
 }
 
-impl<'a, 'ast> Show for Type<'a, 'ast> {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+impl<'a, 'ast> fmt::String for Type<'a, 'ast> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
             &Type::SimpleType(ref t) => t.fmt(f),
-            &Type::ArrayType(ref t) => {
-                try!(write!(f, "{:?}[]", t));
-                Ok(())
-            },
-            &Type::Unknown => {
-                try!(write!(f, "Unknown"));
-                Ok(())
-            },
+            &Type::ArrayType(ref t) => write!(f, "{}[]", t),
+            &Type::Unknown => write!(f, "_"),
         }
     }
 }
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Show, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SimpleType<'a, 'ast: 'a> {
     Boolean,
     Int,
@@ -235,17 +257,16 @@ pub enum SimpleType<'a, 'ast: 'a> {
     Other(TypeDefinitionRef<'a, 'ast>),
 }
 
-impl<'a, 'ast> Show for SimpleType<'a, 'ast> {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+impl<'a, 'ast> fmt::String for SimpleType<'a, 'ast> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
-            &SimpleType::Boolean => try!(write!(f, "boolean")),
-            &SimpleType::Int => try!(write!(f, "int")),
-            &SimpleType::Short => try!(write!(f, "short")),
-            &SimpleType::Char => try!(write!(f, "char")),
-            &SimpleType::Byte => try!(write!(f, "byte")),
-            &SimpleType::Other(ref typedef) => try!(write!(f, "{}", typedef.fq_name)),
+            &SimpleType::Boolean => write!(f, "bool"),
+            &SimpleType::Int => write!(f, "int"),
+            &SimpleType::Short => write!(f, "short"),
+            &SimpleType::Char => write!(f, "char"),
+            &SimpleType::Byte => write!(f, "byte"),
+            &SimpleType::Other(ref typedef) => typedef.fq_name.fmt(f),
         }
-        Ok(())
     }
 }
 

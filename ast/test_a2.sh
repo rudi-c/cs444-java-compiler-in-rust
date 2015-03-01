@@ -23,10 +23,10 @@ for test in "${TESTCASES[@]}"; do
     else
         PASS_CODE=0
     fi
-    "$PROGRAM" $(find "$STDLIB" "$test" -name '*.java')
+    "$PROGRAM" --multi $(find "$STDLIB" "$test" -name '*.java')
     CODE="$?"
     if [[ $CODE != $PASS_CODE ]]; then
-        LOG="${LOG}$test: expected exit code $PASS_CODE, got $CODE"$'\n'
+        LOG="${LOG}$test expected exit code $PASS_CODE, got $CODE"$'\n'
         FAILURES=$(($FAILURES+1))
     fi
 done

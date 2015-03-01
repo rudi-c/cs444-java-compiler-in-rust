@@ -4,6 +4,7 @@ use span::{DUMMY, Span, spanned};
 
 use name_resolve_structs::*;
 use collect_types::collect_types;
+use collect_members::collect_members;
 use arena::Arena;
 use walker::*;
 
@@ -25,12 +26,11 @@ enum Variable<'a, 'ast: 'a> {
     Field(FieldRef<'a, 'ast>, Type<'a, 'ast>),
 }
 
-
-type TypesEnvironment<'a, 'ast> = RbMap<Symbol, TypeDefinitionRef<'a, 'ast>>;
-type VariablesEnvironment<'a, 'ast> = RbMap<Symbol, Variable<'a, 'ast>>;
+pub type TypesEnvironment<'a, 'ast> = RbMap<Symbol, TypeDefinitionRef<'a, 'ast>>;
+pub type VariablesEnvironment<'a, 'ast> = RbMap<Symbol, Variable<'a, 'ast>>;
 
 #[derive(Show, Clone)]
-struct EnvironmentStack<'a, 'ast: 'a> {
+pub struct EnvironmentStack<'a, 'ast: 'a> {
     // Since there are no nested classes and only one type per file,
     // this is not a stack/vector and we just use mutation to add the
     // single class/interface in the file to the initial environment
@@ -45,61 +45,9 @@ struct EnvironmentStack<'a, 'ast: 'a> {
     on_demand_packages: Vec<PackageRef<'a, 'ast>>
 }
 
-type TypeEnvironmentPair<'a, 'ast> = (TypeDefinitionRef<'a, 'ast>, EnvironmentStack<'a, 'ast>);
-
-impl<'a, 'ast> Walker<'ast> for EnvironmentStack<'a, 'ast> {
-    fn walk_class(&mut self, class: &'ast ast::Class) {
-        let ref class_name = class.node.name;
-        let typedef = self.get_type_declaration(class_name).unwrap();
-        let mut vars_env = self.variables.last().unwrap().clone();
-
-        // Add the class itself to the environment.
-        self.types = insert_declared_type(&self.types, class_name, typedef);
-
-        // Process class body.
-        vars_env = self.collect_fields(vars_env, typedef);
-        *typedef.all_methods.borrow_mut() = self.collect_class_methods(typedef);
-
-        // ($8.1.1.1) well-formedness contraint 4 - abstract methods => abstract class
-        let should_be_abstract =
-            typedef.all_methods.borrow().iter()
-                   .any(|&(_, ref info)| info.method.has_modifier(ast::Modifier_::Abstract));
-        if should_be_abstract && !typedef.has_modifier(ast::Modifier_::Abstract) {
-            span_error!(typedef.ast.span,
-                        "class with abstract methods should be abstract");
-        }
-    }
-
-    fn walk_interface(&mut self, interface: &'ast ast::Interface) {
-        let ref interface_name = interface.node.name;
-        let typedef = self.get_type_declaration(interface_name).unwrap();
-        let mut vars_env = self.variables.last().unwrap().clone();
-
-        // Add the type itself to the environment.
-        self.types = insert_declared_type(&self.types, interface_name, typedef);
-
-        // Process interface body.
-        *typedef.all_methods.borrow_mut() = self.collect_interface_methods(typedef);
-    }
-}
+pub type TypeEnvironmentPair<'a, 'ast> = (TypeDefinitionRef<'a, 'ast>, EnvironmentStack<'a, 'ast>);
 
 impl<'a, 'ast> EnvironmentStack<'a, 'ast> {
-    fn get_type_declaration(&self, ident: &Ident) -> Option<TypeDefinitionRef<'a, 'ast>> {
-        let p = if let Some(ref package) = self.package {
-            self.resolve_package_name(&*package.node.parts).unwrap()
-        } else {
-            // Top level.
-            self.toplevel
-        };
-        // FIXME: This is kinda bad
-        if let Some(&PackageItem::TypeDefinition(typedef)) =
-                p.contents.borrow().get(&ident.node) {
-            Some(typedef)
-        } else {
-            None
-        }
-    }
-
     // Resolve extends and implements. This is done separately from walking
     // the AST because we need to process the compilations in topological
     // order (with respect to inheritance).
@@ -183,7 +131,7 @@ impl<'a, 'ast> EnvironmentStack<'a, 'ast> {
         }
     }
 
-    fn resolve_type(&self, ty: &ast::Type) -> Type<'a, 'ast> {
+    pub fn resolve_type(&self, ty: &ast::Type) -> Type<'a, 'ast> {
         match ty.node {
             ast::Type_::SimpleType(ref simple_type) =>
                 if let Some(ty) = self.resolve_simple_type(simple_type) {
@@ -215,6 +163,7 @@ impl<'a, 'ast> EnvironmentStack<'a, 'ast> {
         }
     }
 
+    /*
     fn collect_fields(&self,
                       vars_env: VariablesEnvironment<'a, 'ast>,
                       typedef: TypeDefinitionRef<'a, 'ast>) -> VariablesEnvironment<'a, 'ast> {
@@ -242,114 +191,10 @@ impl<'a, 'ast> EnvironmentStack<'a, 'ast> {
             new_env
         })
     }
+    */
 
-    fn collect_class_methods(&self, class: TypeDefinitionRef<'a, 'ast>)
-            -> MethodMap<'a, 'ast> {
-        let parent_class_methods = match class.extends.borrow().first() {
-            Some(parent) => parent.all_methods.borrow().clone(),
-            None => RbMap::new()
-        };
 
-        let interface_methods = self.collect_parent_interface_methods(class);
-
-        // Add interface's methods to parent class' methods.
-        // This may replace a parent class' method. This is fine, because we still
-        // expect the class to implement the interface and thus to have this method.
-        let parent_methods = interface_methods.iter().fold(parent_class_methods, |methods, method| {
-            let &(ref signature, ref method_info) = method;
-            self.method_add_check_conflicts(&methods, signature,
-                                            method_info, class)
-        });
-
-        let own_methods = self.collect_own_methods(class);
-
-        // Merge the classe's own methods with the parent's.
-        // The may replace a parent class's method (override) or an interface
-        // method (implement).
-        let all_methods = own_methods.iter().fold(parent_methods, |methods, method| {
-            let &(ref signature, ref method_info) = method;
-            self.method_add_check_conflicts(&methods, signature,
-                                            method_info, class)
-        });
-
-        // TODO: This would be a good place to check that all methods have
-        // been implemented (no method with no body that isn't abstract).
-
-        all_methods
-    }
-
-    fn collect_interface_methods(&self, interface: TypeDefinitionRef<'a, 'ast>)
-            -> MethodMap<'a, 'ast> {
-        // Pull in all the parent's methods first.
-        let parent_methods = self.collect_parent_interface_methods(interface);
-
-        let own_methods = self.collect_own_methods(interface);
-
-        // Merge interface's own methods with the parent's.
-        own_methods.iter().fold(parent_methods, |methods, method| {
-            let &(ref signature, ref method_info) = method;
-            self.method_add_check_conflicts(&methods, signature,
-                                            method_info, interface)
-        })
-    }
-
-    fn collect_parent_interface_methods(&self, typedef: TypeDefinitionRef<'a, 'ast>)
-            -> MethodMap<'a, 'ast> {
-        let mut all_methods = RbMap::new();
-
-        let interface_methods = match typedef.kind {
-            TypeKind::Class => typedef.implements.borrow(),
-            TypeKind::Interface => typedef.extends.borrow(),
-        };
-
-        for parent in interface_methods.iter() {
-            all_methods = parent.all_methods.borrow().iter()
-                                            .fold(all_methods, |methods, method| {
-                let &(ref signature, ref method_info) = method;
-                self.method_add_check_conflicts(&methods, signature,
-                                                method_info, typedef)
-            });
-        }
-
-        all_methods
-    }
-
-    fn collect_own_methods(&self, typedef: TypeDefinitionRef<'a, 'ast>) -> MethodMap<'a, 'ast> {
-        let mut own_methods = RbMap::new();
-        for (method_name, ref method_group) in typedef.methods.borrow().iter() {
-            own_methods = method_group.iter().fold(own_methods, |methods, &method| {
-                let types: Vec<Type> =
-                    method.ast.node.params.iter()
-                          .map(|dcl| self.resolve_type(&dcl.node.ty))
-                          .collect();
-                let signature = (method_name.clone(), types);
-                let method_info = MethodInfo {
-                    method: method,
-                    source: typedef,
-                    return_type: method.ast.node.return_type
-                                       .as_ref().map(|ty| self.resolve_type(ty)),
-                };
-
-                let (new_methods, existing_method) =
-                    methods.insert(signature.clone(), method_info.clone());
-
-                // Check for duplicate method signatures.
-                if let Some(_) = existing_method {
-                    span_error!(typedef.ast.span,
-                                "method conflict: `{}` declared in previously",
-                                method_signature_string(&signature));
-                }
-
-                new_methods
-            });
-        }
-
-        own_methods
-    }
-
-    // Adds a method to an existing set of methods.
-    // Raise an error if there is already a method with the same signature,
-    // but different return types, otherwise replace it.
+    /*
     fn method_add_check_conflicts(&self,
         methods: &MethodMap<'a, 'ast>,
         signature: &MethodSignature<'a, 'ast>,
@@ -362,20 +207,7 @@ impl<'a, 'ast> EnvironmentStack<'a, 'ast> {
         // Check if the interface's method conflicts with another
         // parent interface's method (same signature, different return types).
         if let Some(&(_, ref existing_info)) = existing_method {
-            // dOvs well-formedness constraint 5
-            // TODO: This only checks if the method signatures are the same.
-            //       Is it alright for a nonstatic method and static method
-            //       with the same name but different signatures to coexist?
-            if !method_info.method.has_modifier(ast::Modifier_::Static) &&
-               existing_info.method.has_modifier(ast::Modifier_::Static) {
-                span_error!(method_info.method.ast.span,
-                            "nonstatic method `{}` in `{}` cannot replace same static method in `{}`",
-                            method_signature_string(signature),
-                            method_info.source.fq_name,
-                            existing_info.source.fq_name);
-            }
 
-            // dOvs well-formedness constraint 6
             if method_info.return_type != existing_info.return_type {
                 span_error!(typedef.ast.span,
                             "method conflict: `{}` declared in `{}` and `{}`",
@@ -387,29 +219,8 @@ impl<'a, 'ast> EnvironmentStack<'a, 'ast> {
                            type_as_string(&method_info.return_type),
                            type_as_string(&existing_info.return_type));
             }
+            */
 
-            // dOvs well-formedness constraint 7
-            if method_info.method.has_modifier(ast::Modifier_::Protected) &&
-               existing_info.method.has_modifier(ast::Modifier_::Public) {
-                span_error!(method_info.method.ast.span,
-                            "protected method `{}` in `{}` cannot replace same public method in `{}`",
-                            method_signature_string(signature),
-                            method_info.source.fq_name,
-                            existing_info.source.fq_name);
-            }
-
-            // dOvs well-formedness constraint 9
-            if existing_info.method.has_modifier(ast::Modifier_::Final) {
-                span_error!(method_info.method.ast.span,
-                            "method `{}` in `{}` cannot replace same final method in `{}`",
-                            method_signature_string(signature),
-                            method_info.source.fq_name,
-                            existing_info.source.fq_name);
-            }
-        }
-
-        new_methods
-    }
 
     // Look up a package by its fully qualified name.
     // Emits an error on failure.
@@ -447,115 +258,6 @@ impl<'a, 'ast> EnvironmentStack<'a, 'ast> {
         }
     }
 
-    /*
-    // Tries to resolve a non-fully qualified identifier to a symbol table
-    // item. Spans an error upon failure.
-    fn resolve_identifier(&self, qident: &QualifiedIdentifier,
-                          vars_env: &VariablesEnvironment<'a, 'ast>)
-            -> Option<Referent<'a, 'ast>> {
-        // For qident = a.b.c.d...
-        let first = qident.node.parts.first().unwrap();
-        let rest = qident.node.parts.tail();
-
-        if let Some(item) = vars_env.get(&first.node) {
-            // a is local variable or parameter or static import
-            self.resolve_expression_identifier(rest, &Referent::Variable(item.clone()))
-        } else if let Some(item) = self.find_type(first) {
-            // a is a type
-            self.resolve_type_identifier(rest, item.clone())
-        } else if let Some(item) = self.toplevel.contents.borrow().get(&first.node) {
-            // a is a package
-            if let &PackageItem::Package(ref package) = item {
-                self.resolve_package_identifier(rest, package.clone())
-            } else {
-                span_error!(first.span,
-                            "resolving unimported type `{}`",
-                            first.node);
-                None
-            }
-        } else {
-            span_error!(first.span,
-                        "unable to resolve identifier `{}` in `{}`",
-                        first.node,
-                        qident);
-            None
-        }
-    }
-
-    fn resolve_expression_identifier(&self, qident: &[Ident],
-                                     expression: &Referent<'a, 'ast>)
-            -> Option<Referent<'a, 'ast>> {
-        match qident {
-            // Just this expression
-            [] => Some(expression.clone()),
-            [ref first, rest..] => {
-                // TODO
-                Some(expression.clone())
-            }
-        }
-    }
-
-    fn resolve_type_identifier(&self, qident: &[Ident],
-                               typedef: TypeDefinitionRef<'a, 'ast>)
-            -> Option<Referent<'a, 'ast>> {
-        match qident {
-            // Just this type
-            [] => Some(Referent::Type(typedef.clone())),
-            // Look in the type's members
-            [ref first, rest..] => {
-                if let Some(field) = typedef.fields.borrow().get(&first.node) {
-                    // TODO: What should the type be here?
-                    let item = Referent::Variable(Variable::Field(field.clone(), Type::Unknown));
-                    self.resolve_expression_identifier(rest, &item)
-                } else if let Some(method) = typedef.methods.borrow().get(&first.node) {
-                    let item = Referent::Method(method.clone());
-                    self.resolve_expression_identifier(rest, &item)
-                } else {
-                    span_error!(first.span,
-                                "member `{}` not found on type `{}`",
-                                first,
-                                typedef.fq_name);
-                    None
-                }
-            }
-        }
-    }
-
-    fn resolve_package_identifier(&self, qident: &[Ident],
-                                  package: PackageRef<'a, 'ast>)
-            -> Option<Referent<'a, 'ast>> {
-        // This function should not be called on an empty qident, because
-        // it would imply that we are returning a package, which is not
-        // a valid name resolution. Caller functions should catch this case.
-        let first = qident.first().unwrap();
-
-        match package.contents.borrow().get(&first.node) {
-            Some(&PackageItem::Package(ref found_package)) => {
-                if qident.len() == 1 {
-                    // Can't resolve to a package.
-                    span_error!(first.span,
-                                "package {} is not a valid name resolution",
-                                found_package.fq_name);
-                    None
-                } else {
-                    self.resolve_package_identifier(qident.tail(),
-                                                    found_package.clone())
-                }
-            },
-            Some(&PackageItem::TypeDefinition(ref typedef)) => {
-                self.resolve_type_identifier(qident.tail(), typedef.clone())
-            },
-            None => {
-                span_error!(first.span,
-                            "type or package `{}` not found in package `{}`",
-                            first,
-                            package.fq_name);
-                None
-            }
-        }
-    }
-    */
-
     // Look up a type by simple name, using the current environment.
     // TODO: Clean up the error story here (don't want to emit multiple errors)
     fn find_type(&self, ty: &Ident) -> Option<TypeDefinitionRef<'a, 'ast>> {
@@ -566,13 +268,10 @@ impl<'a, 'ast> EnvironmentStack<'a, 'ast> {
             // on-demand import packages.
             // It's necessary to look through every package to check for
             // ambiguities.
-            println!("here for {}", ty);
             let mut found_type: Option<TypeDefinitionRef<'a, 'ast>> = None;
             for package in self.on_demand_packages.iter() {
-                println!("try {}", package.fq_name);
                 match package.contents.borrow().get(&ty.node) {
                     Some(&PackageItem::TypeDefinition(typedef)) => {
-                        println!("found {}", typedef.fq_name);
                         // If we already have a type, then there's an ambiguity.
                         if let Some(existing) = found_type {
                             span_error!(ty.span,
@@ -763,7 +462,8 @@ fn inheritance_topological_sort<'a, 'ast>(preprocessed_types: &[TypeEnvironmentP
     // }).collect())
 }
 
-fn build_environments<'a, 'ast>(toplevel: PackageRef<'a, 'ast>,
+fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
+                                toplevel: PackageRef<'a, 'ast>,
                                 default_packages: &[PackageRef<'a, 'ast>],
                                 units: &[(PackageRef<'a, 'ast>, &'ast ast::CompilationUnit, Vec<TypeDefinitionRef<'a, 'ast>>)]) {
     let mut preprocessed_types = vec![];
@@ -814,7 +514,8 @@ fn build_environments<'a, 'ast>(toplevel: PackageRef<'a, 'ast>,
                 env_stack.resolve_inheritance(tydef);
                 preprocessed_types.push((tydef, env_stack));
             }
-            _ => panic!("wrong number of types")
+            [] => {}
+            _ => panic!("wrong number of types: {}", tydefs.len())
         }
     }
 
@@ -824,8 +525,27 @@ fn build_environments<'a, 'ast>(toplevel: PackageRef<'a, 'ast>,
         return;
     }
 
-    for &(typedef, ref env) in preprocessed_types.iter() {
-        env.clone().walk_type_declaration(typedef.ast);
+    for &(tydef, ref env) in preprocessed_types.iter() {
+        let mut env = env.clone();
+
+        let name = tydef.ast.name();
+        let mut vars_env = env.variables.last().unwrap().clone();
+
+        // Add the type itself to the environment.
+        env.types = insert_declared_type(&env.types, name, tydef);
+
+        env = collect_members(arena, env, tydef);
+
+        if tydef.kind == TypeKind::Class {
+            // ($8.1.1.1) well-formedness contraint 4 - abstract methods => abstract class
+            let should_be_abstract =
+                tydef.methods.borrow().iter()
+                    .any(|(_, &method)| method.impled == Abstract);
+            if should_be_abstract && !tydef.has_modifier(ast::Modifier_::Abstract) {
+                span_error!(tydef.ast.span,
+                            "class with abstract methods must be abstract");
+            }
+        }
     }
 }
 
@@ -836,7 +556,7 @@ pub fn name_resolve<'a, 'ast>(arena: &'a Arena<'a, 'ast>, asts: &'ast [ast::Comp
         spanned(DUMMY, Symbol::from_str("java")),
         spanned(DUMMY, Symbol::from_str("lang")),
     ]).unwrap();
-    build_environments(toplevel, &[java_lang], &*types);
+    build_environments(arena, toplevel, &[java_lang], &*types);
 
     // TODO: For testing - remove when name resolution is finished.
     PackageItem::Package(toplevel).print_light();
