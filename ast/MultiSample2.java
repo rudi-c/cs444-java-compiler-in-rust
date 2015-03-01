@@ -10,5 +10,7 @@ public class MultiSample2
     // method and field in different namespaces
     public void foo() { }
 
+    public static void log() {}
+
     public MultiSample2() {}
 }

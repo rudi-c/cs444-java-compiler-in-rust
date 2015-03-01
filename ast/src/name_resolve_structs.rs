@@ -91,6 +91,10 @@ impl<'a, 'ast> Method<'a, 'ast> {
             ast: ast,
         }
     }
+
+    pub fn has_modifier(&self, modifier: ast::Modifier_) -> bool {
+        self.ast.node.modifiers.iter().any(|spanned| spanned.node == modifier)
+    }
 }
 
 pub type MethodSignature<'a, 'ast> = (Symbol, Vec<Type<'a, 'ast>>);

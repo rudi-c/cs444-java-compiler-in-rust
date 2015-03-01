@@ -364,6 +364,20 @@ impl<'a, 'ast> EnvironmentStack<'a, 'ast> {
         // Check if the interface's method conflicts with another
         // parent interface's method (same signature, different return types).
         if let Some(&(_, ref existing_info)) = existing_method {
+            // dOvs well-formedness constraint 5
+            // TODO: This only checks if the method signatures are the same.
+            //       Is it alright for a nonstatic method and static method
+            //       with the same name but different signatures to coexist?
+            if !method_info.method.has_modifier(ast::Modifier_::Static) &&
+               existing_info.method.has_modifier(ast::Modifier_::Static) {
+                span_error!(method_info.method.ast.span,
+                            "nonstatic method `{}` in `{}` cannot replace same static method in `{}`",
+                            method_signature_string(signature),
+                            method_info.source.fq_name,
+                            existing_info.source.fq_name);
+            }
+
+            // dOvs well-formedness constraint 6
             if method_info.return_type != existing_info.return_type {
                 span_error!(typedef.ast.span,
                             "method conflict: `{}` declared in `{}` and `{}`",
