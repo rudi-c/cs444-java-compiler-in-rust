@@ -6,7 +6,7 @@ use arena::Arena;
 use std::borrow::ToOwned;
 use std::collections::hash_map;
 
-use name_resolve_structs::*;
+use middle::*;
 
 struct Collector<'a, 'ast: 'a> {
     arena: &'a Arena<'a, 'ast>,

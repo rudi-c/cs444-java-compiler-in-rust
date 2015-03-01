@@ -33,8 +33,8 @@ pub mod tokenizer;
 pub mod walker;
 pub mod weed;
 pub mod arena;
+pub mod middle;
 pub mod name_resolve;
-pub mod name_resolve_structs;
 pub mod collect_types;
 pub mod collect_members;
 

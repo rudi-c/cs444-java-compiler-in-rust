@@ -21,7 +21,17 @@ impl<K, V> RbMap<K, V> {
     /// Returns the updated map and the previous element with the given key, if any.
     pub fn insert<'a>(&'a self, k: K, v: V) -> (RbMap<K, V>, Option<&'a (K, V)>) where K: Ord {
         let (node, prev) = self.root.insert(k, v);
-        (RbMap { root: node }, prev)
+        (RbMap { root: node }, prev.map(|x| &**x))
+    }
+    /// Inserts a key-value pair destructively.
+    /// Returns the previous element with the given key, if any.
+    pub fn insert_in_place<'a>(&'a mut self, k: K, v: V) -> Option<Rc<(K, V)>> where K: Ord {
+        let (node, prev) = {
+            let (node, prev) = self.root.insert(k, v);
+            (node, prev.cloned())
+        };
+        self.root = node;
+        prev
     }
     /// Looks up the given key in the map.
     pub fn get<'a, Q: ?Sized>(&'a self, k: &Q) -> Option<&'a V> where Q: BorrowFrom<K> + Ord {
@@ -172,7 +182,7 @@ fn balance<K, V>(t: Node<K, V>) -> Node<K, V> {
 }
 
 impl<K, V> Node<K, V> {
-    fn insert(&self, k: K, v: V) -> (Node<K, V>, Option<&(K, V)>) where K: Ord {
+    fn insert(&self, k: K, v: V) -> (Node<K, V>, Option<&Rc<(K, V)>>) where K: Ord {
         match *self {
             Branch(c, ref l, ref m, ref r) => match k.cmp(&m.0) {
                 Less => {
@@ -184,7 +194,7 @@ impl<K, V> Node<K, V> {
                     (balance(Branch(c, l.clone(), m.clone(), Rc::new(node))), prev)
                 }
                 Equal => {
-                    (Branch(c, l.clone(), Rc::new((k, v)), r.clone()), Some(&**m))
+                    (Branch(c, l.clone(), Rc::new((k, v)), r.clone()), Some(m))
                 }
             },
             Leaf => (Branch(Red, leaf(), Rc::new((k, v)), leaf()), None)

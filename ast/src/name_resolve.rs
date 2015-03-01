@@ -2,7 +2,7 @@ use ast;
 use name::*;
 use span::{DUMMY, Span, spanned};
 
-use name_resolve_structs::*;
+use middle::*;
 use collect_types::collect_types;
 use collect_members::collect_members;
 use arena::Arena;
@@ -14,40 +14,28 @@ use std::borrow::ToOwned;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Show, Clone)]
-enum Referent<'a, 'ast: 'a> {
-    Type(TypeDefinitionRef<'a, 'ast>),
-    Variable(Variable<'a, 'ast>),
-    Method(MethodRef<'a, 'ast>),
-}
-
-#[derive(Show, Clone)]
-enum Variable<'a, 'ast: 'a> {
-    LocalVariable,
-    Field(FieldRef<'a, 'ast>, Type<'a, 'ast>),
+pub enum Variable<'a, 'ast: 'a> {
+    LocalVariable(VariableDefinitionRef<'a, 'ast>),
+    Field(FieldRef<'a, 'ast>),
 }
 
 pub type TypesEnvironment<'a, 'ast> = RbMap<Symbol, TypeDefinitionRef<'a, 'ast>>;
 pub type VariablesEnvironment<'a, 'ast> = RbMap<Symbol, Variable<'a, 'ast>>;
 
 #[derive(Show, Clone)]
-pub struct EnvironmentStack<'a, 'ast: 'a> {
-    // Since there are no nested classes and only one type per file,
-    // this is not a stack/vector and we just use mutation to add the
-    // single class/interface in the file to the initial environment
-    // containing imported types.
+pub struct Environment<'a, 'ast: 'a> {
     types: TypesEnvironment<'a, 'ast>,
-
-    variables: Vec<VariablesEnvironment<'a, 'ast>>,
+    variables: VariablesEnvironment<'a, 'ast>,
     toplevel: PackageRef<'a, 'ast>,
-    package: Option<QualifiedIdentifier>,
+    ty: TypeDefinitionRef<'a, 'ast>,
 
     // Search here for more types.
     on_demand_packages: Vec<PackageRef<'a, 'ast>>
 }
 
-pub type TypeEnvironmentPair<'a, 'ast> = (TypeDefinitionRef<'a, 'ast>, EnvironmentStack<'a, 'ast>);
+pub type TypeEnvironmentPair<'a, 'ast> = (TypeDefinitionRef<'a, 'ast>, Environment<'a, 'ast>);
 
-impl<'a, 'ast> EnvironmentStack<'a, 'ast> {
+impl<'a, 'ast> Environment<'a, 'ast> {
     // Resolve extends and implements. This is done separately from walking
     // the AST because we need to process the compilations in topological
     // order (with respect to inheritance).
@@ -293,6 +281,18 @@ impl<'a, 'ast> EnvironmentStack<'a, 'ast> {
             found_type
         })
     }
+
+    fn add_fields(&mut self, tydef: TypeDefinitionRef<'a, 'ast>) {
+        for (&name, &field) in tydef.fields.borrow().iter() {
+            self.add_field(name, field);
+        }
+    }
+
+    fn add_field(&mut self, name: Symbol, field: FieldRef<'a, 'ast>) {
+        if let Some(_) = self.variables.insert_in_place(name, Variable::Field(field)) {
+            panic!("bug: multiple fields with the same name in scope, somehow");
+        }
+    }
 }
 
 // Look up a package by its fully-qualified name.
@@ -436,30 +436,25 @@ fn inheritance_topological_sort<'a, 'ast>(preprocessed_types: &[TypeEnvironmentP
 
     let mut sorted: Vec<Name> = vec![];
 
-    {
-        let mut seen: HashSet<Name> = HashSet::new();
-        let mut visited: HashSet<Name> = HashSet::new();
+    let mut seen: HashSet<Name> = HashSet::new();
+    let mut visited: HashSet<Name> = HashSet::new();
 
-        // Keep track of the depth-first search stack for error message
-        // purposes (it shows the user where the cycle is).
-        let mut stack: Vec<Name> = vec![];
+    // Keep track of the depth-first search stack for error message
+    // purposes (it shows the user where the cycle is).
+    let mut stack: Vec<Name> = vec![];
 
-        for &(typedef, _) in preprocessed_types.iter() {
-            if !visited.contains(&typedef.fq_name) {
-                let result = inheritance_topological_sort_search(
-                    typedef, &mut seen, &mut visited,
-                    &mut stack, &mut sorted);
-                if let Err(_) = result {
-                    return None;
-                }
+    for &(typedef, _) in preprocessed_types.iter() {
+        if !visited.contains(&typedef.fq_name) {
+            let result = inheritance_topological_sort_search(
+                typedef, &mut seen, &mut visited,
+                &mut stack, &mut sorted);
+            if let Err(_) = result {
+                return None;
             }
         }
     }
 
     Some(sorted.iter().map(|name| lookup.get(name).unwrap().clone()).collect())
-    // Some(sorted.iter().map(|name| match lookup.get(name).unwrap() {
-    //     &(&typedef, &env) => (typedef.clone(), env.clone())
-    // }).collect())
 }
 
 fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
@@ -501,18 +496,18 @@ fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
         // TODO: For testing - remove later.
         println!("{} types environment: {:?}", ast.types[0].name(), types_env);
 
-        let env_stack = EnvironmentStack {
-            types: types_env,
-            variables: vec![RbMap::new()],
-            toplevel: toplevel,
-            package: ast.package.clone(),
-            on_demand_packages: on_demand_packages,
-        };
-
         match &**tydefs {
             [tydef] => {
-                env_stack.resolve_inheritance(tydef);
-                preprocessed_types.push((tydef, env_stack));
+                let env = Environment {
+                    types: types_env,
+                    variables: RbMap::new(),
+                    toplevel: toplevel,
+                    ty: tydef,
+                    on_demand_packages: on_demand_packages,
+                };
+
+                env.resolve_inheritance(tydef);
+                preprocessed_types.push((tydef, env));
             }
             [] => {}
             _ => panic!("wrong number of types: {}", tydefs.len())
@@ -525,16 +520,15 @@ fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
         return;
     }
 
-    for &(tydef, ref env) in preprocessed_types.iter() {
-        let mut env = env.clone();
-
+    for (tydef, mut env) in preprocessed_types.into_iter() {
         let name = tydef.ast.name();
-        let mut vars_env = env.variables.last().unwrap().clone();
 
         // Add the type itself to the environment.
         env.types = insert_declared_type(&env.types, name, tydef);
 
-        env = collect_members(arena, env, tydef);
+        collect_members(arena, &env, tydef);
+
+        env.add_fields(tydef);
 
         if tydef.kind == TypeKind::Class {
             // ($8.1.1.1) well-formedness contraint 4 - abstract methods => abstract class

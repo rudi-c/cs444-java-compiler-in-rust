@@ -3,12 +3,12 @@ use walker::*;
 use arena::Arena;
 use name::*;
 
-use name_resolve_structs::*;
-use name_resolve::{EnvironmentStack};
+use middle::*;
+use name_resolve::{Environment};
 
-struct Collector<'a, 'ast: 'a> {
+struct Collector<'env, 'a: 'env, 'ast: 'a> {
     arena: &'a Arena<'a, 'ast>,
-    env: EnvironmentStack<'a, 'ast>,
+    env: &'env Environment<'a, 'ast>,
     type_definition: TypeDefinitionRef<'a, 'ast>,
 }
 
@@ -75,7 +75,7 @@ fn insert_method<'a, 'ast>(tydef: TypeDefinitionRef<'a, 'ast>,
     }
 }
 
-impl<'a, 'ast> Walker<'ast> for Collector<'a, 'ast> {
+impl<'env, 'a, 'ast> Walker<'ast> for Collector<'env, 'a, 'ast> {
     fn walk_class_field(&mut self, field: &'ast ast::Field) {
         let tydef = self.type_definition;
         let field_name = field.node.name.node;
@@ -123,9 +123,8 @@ impl<'a, 'ast> Walker<'ast> for Collector<'a, 'ast> {
 }
 
 pub fn collect_members<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
-                                 env: EnvironmentStack<'a, 'ast>,
-                                 tydef: TypeDefinitionRef<'a, 'ast>)
--> EnvironmentStack<'a, 'ast> {
+                                 env: &Environment<'a, 'ast>,
+                                 tydef: TypeDefinitionRef<'a, 'ast>) {
     // Bring in parent members
     for &parent in tydef.implements.borrow().iter().chain(tydef.extends.borrow().iter()) {
         for (signature, &method) in parent.methods.borrow().iter() {
@@ -135,15 +134,12 @@ pub fn collect_members<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
             insert_field(tydef, name, field);
         }
     }
-    let mut collector = Collector {
+    Collector {
         arena: arena,
         env: env,
         type_definition: tydef,
-    };
-    collector.walk_type_declaration(tydef.ast);
+    }.walk_type_declaration(tydef.ast);
     // TODO: This would be a good place to check that all methods have
     // been implemented (no method with no body that isn't abstract).
-
-    collector.env
 }
 

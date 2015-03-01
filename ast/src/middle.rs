@@ -277,3 +277,55 @@ pub struct VariableDefinition<'a, 'ast: 'a> {
     ast: &'ast ast::VariableDeclaration,
 }
 pub type VariableDefinitionRef<'a, 'ast> = &'a RefCell<VariableDefinition<'a, 'ast>>;
+
+#[derive(Show)]
+pub enum TypedBlockStatement_<'a, 'ast: 'a> {
+    LocalVariable(VariableWeak<'a, 'ast>),
+    Statement(TypedStatement<'a, 'ast>),
+}
+pub type TypedBlockStatement<'a, 'ast> = Spanned<TypedBlockStatement_<'a, 'ast>>;
+
+#[derive(Show)]
+pub struct TypedBlock_<'a, 'ast: 'a> {
+    pub stmts: Vec<TypedBlockStatement<'a, 'ast>>,
+}
+pub type TypedBlock<'a, 'ast> = Spanned<TypedBlock_<'a, 'ast>>;
+
+#[derive(Show)]
+pub enum TypedStatement_<'a, 'ast: 'a> {
+    Expression(TypedExpression<'a, 'ast>),
+    If(TypedExpression<'a, 'ast>, Box<TypedStatement<'a, 'ast>>, Option<Box<TypedStatement<'a, 'ast>>>),
+    While(TypedExpression<'a, 'ast>, Box<TypedStatement<'a, 'ast>>),
+    For(Option<TypedExpression<'a, 'ast>>,
+        Option<TypedExpression<'a, 'ast>>,
+        Option<TypedExpression<'a, 'ast>>,
+        Box<TypedStatement<'a, 'ast>>),
+    ForDecl(VariableWeak,
+            Option<TypedExpression<'a, 'ast>>,
+            Option<TypedExpression<'a, 'ast>>,
+            Box<TypedStatement<'a, 'ast>>),
+    Empty,
+    Return(TypedExpression<'a, 'ast>),
+    Block(TypedBlock<'a, 'ast>),
+}
+pub type TypedStatement<'a, 'ast> = Spanned<TypedStatement_<'a, 'ast>>;
+
+#[derive(Show)]
+pub enum TypedExpression_<'a, 'ast: 'a> {
+    Literal(ast::Literal),
+    This,
+    NewStaticClass(Type<'a, 'ast>, Vec<TypedExpression<'a, 'ast>>),
+    NewDynamicClass(Box<TypedExpression<'a, 'ast>>, Ident, Vec<TypedExpression<'a, 'ast>>),
+    NewArray(Type<'a, 'ast>, Box<TypedExpression<'a, 'ast>>),
+    Variable(VariableRef<'a, 'ast>),
+    StaticFieldAccess(FieldWeak<'a, 'ast>),
+    FieldAccess(Box<TypedExpression<'a, 'ast>>, FieldWeak<'a, 'ast>),
+    MethodInvocation(Option<Box<TypedExpression<'a, 'ast>>>, MethodWeak<'a, 'ast>, Vec<TypedExpression<'a, 'ast>>),
+    ArrayAccess(Box<TypedExpression<'a, 'ast>>, Box<TypedExpression<'a, 'ast>>),
+    Assignment(Box<TypedExpression<'a, 'ast>>, Box<TypedExpression<'a, 'ast>>),
+    InstanceOf(Box<TypedExpression<'a, 'ast>>, Type<'a, 'ast>),
+    Prefix(ast::PrefixOperator, Box<TypedExpression<'a, 'ast>>),
+    Infix(ast::InfixOperator, Box<TypedExpression<'a, 'ast>>, Box<TypedExpression<'a, 'ast>>),
+    Cast(Type<'a, 'ast>, Box<TypedExpression<'a, 'ast>>),
+}
+pub type TypedExpression<'a, 'ast> = Spanned<TypedExpression_<'a, 'ast>>;
