@@ -1,5 +1,6 @@
 use ast;
 use name::*;
+use span::*;
 
 use rbtree::RbMap;
 
@@ -101,6 +102,9 @@ pub struct Method<'a, 'ast: 'a> {
     pub origin: TypeDefinitionRef<'a, 'ast>,
     pub ret_ty: Option<Type<'a, 'ast>>, // None = void
     pub impled: Impled,
+    /// This can be None if the method has no implementation, or if we simply haven't reached the
+    /// typechecking phase yet.
+    pub body: RefCell<Option<TypedBlock<'a, 'ast>>>,
     pub ast: &'ast ast::Method,
 }
 pub type MethodRef<'a, 'ast> = &'a Method<'a, 'ast>;
@@ -116,6 +120,7 @@ impl<'a, 'ast> Method<'a, 'ast> {
             origin: origin,
             ret_ty: ret_ty,
             impled: impled,
+            body: RefCell::new(None),
             ast: ast,
         }
     }
@@ -233,8 +238,21 @@ pub enum Type<'a, 'ast: 'a> {
     SimpleType(SimpleType<'a, 'ast>),
     ArrayType(SimpleType<'a, 'ast>),
 
+    // The type of `null`.
+    Null,
+
     // Placeholder when name resolution fails.
     Unknown,
+}
+
+impl<'a, 'ast> Type<'a, 'ast> {
+    pub fn object(t: Option<TypeDefinitionRef<'a, 'ast>>) -> Type<'a, 'ast> {
+        if let Some(t) = t {
+            Type::SimpleType(SimpleType::Other(t))
+        } else {
+            Type::Unknown
+        }
+    }
 }
 
 impl<'a, 'ast> fmt::String for Type<'a, 'ast> {
@@ -242,6 +260,7 @@ impl<'a, 'ast> fmt::String for Type<'a, 'ast> {
         match self {
             &Type::SimpleType(ref t) => t.fmt(f),
             &Type::ArrayType(ref t) => write!(f, "{}[]", t),
+            &Type::Null => write!(f, "null"),
             &Type::Unknown => write!(f, "_"),
         }
     }
@@ -271,16 +290,33 @@ impl<'a, 'ast> fmt::String for SimpleType<'a, 'ast> {
 }
 
 #[derive(Show)]
-pub struct VariableDefinition<'a, 'ast: 'a> {
-    fq_name: Name,
-    ty: Type<'a, 'ast>,
-    ast: &'ast ast::VariableDeclaration,
+pub struct VariableDef<'a, 'ast: 'a> {
+    pub fq_name: Name,
+    pub ty: Type<'a, 'ast>,
+    pub ast: &'ast ast::VariableDeclaration,
 }
-pub type VariableDefinitionRef<'a, 'ast> = &'a RefCell<VariableDefinition<'a, 'ast>>;
+pub type VariableRef<'a, 'ast> = &'a VariableDef<'a, 'ast>;
+
+impl<'a, 'ast> VariableDef<'a, 'ast> {
+    pub fn new(name: String, ty: Type<'a, 'ast>, ast: &'ast ast::VariableDeclaration) -> Self {
+        VariableDef {
+            fq_name: Name::fresh(name),
+            ty: ty,
+            ast: ast,
+        }
+    }
+}
+
+#[derive(Show)]
+pub struct TypedLocalVariable_<'a, 'ast: 'a> {
+    pub variable: VariableRef<'a, 'ast>,
+    pub initializer: TypedExpression<'a, 'ast>,
+}
+pub type TypedLocalVariable<'a, 'ast> = Spanned<TypedLocalVariable_<'a, 'ast>>;
 
 #[derive(Show)]
 pub enum TypedBlockStatement_<'a, 'ast: 'a> {
-    LocalVariable(VariableWeak<'a, 'ast>),
+    LocalVariable(TypedLocalVariable<'a, 'ast>),
     Statement(TypedStatement<'a, 'ast>),
 }
 pub type TypedBlockStatement<'a, 'ast> = Spanned<TypedBlockStatement_<'a, 'ast>>;
@@ -300,7 +336,7 @@ pub enum TypedStatement_<'a, 'ast: 'a> {
         Option<TypedExpression<'a, 'ast>>,
         Option<TypedExpression<'a, 'ast>>,
         Box<TypedStatement<'a, 'ast>>),
-    ForDecl(VariableWeak,
+    ForDecl(TypedLocalVariable<'a, 'ast>,
             Option<TypedExpression<'a, 'ast>>,
             Option<TypedExpression<'a, 'ast>>,
             Box<TypedStatement<'a, 'ast>>),
@@ -312,15 +348,15 @@ pub type TypedStatement<'a, 'ast> = Spanned<TypedStatement_<'a, 'ast>>;
 
 #[derive(Show)]
 pub enum TypedExpression_<'a, 'ast: 'a> {
-    Literal(ast::Literal),
+    Literal(&'ast ast::Literal),
     This,
     NewStaticClass(Type<'a, 'ast>, Vec<TypedExpression<'a, 'ast>>),
     NewDynamicClass(Box<TypedExpression<'a, 'ast>>, Ident, Vec<TypedExpression<'a, 'ast>>),
     NewArray(Type<'a, 'ast>, Box<TypedExpression<'a, 'ast>>),
     Variable(VariableRef<'a, 'ast>),
-    StaticFieldAccess(FieldWeak<'a, 'ast>),
-    FieldAccess(Box<TypedExpression<'a, 'ast>>, FieldWeak<'a, 'ast>),
-    MethodInvocation(Option<Box<TypedExpression<'a, 'ast>>>, MethodWeak<'a, 'ast>, Vec<TypedExpression<'a, 'ast>>),
+    StaticFieldAccess(FieldRef<'a, 'ast>),
+    FieldAccess(Box<TypedExpression<'a, 'ast>>, FieldRef<'a, 'ast>),
+    MethodInvocation(Option<Box<TypedExpression<'a, 'ast>>>, MethodRef<'a, 'ast>, Vec<TypedExpression<'a, 'ast>>),
     ArrayAccess(Box<TypedExpression<'a, 'ast>>, Box<TypedExpression<'a, 'ast>>),
     Assignment(Box<TypedExpression<'a, 'ast>>, Box<TypedExpression<'a, 'ast>>),
     InstanceOf(Box<TypedExpression<'a, 'ast>>, Type<'a, 'ast>),
@@ -328,4 +364,10 @@ pub enum TypedExpression_<'a, 'ast: 'a> {
     Infix(ast::InfixOperator, Box<TypedExpression<'a, 'ast>>, Box<TypedExpression<'a, 'ast>>),
     Cast(Type<'a, 'ast>, Box<TypedExpression<'a, 'ast>>),
 }
-pub type TypedExpression<'a, 'ast> = Spanned<TypedExpression_<'a, 'ast>>;
+pub type TypedExpression<'a, 'ast> = Spanned<(TypedExpression_<'a, 'ast>, Type<'a, 'ast>)>;
+
+impl<'a, 'ast> TypedExpression<'a, 'ast> {
+    pub fn ty(&self) -> &Type<'a, 'ast> {
+        &self.1
+    }
+}

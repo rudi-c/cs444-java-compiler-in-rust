@@ -145,13 +145,6 @@ pub struct LocalVariable_ {
 }
 pub type LocalVariable = Spanned<LocalVariable_>;
 
-pub trait ExprRefs {
-    type TypeRef;
-    type MethodRef;
-    type VariableDef;
-    type VariableRef;
-}
-
 #[derive(Show)]
 pub struct Block_ {
     pub stmts: Vec<BlockStatement>,

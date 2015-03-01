@@ -1,5 +1,6 @@
 #![macro_use]
 use std::fmt::{Show, Formatter, Error};
+use std::ops;
 
 pub type Location = u32;
 pub type FileId = usize;
@@ -34,6 +35,13 @@ impl Span {
 pub struct Spanned<T> {
     pub span: Span,
     pub node: T,
+}
+
+impl<T> ops::Deref for Spanned<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        &self.node
+    }
 }
 
 impl<'a, T> IntoSpan for &'a Spanned<T> {

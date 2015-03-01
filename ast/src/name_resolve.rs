@@ -5,6 +5,7 @@ use span::{DUMMY, Span, spanned};
 use middle::*;
 use collect_types::collect_types;
 use collect_members::collect_members;
+use tycheck::populate_method;
 use arena::Arena;
 use walker::*;
 
@@ -15,7 +16,7 @@ use std::collections::{HashMap, HashSet};
 
 #[derive(Show, Clone)]
 pub enum Variable<'a, 'ast: 'a> {
-    LocalVariable(VariableDefinitionRef<'a, 'ast>),
+    LocalVariable(VariableRef<'a, 'ast>),
     Field(FieldRef<'a, 'ast>),
 }
 
@@ -24,13 +25,13 @@ pub type VariablesEnvironment<'a, 'ast> = RbMap<Symbol, Variable<'a, 'ast>>;
 
 #[derive(Show, Clone)]
 pub struct Environment<'a, 'ast: 'a> {
-    types: TypesEnvironment<'a, 'ast>,
-    variables: VariablesEnvironment<'a, 'ast>,
-    toplevel: PackageRef<'a, 'ast>,
-    ty: TypeDefinitionRef<'a, 'ast>,
+    pub types: TypesEnvironment<'a, 'ast>,
+    pub variables: VariablesEnvironment<'a, 'ast>,
+    pub toplevel: PackageRef<'a, 'ast>,
+    pub ty: TypeDefinitionRef<'a, 'ast>,
 
     // Search here for more types.
-    on_demand_packages: Vec<PackageRef<'a, 'ast>>
+    pub on_demand_packages: Vec<PackageRef<'a, 'ast>>
 }
 
 pub type TypeEnvironmentPair<'a, 'ast> = (TypeDefinitionRef<'a, 'ast>, Environment<'a, 'ast>);
@@ -151,65 +152,6 @@ impl<'a, 'ast> Environment<'a, 'ast> {
         }
     }
 
-    /*
-    fn collect_fields(&self,
-                      vars_env: VariablesEnvironment<'a, 'ast>,
-                      typedef: TypeDefinitionRef<'a, 'ast>) -> VariablesEnvironment<'a, 'ast> {
-        typedef.fields
-               .borrow()
-               .values()
-               .fold(vars_env, |env, field| {
-            let ref field_ast = field.ast.node;
-            let field_ref = *typedef.fields.borrow().get(&field_ast.name.node).unwrap();
-            let field_type = self.resolve_type(&field_ast.ty);
-
-            let variable = Variable::Field(field_ref, field_type);
-            let (new_env, existing) = env.insert(field_ast.name.node,
-                                                 variable);
-
-            if let Some(_) = existing {
-                // There should only be fields in the symbol table at the moment.
-                span_error!(field_ast.name.span,
-                            "field {} already exists",
-                            field_ast.name);
-
-                // TODO: Add note about where the previous declaration is?
-            }
-
-            new_env
-        })
-    }
-    */
-
-
-    /*
-    fn method_add_check_conflicts(&self,
-        methods: &MethodMap<'a, 'ast>,
-        signature: &MethodSignature<'a, 'ast>,
-        method_info: &MethodInfo<'a, 'ast>,
-        typedef: TypeDefinitionRef<'a, 'ast>) -> MethodMap<'a, 'ast> {
-
-        let (new_methods, existing_method) =
-            methods.insert(signature.clone(), method_info.clone());
-
-        // Check if the interface's method conflicts with another
-        // parent interface's method (same signature, different return types).
-        if let Some(&(_, ref existing_info)) = existing_method {
-
-            if method_info.return_type != existing_info.return_type {
-                span_error!(typedef.ast.span,
-                            "method conflict: `{}` declared in `{}` and `{}`",
-                            method_signature_string(signature),
-                            method_info.source.fq_name,
-                            existing_info.source.fq_name);
-                span_note!(typedef.ast.span,
-                           "the return types {:?} and {:?} are incompatible",
-                           type_as_string(&method_info.return_type),
-                           type_as_string(&existing_info.return_type));
-            }
-            */
-
-
     // Look up a package by its fully qualified name.
     // Emits an error on failure.
     fn resolve_package_name(&self, id: &[Ident]) -> Option<PackageRef<'a, 'ast>> {
@@ -219,7 +161,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
 
     // Look up a (user-defined) type by either a qualified or simple name.
     // Emits an error on failure.
-    fn resolve_type_name(&self, id: &[Ident]) -> Option<TypeDefinitionRef<'a, 'ast>> {
+    pub fn resolve_type_name(&self, id: &[Ident]) -> Option<TypeDefinitionRef<'a, 'ast>> {
         match id {
             [] => panic!("bug: tried to resolve an empty type name"),
             // simple name
@@ -291,6 +233,17 @@ impl<'a, 'ast> Environment<'a, 'ast> {
     fn add_field(&mut self, name: Symbol, field: FieldRef<'a, 'ast>) {
         if let Some(_) = self.variables.insert_in_place(name, Variable::Field(field)) {
             panic!("bug: multiple fields with the same name in scope, somehow");
+        }
+    }
+
+    pub fn add_var(&mut self, name: Symbol, var: VariableRef<'a, 'ast>) {
+        if let Some(old) = self.variables.insert_in_place(name, Variable::LocalVariable(var)) {
+            if let (_, Variable::LocalVariable(v)) = *old {
+                span_error!(var.ast.span,
+                            "variable `{}` already defined",
+                            name);
+                span_note!(v.ast.span, "the old declaration is here");
+            }
         }
     }
 }
@@ -460,7 +413,8 @@ fn inheritance_topological_sort<'a, 'ast>(preprocessed_types: &[TypeEnvironmentP
 fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
                                 toplevel: PackageRef<'a, 'ast>,
                                 default_packages: &[PackageRef<'a, 'ast>],
-                                units: &[(PackageRef<'a, 'ast>, &'ast ast::CompilationUnit, Vec<TypeDefinitionRef<'a, 'ast>>)]) {
+                                units: &[(PackageRef<'a, 'ast>, &'ast ast::CompilationUnit, Vec<TypeDefinitionRef<'a, 'ast>>)])
+-> Vec<(Environment<'a, 'ast>, MethodRef<'a, 'ast>)> {
     let mut preprocessed_types = vec![];
 
     for &(package, ast, ref tydefs) in units.iter() {
@@ -517,8 +471,10 @@ fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
     if let Some(sorted) = inheritance_topological_sort(preprocessed_types.as_slice()) {
         preprocessed_types = sorted;
     } else {
-        return;
+        return vec![];
     }
+
+    let mut r = vec![];
 
     for (tydef, mut env) in preprocessed_types.into_iter() {
         let name = tydef.ast.name();
@@ -540,6 +496,17 @@ fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
                             "class with abstract methods must be abstract");
             }
         }
+
+        for (_, &method) in tydef.methods.borrow().iter() {
+            r.push((env.clone(), method));
+        }
+    }
+    r
+}
+
+fn populate_methods<'a, 'ast>(arena: &'a Arena<'a, 'ast>, methods: Vec<(Environment<'a, 'ast>, MethodRef<'a, 'ast>)>) {
+    for (env, method) in methods.into_iter() {
+        populate_method(arena, env, method);
     }
 }
 
@@ -550,7 +517,8 @@ pub fn name_resolve<'a, 'ast>(arena: &'a Arena<'a, 'ast>, asts: &'ast [ast::Comp
         spanned(DUMMY, Symbol::from_str("java")),
         spanned(DUMMY, Symbol::from_str("lang")),
     ]).unwrap();
-    build_environments(arena, toplevel, &[java_lang], &*types);
+    let methods = build_environments(arena, toplevel, &[java_lang], &*types);
+    populate_methods(arena, methods);
 
     // TODO: For testing - remove when name resolution is finished.
     PackageItem::Package(toplevel).print_light();

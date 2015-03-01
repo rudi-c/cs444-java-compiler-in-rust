@@ -1,6 +1,6 @@
 extern crate arena;
 
-use name_resolve_structs::*;
+use middle::*;
 use self::arena::TypedArena;
 
 macro_rules! make_arena {
@@ -33,5 +33,6 @@ make_arena! {
     package: Package,
     field: Field,
     method: Method,
-    tydef: TypeDefinition
+    tydef: TypeDefinition,
+    var: VariableDef
 }
