@@ -45,16 +45,15 @@ fn insert_method<'a, 'ast>(tydef: TypeDefinitionRef<'a, 'ast>,
             span_error!(method.ast.span, "overrided method `{}` has the wrong return type (expected `{}`, found `{}`)",
                         signature,
                         old.ret_ty, method.ret_ty);
-        } else if !method.has_modifier(ast::Modifier_::Static) &&
-            old.has_modifier(ast::Modifier_::Static) {
+        } else if method.has_modifier(ast::Modifier_::Static) != old.has_modifier(ast::Modifier_::Static) {
             // dOvs well-formedness constraint 5
-            // TODO: This only checks if the method signatures are the same.
-            //       Is it alright for a nonstatic method and static method
-            //       with the same name but different signatures to coexist?
+            // XXX: deduplicate code
             span_error!(method.ast.span,
-                        "nonstatic method `{}` in `{}` cannot override static method in `{}`",
+                        "{} method `{}` in `{}` cannot override {} method in `{}`",
+                        if method.has_modifier(ast::Modifier_::Static) { "static" } else { "instance" },
                         signature,
                         method.origin.fq_name,
+                        if old.has_modifier(ast::Modifier_::Static) { "static" } else { "instance" },
                         old.origin.fq_name);
         } else if method.has_modifier(ast::Modifier_::Protected) &&
             old.has_modifier(ast::Modifier_::Public) {
