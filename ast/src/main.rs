@@ -40,7 +40,14 @@ pub mod collect_members;
 pub mod tycheck;
 
 fn create_ast(ctx: &RefCell<Context>, filename: &str) -> Option<CompilationUnit> {
-    let file_ix = ctx.borrow_mut().add_file(Path::new(filename)).unwrap();
+    let file_ix = match ctx.borrow_mut().add_file(Path::new(filename)) {
+        Ok(file) => file,
+        Err(err) => {
+            println!("error opening {} : {}", filename, err.desc);
+            return None
+        }
+    };
+
     let ctx_borrow = ctx.borrow(); // XXX: this will cause problems later maybe?
     let file = ctx_borrow.file(file_ix);
     let mut tokenizer = Tokenizer::new(&*file.contents, file_ix);
@@ -79,7 +86,14 @@ fn create_ast(ctx: &RefCell<Context>, filename: &str) -> Option<CompilationUnit>
 }
 
 fn create_multi_ast(ctx: &RefCell<Context>, filename: &str) -> Vec<CompilationUnit> {
-    let file_ix = ctx.borrow_mut().add_file(Path::new(filename)).unwrap();
+    let file_ix = match ctx.borrow_mut().add_file(Path::new(filename)) {
+        Ok(file) => file,
+        Err(err) => {
+            println!("error opening {} : {}", filename, err.desc);
+            return vec![]
+        }
+    };
+
     let ctx_borrow = ctx.borrow(); // XXX: this will cause problems later maybe?
     let file = ctx_borrow.file(file_ix);
     let tokens = Tokenizer::new(&*file.contents, file_ix).collect::<Vec<_>>();
@@ -136,7 +150,8 @@ fn driver(ctx: &RefCell<Context>) {
 
     if matches.free.is_empty() {
         // TODO: Should have a print_usage function.
-        panic!("No input!");
+        println!("No input file specified.");
+        return;
     };
 
     let mut asts: Vec<CompilationUnit> = vec![];
