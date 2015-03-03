@@ -45,7 +45,20 @@ impl<'a, 'ast> Environment<'a, 'ast> {
         match tydef.ast.node {
             ast::TypeDeclaration_::Class(ref class) => {
                 if let Some(ref extension) = class.node.extends {
-                    self.resolve_class_extension(tydef, extension);
+                    // This class extends a parent class.
+                    self.resolve_class_extension(tydef, &*extension.node.parts);
+                } else {
+                    // This class does not extend a parent class. Therefore,
+                    // we make it extend java.lang.Object by default.
+                    let name = &[spanned(DUMMY, Symbol::from_str("java")),
+                                 spanned(DUMMY, Symbol::from_str("lang")),
+                                 spanned(DUMMY, Symbol::from_str("Object"))];
+                    if let Some(parent) = self.resolve_type_name(name) {
+                        // Don't make java.lang.Object inherit itself.
+                        if parent.fq_name != tydef.fq_name {
+                            self.resolve_class_extension(tydef, name);
+                        }
+                    }
                 }
                 self.resolve_implements(tydef,
                                         class.node.implements.as_slice());
@@ -59,17 +72,17 @@ impl<'a, 'ast> Environment<'a, 'ast> {
 
     fn resolve_class_extension(&self,
                                typedef: TypeDefinitionRef<'a, 'ast>,
-                               extension: &QualifiedIdentifier) {
-        match self.resolve_type_name(&*extension.node.parts) {
+                               extension: &[Ident]) {
+        match self.resolve_type_name(extension) {
             Some(extended_type) => {
                 if extended_type.kind == TypeKind::Interface {
                     // ($8.1.3, dOvs simple constraint 1)
-                    span_error!(extension.span,
+                    span_error!(typedef.ast.span,
                                 "class cannot extend interface");
                 }
                 if extended_type.has_modifier(ast::Modifier_::Final) {
                     // ($8.1.1.2/$8.1.3 dOvs simple constraint 4)
-                    span_error!(extension.span,
+                    span_error!(typedef.ast.span,
                                 "cannot extend final class `{}`",
                                 extended_type.fq_name);
                 }
