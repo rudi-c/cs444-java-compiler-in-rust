@@ -520,9 +520,6 @@ fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
             .map(|(_, package)| package)
             .collect();
 
-        // TODO: For testing - remove later.
-        println!("{} types environment: {:?}", ast.types[0].name(), types_env);
-
         match &**tydefs {
             [tydef] => {
                 let env = Environment {
@@ -616,8 +613,6 @@ pub fn name_resolve<'a, 'ast>(arena: &'a Arena<'a, 'ast>, asts: &'ast [ast::Comp
     let methods = build_environments(arena, toplevel, java_lang, &*types);
     populate(arena, methods);
 
-    // TODO: For testing - remove when name resolution is finished.
-    PackageItem::Package(toplevel).print_light();
     toplevel
 }
 
