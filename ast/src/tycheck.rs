@@ -18,9 +18,43 @@ fn unify<'a, 'ast, S: IntoSpan>(expect: &Type<'a, 'ast>, actual: &Type<'a, 'ast>
     } else if let Type::Unknown = *actual {
     } else if *expect != *actual {
         // TODO: since expression typing is completely broken, don't actually error here
-        span_warning!(sp.into_span(),
+        span_error!(sp.into_span(),
                     "type mismatch: expected `{}`, found `{}`",
                     expect, actual);
+    }
+}
+
+fn unify_expr<'a, 'ast>(expect: &Type<'a, 'ast>, expr: &TypedExpression<'a, 'ast>) {
+    unify(expect, expr.ty(), expr.span)
+}
+
+fn expect_numeric<'a, 'ast, S: IntoSpan>(actual: &Type<'a, 'ast>, sp: S) {
+    if !actual.is_unknown() && !actual.is_numeric() {
+        // TODO: since expression typing is completely broken, don't actually error here
+        span_error!(sp.into_span(),
+                    "type mismatch: expected numeric type, found `{}`",
+                    actual);
+    }
+}
+
+fn expect_numeric_expr<'a, 'ast>(expr: &TypedExpression<'a, 'ast>) {
+    expect_numeric(expr.ty(), expr.span)
+}
+
+static NULL: ast::Literal = ast::Literal::Null;
+fn dummy_expr_<'a, 'ast>() -> (TypedExpression_<'a, 'ast>, Type<'a, 'ast>) {
+    (TypedExpression_::Literal(&NULL), Type::Unknown)
+}
+
+fn unary_widen<'a, 'ast>(e: TypedExpression<'a, 'ast>) -> TypedExpression<'a, 'ast> {
+    match *e.ty() {
+        Type::SimpleType(SimpleType::Byte) |
+        Type::SimpleType(SimpleType::Short) |
+        Type::SimpleType(SimpleType::Char) =>
+            spanned(e.span, (TypedExpression_::Widen(box e), Type::SimpleType(SimpleType::Int))),
+        Type::SimpleType(SimpleType::Int) |
+        Type::Unknown => e,
+        _ => panic!("tried to widen a non-numeric type"),
     }
 }
 
@@ -37,7 +71,7 @@ impl<'a, 'ast> Typer<'a, 'ast> {
     fn local_variable(&mut self, var: &'ast ast::LocalVariable) -> TypedLocalVariable<'a, 'ast> {
         let v = self.new_var(&var.variable);
         let init = self.expr(&var.initializer);
-        unify(&v.ty, init.ty(), &var.initializer);
+        unify_expr(&v.ty, &init);
         spanned(var.span, TypedLocalVariable_ {
             variable: v,
             initializer: init,
@@ -92,9 +126,12 @@ impl<'a, 'ast> Typer<'a, 'ast> {
     }
 
     fn expr(&mut self, expr: &'ast ast::Expression) -> TypedExpression<'a, 'ast> {
+        spanned(expr.span, self.expr_(expr))
+    }
+
+    fn expr_(&mut self, expr: &'ast ast::Expression) -> (TypedExpression_<'a, 'ast>, Type<'a, 'ast>) {
         use ast::Expression_::*;
-        static NULL: ast::Literal = ast::Literal::Null;
-        spanned(expr.span, match expr.node {
+        match expr.node {
             Literal(ref lit) => self.lit(lit),
             This => (TypedExpression_::This, Type::object(Some(self.env.ty))),
             NewStaticClass(ref id, ref args) => {
@@ -109,24 +146,19 @@ impl<'a, 'ast> Typer<'a, 'ast> {
             NewArray(ref tyname, box ref size) => {
                 let sty = self.env.resolve_simple_type(tyname);
                 let tsize = self.expr(size);
-                unify(&Type::SimpleType(SimpleType::Int), tsize.ty(), &tsize);
+                unify_expr(&Type::SimpleType(SimpleType::Int), &tsize);
                 match sty {
                     Some(sty) => {
                         let ty = Type::ArrayType(sty.clone());
                         (TypedExpression_::NewArray(sty, box tsize), ty)
                     }
-                    None => {
-                        // TODO: more reasonable dummy value
-                        let mut r = self.lit(&NULL);
-                        r.1 = Type::Unknown;
-                        r
-                    }
+                    None => dummy_expr_()
                 }
             }
             FieldAccess(box ref expr, ref _name) => {
                 let _texpr = self.expr(expr);
                 // TODO
-                self.lit(&NULL)
+                dummy_expr_()
             }
             MethodInvocation(ref callee, ref _name, ref args) => {
                 let _tcallee = callee.as_ref().map(|&box ref c| box self.expr(c));
@@ -134,43 +166,35 @@ impl<'a, 'ast> Typer<'a, 'ast> {
                     .map(|arg| self.expr(arg))
                     .collect();
                 // TODO
-                self.lit(&NULL)
+                dummy_expr_()
             }
             ArrayAccess(box ref array, box ref ix) => {
                 let tarray = self.expr(array);
                 let tix = self.expr(ix);
-                unify(&Type::SimpleType(SimpleType::Int), tix.ty(), &tix);
+                unify_expr(&Type::SimpleType(SimpleType::Int), &tix);
                 match tarray.ty().clone() {
                     Type::ArrayType(sty) =>
                         (TypedExpression_::ArrayAccess(box tarray, box tix),
                         Type::SimpleType(sty)),
-                    Type::Unknown => {
-                        // TODO: more reasonable dummy value
-                        let mut r = self.lit(&NULL);
-                        r.1 = Type::Unknown;
-                        r
-                    }
+                    Type::Unknown => dummy_expr_(),
                     // TODO: how to handle null
                     ty => {
                         // TODO: as in `unify`, needs to be an error later
                         span_warning!(array.span,
                                     "type mismatch: expected array, found `{}`",
                                     ty);
-                        // TODO: more reasonable dummy value
-                        let mut r = self.lit(&NULL);
-                        r.1 = Type::Unknown;
-                        r
+                        dummy_expr_()
                     }
                 }
             }
             Name(ref _ident) => {
                 // TODO
-                self.lit(&NULL)
+                dummy_expr_()
             }
             Assignment(box ref lhs, box ref rhs) => {
                 let tlhs = self.expr(lhs);
                 let trhs = self.expr(rhs);
-                unify(tlhs.ty(), trhs.ty(), trhs.span);
+                unify_expr(tlhs.ty(), &trhs);
                 let ty = tlhs.ty().clone();
                 // TODO: check if this is the right type
                 (TypedExpression_::Assignment(box tlhs, box trhs),
@@ -183,16 +207,74 @@ impl<'a, 'ast> Typer<'a, 'ast> {
                 (TypedExpression_::InstanceOf(box tobj, ty),
                  Type::SimpleType(SimpleType::Boolean))
             }
-            Prefix(ref _op, box ref arg) => {
-                let _targ = self.expr(arg);
-                // TODO
-                self.lit(&NULL)
+            Prefix(op, box ref arg) => {
+                use ast::PrefixOperator::*;
+                let mut targ = self.expr(arg);
+                let ty = match op {
+                    Not => {
+                        unify_expr(&Type::SimpleType(SimpleType::Boolean), &targ);
+                        Type::SimpleType(SimpleType::Boolean)
+                    }
+                    Minus => {
+                        if !targ.ty().is_unknown() {
+                            expect_numeric(targ.ty(), &targ);
+                            targ = unary_widen(targ);
+                        }
+                        Type::SimpleType(SimpleType::Int)
+                    }
+                };
+                (TypedExpression_::Prefix(op, box targ), ty)
             }
-            Infix(ref _op, box ref l, box ref r) => {
-                let _tl = self.expr(l);
-                let _tr = self.expr(r);
-                // TODO
-                self.lit(&NULL)
+            Infix(op, box ref l, box ref r) => {
+                use ast::InfixOperator::*;
+                let mut tl = self.expr(l);
+                let mut tr = self.expr(r);
+                let bool_ty = Type::SimpleType(SimpleType::Boolean);
+                let ty = match op {
+                    Xor | EagerOr | EagerAnd | LazyOr | LazyAnd => {
+                        unify_expr(&Type::SimpleType(SimpleType::Boolean), &tl);
+                        unify_expr(&Type::SimpleType(SimpleType::Boolean), &tr);
+                        bool_ty
+                    }
+                    Equals | NotEquals => {
+                        let lty = tl.ty();
+                        let rty = tr.ty();
+                        if lty.is_unknown() || rty.is_unknown() {
+                            // OK, already error
+                        } else if lty.is_numeric() && rty.is_numeric() {
+                            // OK, numeric equality
+                        } else if *lty == bool_ty && *rty == bool_ty {
+                            // OK, bool equality
+                        } else if (lty.is_reference() || lty.is_null())
+                               && (rty.is_reference() || rty.is_null()) {
+                            // TODO: check conversions
+                        } else {
+                            span_error!(expr.span,
+                                        "type mismatch: incomparable types `{}` and `{}`",
+                                        lty, rty);
+                        }
+                        bool_ty
+                    }
+                    LessThan | GreaterThan | LessEqual | GreaterEqual => {
+                        expect_numeric_expr(&tl);
+                        expect_numeric_expr(&tr);
+                        // FIXME: widen
+                        bool_ty
+                    }
+                    Plus => {
+                        // FIXME: string concatenation
+                        expect_numeric_expr(&tl);
+                        expect_numeric_expr(&tr);
+                        Type::SimpleType(SimpleType::Int)
+                    }
+                    Minus | Mult | Div | Modulo => {
+                        expect_numeric_expr(&tl);
+                        expect_numeric_expr(&tr);
+                        // FIXME: widen
+                        Type::SimpleType(SimpleType::Int)
+                    }
+                };
+                (TypedExpression_::Infix(op, box tl, box tr), ty)
             }
             Cast(ref to, box ref expr) => {
                 let e = self.expr(expr);
@@ -201,7 +283,7 @@ impl<'a, 'ast> Typer<'a, 'ast> {
                 // TODO distinguish between down and upcasts, for codegen
                 (TypedExpression_::Cast(ty.clone(), box e), ty)
             }
-        })
+        }
     }
 
     fn lit(&mut self, lit: &'ast ast::Literal) -> (TypedExpression_<'a, 'ast>, Type<'a, 'ast>) {

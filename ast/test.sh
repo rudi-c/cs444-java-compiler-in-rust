@@ -1,17 +1,20 @@
 #!/bin/bash
 
+ASSIGN=$1
+shift
+
 set +o pipefail
 
 cargo build || exit $?
 
 PROGRAM="./target/ast"
 
-STDLIB="../stdlib/2.0/"
+STDLIB="../stdlib/${ASSIGN}.0/"
 
 if [[ $# > 0 ]]; then
     TESTCASES=("$@")
 else
-    TESTCASES=(../{assignment,custom}_testcases/a2/J*)
+    TESTCASES=(../{assignment,custom}_testcases/a${ASSIGN}/J*)
 fi
 
 LOG=""

@@ -200,7 +200,7 @@ pub enum Literal {
     Null,
 }
 
-#[derive(Show)]
+#[derive(Show, Copy)]
 pub enum InfixOperator {
     Xor,
     EagerOr,
@@ -220,7 +220,7 @@ pub enum InfixOperator {
     Modulo,
 }
 
-#[derive(Show)]
+#[derive(Show, Copy)]
 pub enum PrefixOperator {
     Minus,
     Not,

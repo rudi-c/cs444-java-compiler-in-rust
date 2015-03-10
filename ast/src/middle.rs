@@ -267,6 +267,35 @@ pub enum Type<'a, 'ast: 'a> {
 }
 
 impl<'a, 'ast> Type<'a, 'ast> {
+    pub fn is_numeric(&self) -> bool {
+        match *self {
+            Type::SimpleType(ref t) => t.is_numeric(),
+            _ => false,
+        }
+    }
+
+    pub fn is_unknown(&self) -> bool {
+        match *self {
+            Type::Unknown => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_reference(&self) -> bool {
+        match *self {
+            Type::SimpleType(SimpleType::Other(..)) => true,
+            Type::ArrayType(..) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_null(&self) -> bool {
+        match *self {
+            Type::Null => true,
+            _ => false,
+        }
+    }
+
     pub fn object(t: Option<TypeDefinitionRef<'a, 'ast>>) -> Type<'a, 'ast> {
         if let Some(t) = t {
             Type::SimpleType(SimpleType::Other(t))
@@ -295,6 +324,16 @@ pub enum SimpleType<'a, 'ast: 'a> {
     Char,
     Byte,
     Other(TypeDefinitionRef<'a, 'ast>),
+}
+
+impl<'a, 'ast> SimpleType<'a, 'ast> {
+    pub fn is_numeric(&self) -> bool {
+        use self::SimpleType::*;
+        match *self {
+            Int | Short | Char | Byte => true,
+            Boolean | Other(..) => false,
+        }
+    }
 }
 
 impl<'a, 'ast> fmt::String for SimpleType<'a, 'ast> {
@@ -384,6 +423,8 @@ pub enum TypedExpression_<'a, 'ast: 'a> {
     Prefix(ast::PrefixOperator, Box<TypedExpression<'a, 'ast>>),
     Infix(ast::InfixOperator, Box<TypedExpression<'a, 'ast>>, Box<TypedExpression<'a, 'ast>>),
     Cast(Type<'a, 'ast>, Box<TypedExpression<'a, 'ast>>),
+    // An implicit widening conversion.
+    Widen(Box<TypedExpression<'a, 'ast>>),
 }
 pub type TypedExpression<'a, 'ast> = Spanned<(TypedExpression_<'a, 'ast>, Type<'a, 'ast>)>;
 
