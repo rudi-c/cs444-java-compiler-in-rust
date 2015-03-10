@@ -58,6 +58,12 @@ fn unary_widen<'a, 'ast>(e: TypedExpression<'a, 'ast>) -> TypedExpression<'a, 'a
     }
 }
 
+enum AmbiguousResult<'a, 'ast> {
+    Type(Type<'a, 'ast>),
+    Expression(TypedExpression<'a, 'ast>),
+    Package(PackageRef<'a, 'ast>),
+}
+
 impl<'a, 'ast> Typer<'a, 'ast> {
     fn new_var(&mut self, var: &'ast ast::VariableDeclaration) -> VariableRef<'a, 'ast> {
         let def = self.arena.alloc(VariableDef::new(
@@ -296,6 +302,40 @@ impl<'a, 'ast> Typer<'a, 'ast> {
             String(..) => Type::Unknown, // FIXME
             Null => Type::Null,
         })
+    }
+
+    fn qualified_ident(&mut self, path: &[Ident]) -> TypedExpression<'a, 'ast> {
+        match path {
+            [] => unreachable!(),
+            [ref ident] => if let Some(expr) = self.ident(ident) {
+                expr
+            } else {
+                span_error!(ident.span, "no such variable `{}`", ident);
+                spanned(ident.span, dummy_expr_())
+            },
+            [init.., ref last] => {
+            }
+        }
+    }
+
+    fn ident(&mut self, ident: &Ident) -> Option<TypedExpression<'a, 'ast>> {
+        panic!()
+    }
+
+    fn ambiguous_path(&mut self, path: &[Ident]) -> AmbiguousResult<'a, 'ast> {
+        match path {
+            [] => unreachable!(),
+            [ref ident] => {
+                // is it an expression?
+                if let Some(expr) = self.ident(ident) {
+                    return AmbiguousResult::Expression(expr);
+                }
+                // i
+                else if 
+            }
+            [init.., ref last] => {
+            }
+        }
     }
 }
 
