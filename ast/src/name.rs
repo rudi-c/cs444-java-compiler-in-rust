@@ -3,7 +3,7 @@ use std::borrow::ToOwned;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use span::{Span, Spanned, spanned};
+use span::{Span, Spanned, spanned, IntoSpan};
 
 /// The name of something in the program.
 /// However, equal `Symbol`s could refer to different things, depending on context.
@@ -73,39 +73,30 @@ impl Str for Ident {
     fn as_slice(&self) -> &str { self.node.as_slice() }
 }
 
-#[derive(Show, Clone)]
-pub struct QualifiedIdentifier_ {
-    pub parts: Vec<Ident>,
-}
 /// A dotted identifier, such as `a.b.c`. It is possible for a `QualifiedIdentifier` to actually
 /// refer to a field access, e.g. if `a.b` is actually the name of some object and `c` is a field
 /// in that object.
-pub type QualifiedIdentifier = Spanned<QualifiedIdentifier_>;
+#[derive(Show, Clone)]
+pub struct QualifiedIdentifier {
+    pub parts: Vec<Ident>,
+}
 
 impl QualifiedIdentifier {
     pub fn new(parts: Vec<Ident>) -> QualifiedIdentifier {
         assert!(parts.len() > 0);
-        spanned(Span::range(parts.first().unwrap().span, parts.last().unwrap().span),
-                QualifiedIdentifier_ { parts: parts })
+        QualifiedIdentifier { parts: parts }
     }
+}
 
-    // Returns a slice of all identifiers but the last.
-    pub fn all_but_last(&self) -> &[Ident] {
-        let length = self.node.parts.len();
-        &self.node.parts[0..length - 1]
-    }
-
-    // Returns a new QualifiedIdentifier with an identifier appended.
-    pub fn append_ident(&self, identifier: &Ident) -> QualifiedIdentifier {
-        let mut new_identifier = self.clone();
-        new_identifier.node.parts.push(identifier.clone());
-        new_identifier
+impl<'a> IntoSpan for &'a QualifiedIdentifier {
+    fn into_span(self) -> Span {
+        Span::range(self.parts.first().unwrap(), self.parts.last().unwrap())
     }
 }
 
 impl fmt::String for QualifiedIdentifier {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        Qualified(self.node.parts.iter()).fmt(f)
+        Qualified(self.parts.iter()).fmt(f)
     }
 }
 

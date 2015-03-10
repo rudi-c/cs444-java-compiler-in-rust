@@ -1,6 +1,6 @@
 use ast::*;
 use name::*;
-use span::{Span, Spanned, spanned};
+use span::{Span, Spanned, spanned, IntoSpan};
 use tokenizer::*;
 use tokenizer::Token::*;
 
@@ -105,7 +105,7 @@ parser! parse {
 
     qualifiedIdentifier: QualifiedIdentifier {
         qualifiedIdentifierHelper[list] =>
-            spanned!(QualifiedIdentifier_ { parts: list })
+            QualifiedIdentifier::new(list)
     }
 
     qualifiedIdentifierHelperDot: Vec<Ident> {
@@ -342,13 +342,11 @@ parser! parse {
     // Method invocation expressions ($15.12)
     methodInvocation: Expression {
         expressionNameOrType[node!(ExpressionOrType_::Name(mut ids))] LParen argumentList[args] RParen => {
-            let name = ids.node.parts.pop().unwrap();
-            match ids.node.parts.len() {
+            let name = ids.parts.pop().unwrap();
+            match ids.parts.len() {
                 0 => spanned!(Expression_::MethodInvocation(None, name, args)),
                 _ => {
-                    let sp = Span::range(ids.node.parts.first().unwrap().span,
-                                         ids.node.parts.last().unwrap().span);
-                    ids.span = sp;
+                    let sp = (&ids).into_span();
                     spanned!(Expression_::MethodInvocation(
                             Some(box spanned(sp, Expression_::Name(ids))), name, args))
                 }

@@ -132,17 +132,17 @@ pub fn span_fatal<S: fmt::String>(span: Span, err: S) -> ! {
 
 #[macro_export]
 macro_rules! span_note {
-    ($span: expr, $($args: expr),+) => ($crate::error::span_note($span, format!($($args),+)));
+    ($span: expr, $($args: expr),+) => ($crate::error::span_note($crate::span::IntoSpan::into_span($span), format!($($args),+)));
 }
 #[macro_export]
 macro_rules! span_warning {
-    ($span: expr, $($args: expr),+) => ($crate::error::span_warning($span, format!($($args),+)));
+    ($span: expr, $($args: expr),+) => ($crate::error::span_warning($crate::span::IntoSpan::into_span($span), format!($($args),+)));
 }
 #[macro_export]
 macro_rules! span_error {
-    ($span: expr, $($args: expr),+) => ($crate::error::span_error($span, format!($($args),+)));
+    ($span: expr, $($args: expr),+) => ($crate::error::span_error($crate::span::IntoSpan::into_span($span), format!($($args),+)));
 }
 #[macro_export]
 macro_rules! span_fatal {
-    ($span: expr, $($args: expr),+) => ($crate::error::span_fatal($span, format!($($args),+)));
+    ($span: expr, $($args: expr),+) => ($crate::error::span_fatal($crate::span::IntoSpan::into_span($span), format!($($args),+)));
 }

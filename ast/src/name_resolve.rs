@@ -46,7 +46,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
             ast::TypeDeclaration_::Class(ref class) => {
                 if let Some(ref extension) = class.node.extends {
                     // This class extends a parent class.
-                    self.resolve_class_extension(tydef, &*extension.node.parts);
+                    self.resolve_class_extension(tydef, &*extension.parts);
                 } else {
                     // This class does not extend a parent class. Therefore,
                     // we make it extend java.lang.Object by default.
@@ -99,18 +99,18 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                                     extensions: &[QualifiedIdentifier]) {
         let mut seen = HashSet::new();
         for extension in extensions.iter() {
-            match self.resolve_type_name(&*extension.node.parts) {
+            match self.resolve_type_name(&*extension.parts) {
                 Some(extended_type) => {
                     if extended_type.kind == TypeKind::Class {
                         // ($9.1.2)
-                        span_error!(extension.span,
+                        span_error!(extension,
                                     "interface cannot extend class");
                     }
                     // An interface must not be repeated in an implements clause,
                     // or in an extends clause of an interface.
                     // (JLS 8.1.4, dOvs simple constraint 3)
                     if !seen.insert(&extended_type.fq_name) {
-                        span_error!(extension.span,
+                        span_error!(extension,
                                     "duplicate extended interface");
                     }
                     typedef.extends.borrow_mut().push(extended_type);
@@ -131,14 +131,14 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                 Some(implemented_type) => {
                     if implemented_type.kind == TypeKind::Class {
                         // ($8.1.4, dOvs simple constraint 2)
-                        span_error!(implement.span,
+                        span_error!(implement,
                                     "class cannot implement class");
                     }
                     // An interface must not be repeated in an implements clause,
                     // or in an extends clause of an interface.
                     // (JLS 8.1.4, dOvs simple constraint 3)
                     if !seen.insert(&implemented_type.fq_name) {
-                        span_error!(implement.span,
+                        span_error!(implement,
                                     "duplicate implemented interface");
                     }
                     typedef.implements.borrow_mut().push(implemented_type);
@@ -177,7 +177,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
             ast::SimpleType_::Char => Some(SimpleType::Char),
             ast::SimpleType_::Byte => Some(SimpleType::Byte),
             ast::SimpleType_::Other(ref qident) =>
-                self.resolve_type_name(&*qident.node.parts)
+                self.resolve_type_name(&*qident.parts)
                     .map(|ty| SimpleType::Other(ty)),
         }
     }
@@ -368,7 +368,7 @@ fn insert_type_import<'a, 'ast>(symbol: Symbol,
     let (new_env, previous_opt) = current_env.insert(symbol, typedef);
     if let Some(previous) = previous_opt {
         if previous.1.fq_name != typedef.fq_name {
-            span_error!(imported.span,
+            span_error!(imported,
                         "importing `{}` from `{}` conflicts with previous import",
                         symbol,
                         imported);
@@ -381,7 +381,7 @@ fn import_single_type<'a, 'ast>(imported: &QualifiedIdentifier,
                                 toplevel: PackageRef<'a, 'ast>,
                                 current_env: TypesEnvironment<'a, 'ast>)
         -> TypesEnvironment<'a, 'ast> {
-    match &*imported.node.parts {
+    match &*imported.parts {
         [] => panic!("impossible: imported empty type"),
         [ref id] => {
             span_error!(id.span,
@@ -410,7 +410,7 @@ fn import_single_type<'a, 'ast>(imported: &QualifiedIdentifier,
 fn import_on_demand<'a, 'ast>(imported: &QualifiedIdentifier,
                               toplevel: PackageRef<'a, 'ast>,
                               on_demand_packages: &mut Vec<PackageRef<'a, 'ast>>) {
-    if let Some(package) = resolve_package(toplevel, &*imported.node.parts) {
+    if let Some(package) = resolve_package(toplevel, &*imported.parts) {
         on_demand_packages.push(package);
     }
 }

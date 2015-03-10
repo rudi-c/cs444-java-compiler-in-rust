@@ -98,8 +98,8 @@ pub fn collect_types<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
     let default_package = arena.alloc(Package::new("default package".to_owned()));
     asts.iter().map(|ast| {
         let (package, scope) = if let Some(ref package_identifier) = ast.package {
-            (resolve_create_package(arena, toplevel, &*package_identifier.node.parts),
-             package_identifier.node.parts.iter().map(|x| x.node).collect())
+            (resolve_create_package(arena, toplevel, &*package_identifier.parts),
+             package_identifier.parts.iter().map(|x| x.node).collect())
         } else {
             (default_package, vec![])
         };
