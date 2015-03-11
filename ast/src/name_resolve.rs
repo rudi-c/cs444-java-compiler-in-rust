@@ -442,6 +442,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
 
     // Returns `Unknown` iff an error is emitted.
     fn resolve_ambiguous_path(&self, path: &[Ident]) -> AmbiguousResult<'a, 'ast> {
+        let span = Span::range(path.first().unwrap(), path.last().unwrap());
         match path {
             [] => unreachable!(),
             [ref ident] => {
@@ -464,7 +465,45 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                 }
             }
             [init.., ref last] => {
-                AmbiguousResult::Unknown
+                match self.resolve_ambiguous_path(init) {
+                    AmbiguousResult::Expression(expr) => {
+                        if let Some(expr) = Environment::resolve_field_access(span, expr, last) {
+                            AmbiguousResult::Expression(spanned(span, expr))
+                        } else {
+                            AmbiguousResult::Unknown
+                        }
+                    }
+                    AmbiguousResult::Type(tydef) => {
+                        match tydef.fields.borrow().get(&last.node) {
+                            Some(&field) => {
+                                let expr_ = (TypedExpression_::StaticFieldAccess(field),
+                                             field.ty.clone());
+                                AmbiguousResult::Expression(spanned(span, expr_))
+                            }
+                            None => {
+                                span_error!(span,
+                                            "no field `{}` found in type `{}`",
+                                            last, tydef.fq_name);
+                                AmbiguousResult::Unknown
+                            }
+                        }
+                    }
+                    AmbiguousResult::Package(package) => {
+                        match package.contents.borrow().get(&last.node) {
+                            Some(&PackageItem::Package(subpackage)) =>
+                                AmbiguousResult::Package(subpackage),
+                            Some(&PackageItem::TypeDefinition(tydef)) =>
+                                AmbiguousResult::Type(tydef),
+                            None => {
+                                span_error!(span,
+                                            "no `{}` found in package `{}`",
+                                            last, package.fq_name);
+                                AmbiguousResult::Unknown
+                            }
+                        }
+                    }
+                    AmbiguousResult::Unknown => AmbiguousResult::Unknown,
+                }
             }
         }
     }
