@@ -11,19 +11,32 @@ use walker::*;
 
 use rbtree::RbMap;
 
+use std::fmt;
 use std::borrow::ToOwned;
 use std::collections::{HashMap, HashSet};
 
-#[derive(Show, Clone)]
+#[derive(Clone)]
 pub enum Variable<'a, 'ast: 'a> {
     LocalVariable(VariableRef<'a, 'ast>),
     Field(FieldRef<'a, 'ast>),
+}
+impl<'a, 'ast> fmt::Show for Variable<'a, 'ast> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match *self {
+            Variable::LocalVariable(var) => {
+                write!(f, "var {}: {}", var.fq_name, var.ty)
+            }
+            Variable::Field(field) => {
+                write!(f, "field {}: {}", field.fq_name, field.ty)
+            }
+        }
+    }
 }
 
 pub type TypesEnvironment<'a, 'ast> = RbMap<Symbol, TypeDefinitionRef<'a, 'ast>>;
 pub type VariablesEnvironment<'a, 'ast> = RbMap<Symbol, Variable<'a, 'ast>>;
 
-#[derive(Show, Clone)]
+#[derive(Clone)]
 pub struct Environment<'a, 'ast: 'a> {
     pub types: TypesEnvironment<'a, 'ast>,
     pub variables: VariablesEnvironment<'a, 'ast>,
@@ -33,6 +46,24 @@ pub struct Environment<'a, 'ast: 'a> {
 
     // Search here for more types.
     pub on_demand_packages: Vec<PackageRef<'a, 'ast>>
+}
+
+impl<'a, 'ast> fmt::Show for Environment<'a, 'ast> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        try!(writeln!(f, "Environment {{"));
+        try!(writeln!(f, "\ttypes:"));
+        for &(name, tyref) in self.types.iter() {
+            try!(writeln!(f, "\t\t{} => {}", name, tyref.fq_name));
+        }
+        try!(writeln!(f, "\tvars:"));
+        for &(name, ref var) in self.variables.iter() {
+            try!(writeln!(f, "\t\t{} => {:?}", name, var));
+        }
+        try!(writeln!(f, "\tcurrent package: {}", self.package.fq_name));
+        try!(writeln!(f, "\tcurrent type: {}", self.ty.fq_name));
+        try!(writeln!(f, "}}"));
+        Ok(())
+    }
 }
 
 pub type TypeEnvironmentPair<'a, 'ast> = (TypeDefinitionRef<'a, 'ast>, Environment<'a, 'ast>);
@@ -194,8 +225,8 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                 match self.find_type(ident) {
                     Some(tydef) => {
                         span_error!(ident.span,
-                                    "`{}` is a type, not a package",
-                                    tydef.fq_name);
+                                    "`{}` refers to type `{}`, not a package",
+                                    ident, tydef.fq_name);
                         None
                     },
                     None => Some((self.toplevel, ident)),
@@ -622,13 +653,17 @@ fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
         }
 
         for (_, &method) in tydef.methods.borrow().iter() {
-            r.push((env.clone(), ToPopulate::Method(method)));
+            if method.origin == tydef {
+                r.push((env.clone(), ToPopulate::Method(method)));
+            }
         }
         for (_, &constructor) in tydef.constructors.borrow().iter() {
             r.push((env.clone(), ToPopulate::Constructor(constructor)));
         }
         for (_, &field) in tydef.fields.borrow().iter() {
-            r.push((env.clone(), ToPopulate::Field(field)));
+            if field.origin == tydef {
+                r.push((env.clone(), ToPopulate::Field(field)));
+            }
         }
     }
     r
