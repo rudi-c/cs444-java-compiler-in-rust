@@ -58,6 +58,12 @@ fn unary_widen<'a, 'ast>(e: TypedExpression<'a, 'ast>) -> TypedExpression<'a, 'a
     }
 }
 
+enum AmbiguousResult<'a, 'ast: 'a> {
+    Type(Type<'a, 'ast>),
+    Expression(TypedExpression<'a, 'ast>),
+    Package(PackageRef<'a, 'ast>),
+}
+
 impl<'a, 'ast> Typer<'a, 'ast> {
     fn new_var(&mut self, var: &'ast ast::VariableDeclaration) -> VariableRef<'a, 'ast> {
         let def = self.arena.alloc(VariableDef::new(
@@ -160,6 +166,13 @@ impl<'a, 'ast> Typer<'a, 'ast> {
                 // TODO
                 dummy_expr_()
             }
+            NamedMethodInvocation(ref _name, ref args) => {
+                let _targs: Vec<_> = args.iter()
+                    .map(|arg| self.expr(arg))
+                    .collect();
+                // TODO
+                dummy_expr_()
+            }
             MethodInvocation(ref callee, ref _name, ref args) => {
                 let _tcallee = callee.as_ref().map(|&box ref c| box self.expr(c));
                 let _targs: Vec<_> = args.iter()
@@ -187,9 +200,9 @@ impl<'a, 'ast> Typer<'a, 'ast> {
                     }
                 }
             }
-            Name(ref _ident) => {
-                // TODO
-                dummy_expr_()
+            Name(ref ident) => {
+                self.env.resolve_expression(ident)
+                    .unwrap_or_else(dummy_expr_)
             }
             Assignment(box ref lhs, box ref rhs) => {
                 let tlhs = self.expr(lhs);

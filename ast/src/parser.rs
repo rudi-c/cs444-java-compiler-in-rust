@@ -342,15 +342,7 @@ parser! parse {
     // Method invocation expressions ($15.12)
     methodInvocation: Expression {
         expressionNameOrType[node!(ExpressionOrType_::Name(mut ids))] LParen argumentList[args] RParen => {
-            let name = ids.parts.pop().unwrap();
-            match ids.parts.len() {
-                0 => spanned!(Expression_::MethodInvocation(None, name, args)),
-                _ => {
-                    let sp = (&ids).into_span();
-                    spanned!(Expression_::MethodInvocation(
-                            Some(box spanned(sp, Expression_::Name(ids))), name, args))
-                }
-            }
+            spanned!(Expression_::NamedMethodInvocation(ids, args))
         }
         primary[expr] Dot identifier[ident] LParen argumentList[args] RParen =>
             spanned!(Expression_::MethodInvocation(Some(box expr), ident, args)),

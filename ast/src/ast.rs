@@ -180,6 +180,7 @@ pub enum Expression_ {
     NewDynamicClass(Box<Expression>, Ident, Vec<Expression>),
     NewArray(SimpleType, Box<Expression>),
     FieldAccess(Box<Expression>, Ident),
+    NamedMethodInvocation(QualifiedIdentifier, Vec<Expression>),
     MethodInvocation(Option<Box<Expression>>, Ident, Vec<Expression>),
     ArrayAccess(Box<Expression>, Box<Expression>),
     Name(QualifiedIdentifier),

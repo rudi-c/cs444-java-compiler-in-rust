@@ -1,6 +1,6 @@
 use ast;
 use name::*;
-use span::{DUMMY, Span, spanned};
+use span::{DUMMY, Span, spanned, IntoSpan};
 
 use middle::*;
 use collect_types::collect_types;
@@ -292,6 +292,53 @@ impl<'a, 'ast> Environment<'a, 'ast> {
             found_type
         })
     }
+
+    // Convert a qualified identifier to an expression.
+    pub fn resolve_expression(&self, path: &QualifiedIdentifier)
+        -> Option<(TypedExpression_<'a, 'ast>, Type<'a, 'ast>)> {
+        let span = path.into_span();
+        match &*path.parts {
+            [] => unreachable!(),
+            [ref ident] => match self.variables.get(&ident.node) {
+                Some(&Variable::LocalVariable(var)) => {
+                    // TODO: read the spec
+                    Some((TypedExpression_::Variable(var), var.ty.clone()))
+                }
+                Some(&Variable::Field(field)) => {
+                    let this_ty = Type::object(Some(self.ty));
+                    let this = spanned(span, (TypedExpression_::This, this_ty));
+                    // TODO: check static / non-static
+                    Some((TypedExpression_::FieldAccess(box this, field), field.ty.clone()))
+                }
+                None => {
+                    span_error!(span, "no such variable `{}`", ident);
+                    None
+                }
+            },
+            [init.., ref last] => {
+                // TODO: fill this in
+                None
+            }
+        }
+    }
+
+    /*
+    fn ambiguous_path(&mut self, path: &[Ident]) -> AmbiguousResult<'a, 'ast> {
+        match path {
+            [] => unreachable!(),
+            [ref ident] => {
+                // is it an expression?
+                if let Some(expr) = self.ident(ident) {
+                    return AmbiguousResult::Expression(expr);
+                }
+                // i
+                else if 
+            }
+            [init.., ref last] => {
+            }
+        }
+    }
+    */
 
     fn add_fields(&mut self, tydef: TypeDefinitionRef<'a, 'ast>) {
         for (&name, &field) in tydef.fields.borrow().iter() {

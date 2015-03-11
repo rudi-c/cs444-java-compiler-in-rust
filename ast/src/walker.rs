@@ -151,6 +151,7 @@ pub fn default_walk_expression<'a, T: Walker<'a>>(walker: &mut T, expression: &'
         },
 
         Expression_::NewStaticClass(_, ref exprs)
+        | Expression_::NamedMethodInvocation(_, ref exprs)
         | Expression_::MethodInvocation(_, _, ref exprs) => {
             for expr in exprs.iter() {
                 walker.walk_expression(expr);
