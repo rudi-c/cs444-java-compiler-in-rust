@@ -68,6 +68,13 @@ impl<'a, 'ast> fmt::Show for Environment<'a, 'ast> {
 
 pub type TypeEnvironmentPair<'a, 'ast> = (TypeDefinitionRef<'a, 'ast>, Environment<'a, 'ast>);
 
+enum AmbiguousResult<'a, 'ast: 'a> {
+    Package(PackageRef<'a, 'ast>),
+    Type(TypeDefinitionRef<'a, 'ast>),
+    Expression(TypedExpression<'a, 'ast>),
+    Unknown
+}
+
 impl<'a, 'ast> Environment<'a, 'ast> {
     // Resolve extends and implements. This is done separately from walking
     // the AST because we need to process the compilations in topological
@@ -324,52 +331,143 @@ impl<'a, 'ast> Environment<'a, 'ast> {
         })
     }
 
-    // Convert a qualified identifier to an expression.
-    pub fn resolve_expression(&self, path: &QualifiedIdentifier)
+    pub fn resolve_field_access(span: Span, texpr: TypedExpression<'a, 'ast>, name: &Ident)
         -> Option<(TypedExpression_<'a, 'ast>, Type<'a, 'ast>)> {
-        let span = path.into_span();
-        match &*path.parts {
-            [] => unreachable!(),
-            [ref ident] => match self.variables.get(&ident.node) {
-                Some(&Variable::LocalVariable(var)) => {
-                    // TODO: read the spec
-                    Some((TypedExpression_::Variable(var), var.ty.clone()))
-                }
-                Some(&Variable::Field(field)) => {
-                    let this_ty = Type::object(Some(self.ty));
-                    let this = spanned(span, (TypedExpression_::This, this_ty));
-                    // TODO: check static / non-static
-                    Some((TypedExpression_::FieldAccess(box this, field), field.ty.clone()))
-                }
-                None => {
-                    span_error!(span, "no such variable `{}`", ident);
+        // FIXME: bad clone
+        match texpr.ty().clone() {
+            Type::SimpleType(SimpleType::Other(tyref)) => {
+                if let Some(&field) = tyref.fields.borrow().get(&name.node) {
+                    Some((TypedExpression_::FieldAccess(box texpr, field),
+                          field.ty.clone()))
+                } else {
+                    span_error!(span,
+                                "reference type `{}` has no field `{}`",
+                                tyref.fq_name, name);
                     None
                 }
-            },
-            [init.., ref last] => {
-                // TODO: fill this in
+            }
+            ref ty @ Type::SimpleType(_) => {
+                span_error!(span,
+                            "primitive type `{}` has no field `{}`",
+                            ty, name);
+                None
+            }
+            ref ty @ Type::ArrayType(_) => {
+                // FIXME: Use intrinsics (?) or something
+                if name.node == Symbol::from_str("length") {
+                    Some((TypedExpression_::ArrayLength(box texpr),
+                          Type::SimpleType(SimpleType::Int)))
+                } else {
+                    span_error!(span,
+                                "array type `{}` has no field `{}`",
+                                ty, name);
+                    None
+                }
+            }
+            Type::Null => {
+                span_error!(span,
+                            "`null` has no field `{}`",
+                            name);
+                None
+            }
+            Type::Unknown => None
+        }
+    }
+
+    // Resolve a simple name as a variable.
+    // DOES NOT emit any error.
+    fn resolve_variable(&self, ident: &Ident)
+        -> Option<(TypedExpression_<'a, 'ast>, Type<'a, 'ast>)> {
+        match self.variables.get(&ident.node) {
+            Some(&Variable::LocalVariable(var)) => {
+                // TODO: read the spec
+                Some((TypedExpression_::Variable(var), var.ty.clone()))
+            }
+            Some(&Variable::Field(field)) => {
+                let this_ty = Type::object(Some(self.ty));
+                let this = spanned(ident.span, (TypedExpression_::This, this_ty));
+                // TODO: check static / non-static
+                Some((TypedExpression_::FieldAccess(box this, field), field.ty.clone()))
+            }
+            None => {
+                span_error!(ident.span, "no such variable `{}`", ident);
                 None
             }
         }
     }
 
-    /*
-    fn ambiguous_path(&mut self, path: &[Ident]) -> AmbiguousResult<'a, 'ast> {
-        match path {
+    // Convert a qualified identifier to an expression.
+    // Returns `None` to indicate that no viable interpretation was found.
+    // In this case, an error was already emitted.
+    pub fn resolve_expression(&self, path: &QualifiedIdentifier)
+        -> Option<(TypedExpression_<'a, 'ast>, Type<'a, 'ast>)> {
+        let span = path.into_span();
+        match &*path.parts {
             [] => unreachable!(),
             [ref ident] => {
-                // is it an expression?
-                if let Some(expr) = self.ident(ident) {
-                    return AmbiguousResult::Expression(expr);
+                let ret = self.resolve_variable(ident);
+                if let None = ret {
+                    span_error!(span, "no such variable `{}`", ident);
                 }
-                // i
-                else if 
+                ret
             }
             [init.., ref last] => {
+                match self.resolve_ambiguous_path(init) {
+                    AmbiguousResult::Package(package) => {
+                        span_error!(span,
+                                    "cannot take member `{}` of package `{}`",
+                                    last, package.fq_name);
+                        None
+                    }
+                    AmbiguousResult::Type(tyref) => {
+                        if let Some(&field) = tyref.fields.borrow().get(&last.node) {
+                            // TODO: Check that the field is static.
+                            Some((TypedExpression_::StaticFieldAccess(field),
+                                  field.ty.clone()))
+                        } else {
+                            span_error!(span,
+                                        "no such field `{}` in type `{}`",
+                                        last, tyref.fq_name);
+                            None
+                        }
+                    }
+                    AmbiguousResult::Expression(expr) => {
+                        Environment::resolve_field_access(path.into_span(), expr, last)
+                    }
+                    AmbiguousResult::Unknown => None
+                }
             }
         }
     }
-    */
+
+    // Returns `Unknown` iff an error is emitted.
+    fn resolve_ambiguous_path(&self, path: &[Ident]) -> AmbiguousResult<'a, 'ast> {
+        match path {
+            [] => unreachable!(),
+            [ref ident] => {
+                if let Some(expr) = self.resolve_variable(ident) {
+                    let expr = spanned(Span::range(path.first().unwrap().span,
+                                                   path.last().unwrap().span),
+                                       expr);
+                    AmbiguousResult::Expression(expr)
+                } else if let Some(tydef) = self.find_type(ident) {
+                    AmbiguousResult::Type(tydef)
+                } else if let Some(&PackageItem::Package(package))
+                    = self.toplevel.contents.borrow().get(&ident.node) {
+                    // note: `toplevel` can only contain other packages, no types
+                    AmbiguousResult::Package(package)
+                } else {
+                    span_error!(ident.span,
+                                "no variable, type, or package named `{}`",
+                                ident);
+                    AmbiguousResult::Unknown
+                }
+            }
+            [init.., ref last] => {
+                AmbiguousResult::Unknown
+            }
+        }
+    }
 
     fn add_fields(&mut self, tydef: TypeDefinitionRef<'a, 'ast>) {
         for (&name, &field) in tydef.fields.borrow().iter() {
