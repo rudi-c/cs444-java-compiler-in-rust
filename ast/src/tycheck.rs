@@ -161,10 +161,47 @@ impl<'a, 'ast> Typer<'a, 'ast> {
                     None => dummy_expr_()
                 }
             }
-            FieldAccess(box ref expr, ref _name) => {
-                let _texpr = self.expr(expr);
-                // TODO
-                dummy_expr_()
+            FieldAccess(box ref expr, ref name) => {
+                let texpr = self.expr(expr);
+                // FIXME: bad clone
+                match texpr.ty().clone() {
+                    Type::SimpleType(SimpleType::Other(tyref)) => {
+                        if let Some(&field) = tyref.fields.borrow().get(&name.node) {
+                            (TypedExpression_::FieldAccess(box texpr, field),
+                             field.ty.clone())
+                        } else {
+                            span_error!(expr.span,
+                                        "reference type `{}` has no field `{}`",
+                                        tyref.fq_name, name);
+                            dummy_expr_()
+                        }
+                    }
+                    ref ty @ Type::SimpleType(_) => {
+                        span_error!(expr.span,
+                                    "primitive type `{}` has no field `{}`",
+                                    ty, name);
+                        dummy_expr_()
+                    }
+                    ref ty @ Type::ArrayType(_) => {
+                        // FIXME: Use intrinsics (?) or something
+                        if name.node == Symbol::from_str("length") {
+                            (TypedExpression_::ArrayLength(box texpr),
+                             Type::SimpleType(SimpleType::Int))
+                        } else {
+                            span_error!(expr.span,
+                                        "array type `{}` has no field `{}`",
+                                        ty, name);
+                            dummy_expr_()
+                        }
+                    }
+                    Type::Null => {
+                        span_error!(expr.span,
+                                    "`null` has no field `{}`",
+                                    name);
+                        dummy_expr_()
+                    }
+                    Type::Unknown => dummy_expr_()
+                }
             }
             NamedMethodInvocation(ref _name, ref args) => {
                 let _targs: Vec<_> = args.iter()

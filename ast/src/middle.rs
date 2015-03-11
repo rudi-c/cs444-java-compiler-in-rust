@@ -416,6 +416,8 @@ pub enum TypedExpression_<'a, 'ast: 'a> {
     Variable(VariableRef<'a, 'ast>),
     StaticFieldAccess(FieldRef<'a, 'ast>),
     FieldAccess(Box<TypedExpression<'a, 'ast>>, FieldRef<'a, 'ast>),
+    // FIXME: Holy hack
+    ArrayLength(Box<TypedExpression<'a, 'ast>>),
     MethodInvocation(Option<Box<TypedExpression<'a, 'ast>>>, MethodRef<'a, 'ast>, Vec<TypedExpression<'a, 'ast>>),
     ArrayAccess(Box<TypedExpression<'a, 'ast>>, Box<TypedExpression<'a, 'ast>>),
     Assignment(Box<TypedExpression<'a, 'ast>>, Box<TypedExpression<'a, 'ast>>),
