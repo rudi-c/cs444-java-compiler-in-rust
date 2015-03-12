@@ -167,7 +167,7 @@ pub enum Statement_ {
     For(Option<Expression>, Option<Expression>, Option<Expression>, Box<Statement>),
     ForDecl(LocalVariable, Option<Expression>, Option<Expression>, Box<Statement>),
     Empty,
-    Return(Expression),
+    Return(Option<Expression>),
     Block(Block),
 }
 pub type Statement = Spanned<Statement_>;

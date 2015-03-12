@@ -60,7 +60,7 @@ fn unary_widen<'a, 'ast>(e: TypedExpression<'a, 'ast>) -> TypedExpression<'a, 'a
 
 // Check that there is a legal widening conversion from `ety` to `expect`.
 // Emits an error if there is not.
-fn legal_simple_widening<'a, 'ast>(span: Span, expect: &SimpleType<'a, 'ast>, ety: &SimpleType<'a, 'ast>) {
+fn check_simple_widening<'a, 'ast>(span: Span, expect: &SimpleType<'a, 'ast>, ety: &SimpleType<'a, 'ast>) {
     use middle::SimpleType::*;
     if expect == ety {
         return;
@@ -109,7 +109,7 @@ fn legal_simple_widening<'a, 'ast>(span: Span, expect: &SimpleType<'a, 'ast>, et
         },
     }
 }
-fn legal_widening<'a, 'ast>(span: Span, expect: &Type<'a, 'ast>, ety: &Type<'a, 'ast>) {
+fn check_widening<'a, 'ast>(span: Span, expect: &Type<'a, 'ast>, ety: &Type<'a, 'ast>) {
     if expect == ety {
         return;
     }
@@ -120,7 +120,7 @@ fn legal_widening<'a, 'ast>(span: Span, expect: &Type<'a, 'ast>, ety: &Type<'a, 
 
         // simple types might be convertible to other simple types
         (&Type::SimpleType(ref a), &Type::SimpleType(ref b)) => {
-            legal_simple_widening(span, a, b);
+            check_simple_widening(span, a, b);
         }
         // ... but not to arrays
         (&Type::ArrayType(_), &Type::SimpleType(_)) => {
@@ -136,7 +136,7 @@ fn legal_widening<'a, 'ast>(span: Span, expect: &Type<'a, 'ast>, ety: &Type<'a, 
         }
         // and (some) other array types
         (&Type::ArrayType(ref expect_inner), &Type::ArrayType(ref expr_inner)) => {
-            legal_simple_widening(span, expect_inner, expr_inner);
+            check_simple_widening(span, expect_inner, expr_inner);
         }
         // ... but not primitive types
         (&Type::SimpleType(_), &Type::ArrayType(_)) => {
@@ -165,7 +165,7 @@ fn coerce_expr<'a, 'ast>(expect: &Type<'a, 'ast>, expr: TypedExpression<'a, 'ast
     if expect == expr.ty() {
         return expr;
     }
-    legal_widening(expr.span, expect, expr.ty());
+    check_widening(expr.span, expect, expr.ty());
     spanned(expr.span, (TypedExpression_::Widen(box expr), expect.clone()))
 }
 
@@ -231,7 +231,15 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                     update.as_ref().map(|u| self.expr(u)),
                     box self.stmt(inner)),
             Empty => TypedStatement_::Empty,
-            Return(ref expr) => TypedStatement_::Return(self.expr(expr)),
+            Return(ref expr) => {
+                // FIXME: check return types
+                let texpr = if let Some(ref expr) = *expr {
+                    Some(self.expr(expr))
+                } else {
+                    None
+                };
+                TypedStatement_::Return(texpr)
+            }
             Block(ref block) => TypedStatement_::Block(self.block(block)),
         })
     }

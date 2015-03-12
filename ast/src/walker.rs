@@ -132,7 +132,11 @@ pub fn default_walk_statement<'a, T: Walker<'a>>(walker: &mut T, statement: &'a 
             }
             walker.walk_statement(stmt);
         }
-        Statement_::Return(ref expr) => walker.walk_expression(expr),
+        Statement_::Return(ref expr) => {
+            if let Some(ref expr) = *expr {
+                walker.walk_expression(expr);
+            }
+        }
         Statement_::Block(ref block) => walker.walk_block(block),
         Statement_::Empty => {}
     }

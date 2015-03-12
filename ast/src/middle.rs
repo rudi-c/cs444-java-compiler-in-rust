@@ -404,7 +404,7 @@ pub enum TypedStatement_<'a, 'ast: 'a> {
             Option<TypedExpression<'a, 'ast>>,
             Box<TypedStatement<'a, 'ast>>),
     Empty,
-    Return(TypedExpression<'a, 'ast>),
+    Return(Option<TypedExpression<'a, 'ast>>),
     Block(TypedBlock<'a, 'ast>),
 }
 pub type TypedStatement<'a, 'ast> = Spanned<TypedStatement_<'a, 'ast>>;

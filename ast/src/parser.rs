@@ -573,7 +573,8 @@ parser! parse {
             spanned!(Statement_::ForDecl(f1, f2, f3, box body)),
         Semicolon => spanned!(Statement_::Empty),
         statementExpression[expr] Semicolon => spanned!(Statement_::Expression(expr)),
-        RETURN expression[expr] Semicolon => spanned!(Statement_::Return(expr)),
+        RETURN expression[expr] Semicolon => spanned!(Statement_::Return(Some(expr))),
+        RETURN Semicolon => spanned!(Statement_::Return(None)),
     }
 
     statementExpression: Expression {
