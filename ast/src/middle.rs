@@ -2,8 +2,6 @@ use ast;
 use name::*;
 use span::*;
 
-use rbtree::RbMap;
-
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::cmp::{Ord, Ordering};

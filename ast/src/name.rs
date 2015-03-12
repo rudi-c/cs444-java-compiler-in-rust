@@ -3,7 +3,7 @@ use std::borrow::ToOwned;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use span::{Span, Spanned, spanned, IntoSpan};
+use span::{Span, Spanned, IntoSpan};
 
 /// The name of something in the program.
 /// However, equal `Symbol`s could refer to different things, depending on context.

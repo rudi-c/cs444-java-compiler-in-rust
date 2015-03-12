@@ -1,5 +1,4 @@
 use ast;
-use name::*;
 use span::*;
 use middle::*;
 use arena::*;
@@ -31,33 +30,9 @@ fn expect_expr<'a, 'ast>(expected: &Type<'a, 'ast>, expr: &TypedExpression<'a, '
     expect(expected, expr.ty(), expr.span)
 }
 
-fn expect_numeric<'a, 'ast, S: IntoSpan>(actual: &Type<'a, 'ast>, sp: S) {
-    if !actual.is_unknown() && !actual.is_numeric() {
-        span_error!(sp.into_span(),
-                    "type mismatch: expected numeric type, found `{}`",
-                    actual);
-    }
-}
-
-fn expect_numeric_expr<'a, 'ast>(expr: &TypedExpression<'a, 'ast>) {
-    expect_numeric(expr.ty(), expr.span)
-}
-
 static NULL: ast::Literal = ast::Literal::Null;
 fn dummy_expr_<'a, 'ast>() -> (TypedExpression_<'a, 'ast>, Type<'a, 'ast>) {
     (TypedExpression_::Literal(&NULL), Type::Unknown)
-}
-
-fn unary_widen<'a, 'ast>(e: TypedExpression<'a, 'ast>) -> TypedExpression<'a, 'ast> {
-    match *e.ty() {
-        Type::SimpleType(SimpleType::Byte) |
-        Type::SimpleType(SimpleType::Short) |
-        Type::SimpleType(SimpleType::Char) =>
-            spanned(e.span, (TypedExpression_::Widen(box e), Type::SimpleType(SimpleType::Int))),
-        Type::SimpleType(SimpleType::Int) |
-        Type::Unknown => e,
-        _ => panic!("tried to widen a non-numeric type"),
-    }
 }
 
 impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
@@ -244,7 +219,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
         use ast::BlockStatement_::*;
         spanned(stmt.span, match stmt.node {
             LocalVariable(ref local_var) => TypedBlockStatement_::LocalVariable(self.local_variable(local_var)),
-            LocalClass(ref class) => panic!("local class"),
+            LocalClass(ref _class) => panic!("local class"),
             Statement(ref stmt) => TypedBlockStatement_::Statement(self.stmt(stmt)),
         })
     }
@@ -391,10 +366,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                         Type::SimpleType(SimpleType::Boolean)
                     }
                     Minus => {
-                        if !targ.ty().is_unknown() {
-                            expect_numeric(targ.ty(), &targ);
-                            targ = unary_widen(targ);
-                        }
+                        targ = self.coerce_expr(&Type::SimpleType(SimpleType::Int), targ);
                         Type::SimpleType(SimpleType::Int)
                     }
                 };

@@ -7,6 +7,7 @@ use term;
 
 // A dummy struct to give `panic!()`,
 // which will tell the `try` in `main` to exit with status 42.
+#[derive(Copy)]
 pub struct FatalError;
 
 pub trait ErrorReporter {

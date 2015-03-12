@@ -1,6 +1,6 @@
 use ast::*;
 use name::*;
-use span::{Span, Spanned, spanned, IntoSpan};
+use span::{Span, Spanned, spanned};
 use tokenizer::*;
 use tokenizer::Token::*;
 
@@ -341,7 +341,7 @@ parser! parse {
 
     // Method invocation expressions ($15.12)
     methodInvocation: Expression {
-        expressionNameOrType[node!(ExpressionOrType_::Name(mut ids))] LParen argumentList[args] RParen => {
+        expressionNameOrType[node!(ExpressionOrType_::Name(ids))] LParen argumentList[args] RParen => {
             spanned!(Expression_::NamedMethodInvocation(ids, args))
         }
         primary[expr] Dot identifier[ident] LParen argumentList[args] RParen =>

@@ -8,7 +8,6 @@ use collect_types::collect_types;
 use collect_members::collect_members;
 use tycheck::{populate_method, populate_constructor, populate_field};
 use arena::Arena;
-use walker::*;
 
 use rbtree::RbMap;
 
