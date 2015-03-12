@@ -158,7 +158,9 @@ fn driver(ctx: &RefCell<Context>) {
     let mut asts: Vec<CompilationUnit> = vec![];
 
     for file in matches.free.iter() {
-        println!("Parsing file {}...", file);
+        if ctx.borrow().verbose {
+            println!("Parsing file {}...", file);
+        }
 
         if matches.opt_present("multi") {
             asts.extend(create_multi_ast(ctx, file.as_slice()).into_iter());
