@@ -17,7 +17,6 @@ fn expect<'a, 'ast, S: IntoSpan>(expected: &Type<'a, 'ast>, actual: &Type<'a, 'a
     if let Type::Unknown = *expected {
     } else if let Type::Unknown = *actual {
     } else if *expected != *actual {
-        // TODO: since expression typing is completely broken, don't actually error here
         span_error!(sp.into_span(),
                     "type mismatch: expected `{}`, found `{}`",
                     expected, actual);
@@ -30,7 +29,6 @@ fn expect_expr<'a, 'ast>(expected: &Type<'a, 'ast>, expr: &TypedExpression<'a, '
 
 fn expect_numeric<'a, 'ast, S: IntoSpan>(actual: &Type<'a, 'ast>, sp: S) {
     if !actual.is_unknown() && !actual.is_numeric() {
-        // TODO: since expression typing is completely broken, don't actually error here
         span_error!(sp.into_span(),
                     "type mismatch: expected numeric type, found `{}`",
                     actual);
@@ -244,10 +242,14 @@ impl<'a, 'ast> Typer<'a, 'ast> {
         use ast::Expression_::*;
         match expr.node {
             Literal(ref lit) => self.lit(lit),
-            This => (TypedExpression_::This, Type::object(Some(self.env.ty))),
+            This => {
+                // TODO: Check that `this` is legal here (i.e. in an instance method)
+                (TypedExpression_::This, Type::object(Some(self.env.ty)))
+            }
             NewStaticClass(ref id, ref args) => {
                 let ty = Type::object(self.env.resolve_type_name(&*id.parts));
                 // FIXME: Check constructor call
+                // Check non-`final`
                 (TypedExpression_::NewStaticClass(
                     ty.clone(),
                     args.iter().map(|arg| self.expr(arg)).collect()
@@ -297,8 +299,7 @@ impl<'a, 'ast> Typer<'a, 'ast> {
                     Type::Unknown => dummy_expr_(),
                     // TODO: how to handle null
                     ty => {
-                        // TODO: as in `unify`, needs to be an error later
-                        span_warning!(array.span,
+                        span_error!(array.span,
                                     "type mismatch: expected array, found `{}`",
                                     ty);
                         dummy_expr_()
@@ -311,10 +312,8 @@ impl<'a, 'ast> Typer<'a, 'ast> {
             }
             Assignment(box ref lhs, box ref rhs) => {
                 let tlhs = self.expr(lhs);
-                let trhs = self.expr(rhs);
-                let trhs = coerce_expr(tlhs.ty(), trhs);
+                let trhs = coerce_expr(tlhs.ty(), self.expr(rhs));
                 let ty = tlhs.ty().clone();
-                // TODO: check if this is the right type
                 (TypedExpression_::Assignment(box tlhs, box trhs),
                  ty)
             }
