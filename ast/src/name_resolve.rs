@@ -391,7 +391,6 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                 Some((TypedExpression_::FieldAccess(box this, field), field.ty.clone()))
             }
             None => {
-                span_error!(ident.span, "no such variable `{}`", ident);
                 None
             }
         }
