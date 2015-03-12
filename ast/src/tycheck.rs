@@ -370,13 +370,15 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                         bool_ty
                     }
                     Equals | NotEquals => {
-                        let lty = tl.ty();
-                        let rty = tr.ty();
+                        let lty = tl.ty().clone();
+                        let rty = tr.ty().clone();
                         if lty.is_unknown() || rty.is_unknown() {
                             // OK, already error
                         } else if lty.is_numeric() && rty.is_numeric() {
                             // OK, numeric equality
-                        } else if *lty == bool_ty && *rty == bool_ty {
+                            tl = coerce_expr(&Type::SimpleType(SimpleType::Int), tl);
+                            tr = coerce_expr(&Type::SimpleType(SimpleType::Int), tr);
+                        } else if lty == bool_ty && rty == bool_ty {
                             // OK, bool equality
                         } else if (lty.is_reference() || lty.is_null())
                                && (rty.is_reference() || rty.is_null()) {
@@ -389,9 +391,9 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                         bool_ty
                     }
                     LessThan | GreaterThan | LessEqual | GreaterEqual => {
-                        expect_numeric_expr(&tl);
-                        expect_numeric_expr(&tr);
-                        // FIXME: widen
+                        // promote
+                        tl = coerce_expr(&Type::SimpleType(SimpleType::Int), tl);
+                        tr = coerce_expr(&Type::SimpleType(SimpleType::Int), tr);
                         bool_ty
                     }
                     Plus => {
@@ -406,15 +408,14 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                             }
                             string_ty
                         } else {
-                            expect_numeric_expr(&tl);
-                            expect_numeric_expr(&tr);
+                            tl = coerce_expr(&Type::SimpleType(SimpleType::Int), tl);
+                            tr = coerce_expr(&Type::SimpleType(SimpleType::Int), tr);
                             Type::SimpleType(SimpleType::Int)
                         }
                     }
                     Minus | Mult | Div | Modulo => {
-                        expect_numeric_expr(&tl);
-                        expect_numeric_expr(&tr);
-                        // FIXME: widen
+                        tl = coerce_expr(&Type::SimpleType(SimpleType::Int), tl);
+                        tr = coerce_expr(&Type::SimpleType(SimpleType::Int), tr);
                         Type::SimpleType(SimpleType::Int)
                     }
                 };
