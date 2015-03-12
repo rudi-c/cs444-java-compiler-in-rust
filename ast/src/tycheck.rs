@@ -109,67 +109,73 @@ fn check_simple_widening<'a, 'ast>(span: Span, expect: &SimpleType<'a, 'ast>, et
         },
     }
 }
-fn check_widening<'a, 'ast>(span: Span, expect: &Type<'a, 'ast>, ety: &Type<'a, 'ast>) {
-    if expect == ety {
-        return;
-    }
-    match (expect, ety) {
-        (_, &Type::Unknown) | (&Type::Unknown, _) => (),
-
-        (&Type::Null, _) => panic!("coerce to null type?"),
-
-        // simple types might be convertible to other simple types
-        (&Type::SimpleType(ref a), &Type::SimpleType(ref b)) => {
-            check_simple_widening(span, a, b);
-        }
-        // ... but not to arrays
-        (&Type::ArrayType(_), &Type::SimpleType(_)) => {
-            span_error!(span,
-                        "cannot convert from `{}` to array type `{}`",
-                        ety, expect);
-        }
-
-        // arrays can be converted to some reference types
-        (&Type::SimpleType(SimpleType::Other(expect_tydef)), &Type::ArrayType(_)) => {
-            // FIXME: Check that `expect_tydef` is one of `Object`, `Cloneable`, and
-            // `Serializable`.
-        }
-        // and (some) other array types
-        (&Type::ArrayType(ref expect_inner), &Type::ArrayType(ref expr_inner)) => {
-            check_simple_widening(span, expect_inner, expr_inner);
-        }
-        // ... but not primitive types
-        (&Type::SimpleType(_), &Type::ArrayType(_)) => {
-            span_error!(span,
-                        "cannot convert from array type `{}` to primitive type `{}`",
-                        ety, expect);
-        }
-
-        // null can be converted to any reference type
-        (&Type::SimpleType(SimpleType::Other(_)), &Type::Null) |
-        (&Type::ArrayType(_), &Type::Null) => (),
-        // ... but not anything else
-        (&Type::SimpleType(_), &Type::Null) => {
-            span_error!(span,
-                        "cannot convert null to primitive type `{}`",
-                        expect);
-        }
-    }
-}
-
-// Performs an "assignment conversion" ($5.2) on the given expression,
-// which is only legal for widening conversions.
-// Returns an expression whose type is always `expect`.
-fn coerce_expr<'a, 'ast>(expect: &Type<'a, 'ast>, expr: TypedExpression<'a, 'ast>)
-    -> TypedExpression<'a, 'ast> {
-    if expect == expr.ty() {
-        return expr;
-    }
-    check_widening(expr.span, expect, expr.ty());
-    spanned(expr.span, (TypedExpression_::Widen(box expr), expect.clone()))
-}
 
 impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
+    fn check_widening(&self, span: Span, expect: &Type<'a, 'ast>, ety: &Type<'a, 'ast>) {
+        if expect == ety {
+            return;
+        }
+        match (expect, ety) {
+            (_, &Type::Unknown) | (&Type::Unknown, _) => (),
+
+            (&Type::Null, _) => panic!("coerce to null type?"),
+
+            // simple types might be convertible to other simple types
+            (&Type::SimpleType(ref a), &Type::SimpleType(ref b)) => {
+                check_simple_widening(span, a, b);
+            }
+            // ... but not to arrays
+            (&Type::ArrayType(_), &Type::SimpleType(_)) => {
+                span_error!(span,
+                            "cannot convert from `{}` to array type `{}`",
+                            ety, expect);
+            }
+
+            // arrays can be converted to some reference types
+            (&Type::SimpleType(SimpleType::Other(expect_tydef)), &Type::ArrayType(_)) => {
+                if expect_tydef != self.lang_items.object
+                    && expect_tydef != self.lang_items.cloneable
+                    && expect_tydef != self.lang_items.serializable {
+                    span_error!(span,
+                                "cannot convert from array type `{}` to `{}`",
+                                ety, expect);
+                }
+            }
+            // and (some) other array types
+            (&Type::ArrayType(ref expect_inner), &Type::ArrayType(ref expr_inner)) => {
+                check_simple_widening(span, expect_inner, expr_inner);
+            }
+            // ... but not primitive types
+            (&Type::SimpleType(_), &Type::ArrayType(_)) => {
+                span_error!(span,
+                            "cannot convert from array type `{}` to primitive type `{}`",
+                            ety, expect);
+            }
+
+            // null can be converted to any reference type
+            (&Type::SimpleType(SimpleType::Other(_)), &Type::Null) |
+            (&Type::ArrayType(_), &Type::Null) => (),
+            // ... but not anything else
+            (&Type::SimpleType(_), &Type::Null) => {
+                span_error!(span,
+                            "cannot convert null to primitive type `{}`",
+                            expect);
+            }
+        }
+    }
+
+    // Performs an "assignment conversion" ($5.2) on the given expression,
+    // which is only legal for widening conversions.
+    // Returns an expression whose type is always `expect`.
+    fn coerce_expr(&self, expect: &Type<'a, 'ast>, expr: TypedExpression<'a, 'ast>)
+        -> TypedExpression<'a, 'ast> {
+        if expect == expr.ty() {
+            return expr;
+        }
+        self.check_widening(expr.span, expect, expr.ty());
+        spanned(expr.span, (TypedExpression_::Widen(box expr), expect.clone()))
+    }
+
     fn new_var(&mut self, var: &'ast ast::VariableDeclaration) -> VariableRef<'a, 'ast> {
         let def = self.arena.alloc(VariableDef::new(
                 format!("{}.{}", self.env.ty.fq_name, var.name),
@@ -182,7 +188,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
     fn local_variable(&mut self, var: &'ast ast::LocalVariable) -> TypedLocalVariable<'a, 'ast> {
         let v = self.new_var(&var.variable);
         let init = self.expr(&var.initializer);
-        let init = coerce_expr(&v.ty, init);
+        let init = self.coerce_expr(&v.ty, init);
         spanned(var.span, TypedLocalVariable_ {
             variable: v,
             initializer: init,
@@ -259,7 +265,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
         match expr.node {
             Literal(ref lit) => self.lit(lit),
             This => {
-                // TODO: Check that `this` is legal here (i.e. in an instance method)
+                // TODO: Check that `this` is legal here (i.e. that we're in an instance method)
                 (TypedExpression_::This, Type::object(self.env.ty))
             }
             NewStaticClass(ref id, ref args) => {
@@ -275,7 +281,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
             NewArray(ref tyname, box ref size) => {
                 let sty = self.env.resolve_simple_type(tyname);
                 let tsize = self.expr(size);
-                let tsize = coerce_expr(&Type::SimpleType(SimpleType::Int), tsize);
+                let tsize = self.coerce_expr(&Type::SimpleType(SimpleType::Int), tsize);
                 match sty {
                     Some(sty) => {
                         let ty = Type::ArrayType(sty.clone());
@@ -307,7 +313,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
             ArrayAccess(box ref array, box ref ix) => {
                 let tarray = self.expr(array);
                 let tix = self.expr(ix);
-                let tix = coerce_expr(&Type::SimpleType(SimpleType::Int), tix);
+                let tix = self.coerce_expr(&Type::SimpleType(SimpleType::Int), tix);
                 match tarray.ty().clone() {
                     Type::ArrayType(sty) =>
                         (TypedExpression_::ArrayAccess(box tarray, box tix),
@@ -328,7 +334,8 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
             }
             Assignment(box ref lhs, box ref rhs) => {
                 let tlhs = self.expr(lhs);
-                let trhs = coerce_expr(tlhs.ty(), self.expr(rhs));
+                let trhs = self.expr(rhs);
+                let trhs = self.coerce_expr(tlhs.ty(), trhs);
                 let ty = tlhs.ty().clone();
                 (TypedExpression_::Assignment(box tlhs, box trhs),
                  ty)
@@ -376,8 +383,8 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                             // OK, already error
                         } else if lty.is_numeric() && rty.is_numeric() {
                             // OK, numeric equality
-                            tl = coerce_expr(&Type::SimpleType(SimpleType::Int), tl);
-                            tr = coerce_expr(&Type::SimpleType(SimpleType::Int), tr);
+                            tl = self.coerce_expr(&Type::SimpleType(SimpleType::Int), tl);
+                            tr = self.coerce_expr(&Type::SimpleType(SimpleType::Int), tr);
                         } else if lty == bool_ty && rty == bool_ty {
                             // OK, bool equality
                         } else if (lty.is_reference() || lty.is_null())
@@ -392,8 +399,8 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                     }
                     LessThan | GreaterThan | LessEqual | GreaterEqual => {
                         // promote
-                        tl = coerce_expr(&Type::SimpleType(SimpleType::Int), tl);
-                        tr = coerce_expr(&Type::SimpleType(SimpleType::Int), tr);
+                        tl = self.coerce_expr(&Type::SimpleType(SimpleType::Int), tl);
+                        tr = self.coerce_expr(&Type::SimpleType(SimpleType::Int), tr);
                         bool_ty
                     }
                     Plus => {
@@ -408,14 +415,14 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                             }
                             string_ty
                         } else {
-                            tl = coerce_expr(&Type::SimpleType(SimpleType::Int), tl);
-                            tr = coerce_expr(&Type::SimpleType(SimpleType::Int), tr);
+                            tl = self.coerce_expr(&Type::SimpleType(SimpleType::Int), tl);
+                            tr = self.coerce_expr(&Type::SimpleType(SimpleType::Int), tr);
                             Type::SimpleType(SimpleType::Int)
                         }
                     }
                     Minus | Mult | Div | Modulo => {
-                        tl = coerce_expr(&Type::SimpleType(SimpleType::Int), tl);
-                        tr = coerce_expr(&Type::SimpleType(SimpleType::Int), tr);
+                        tl = self.coerce_expr(&Type::SimpleType(SimpleType::Int), tl);
+                        tr = self.coerce_expr(&Type::SimpleType(SimpleType::Int), tr);
                         Type::SimpleType(SimpleType::Int)
                     }
                 };
@@ -488,7 +495,7 @@ pub fn populate_field<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
             lang_items: lang_items,
         };
         let texpr = typer.expr(expr);
-        let texpr = coerce_expr(&field.ty, texpr);
+        let texpr = typer.coerce_expr(&field.ty, texpr);
         *field.initializer.borrow_mut() = Some(texpr);
     }
 }
