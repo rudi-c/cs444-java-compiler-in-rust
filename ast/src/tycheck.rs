@@ -5,10 +5,12 @@ use middle::*;
 use arena::*;
 
 use name_resolve::Environment;
+use lang_items::LangItems;
 
-struct Typer<'a, 'ast: 'a> {
+struct Typer<'l, 'a: 'l, 'ast: 'a> {
     arena: &'a Arena<'a, 'ast>,
     env: Environment<'a, 'ast>,
+    lang_items: &'l LangItems<'a, 'ast>,
 }
 
 fn expect<'a, 'ast, S: IntoSpan>(expected: &Type<'a, 'ast>, actual: &Type<'a, 'ast>, sp: S) {
@@ -167,7 +169,7 @@ fn coerce_expr<'a, 'ast>(expect: &Type<'a, 'ast>, expr: TypedExpression<'a, 'ast
     spanned(expr.span, (TypedExpression_::Widen(box expr), expect.clone()))
 }
 
-impl<'a, 'ast> Typer<'a, 'ast> {
+impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
     fn new_var(&mut self, var: &'ast ast::VariableDeclaration) -> VariableRef<'a, 'ast> {
         let def = self.arena.alloc(VariableDef::new(
                 format!("{}.{}", self.env.ty.fq_name, var.name),
@@ -238,22 +240,28 @@ impl<'a, 'ast> Typer<'a, 'ast> {
         spanned(expr.span, self.expr_(expr))
     }
 
+    fn new_expr_(&mut self, tydef: TypeDefinitionRef<'a, 'ast>, args: Vec<TypedExpression<'a, 'ast>>)
+        -> (TypedExpression_<'a, 'ast>, Type<'a, 'ast>) {
+        // FIXME: Check constructor call
+        (TypedExpression_::NewStaticClass(tydef, args), Type::object(tydef))
+    }
+
     fn expr_(&mut self, expr: &'ast ast::Expression) -> (TypedExpression_<'a, 'ast>, Type<'a, 'ast>) {
         use ast::Expression_::*;
         match expr.node {
             Literal(ref lit) => self.lit(lit),
             This => {
                 // TODO: Check that `this` is legal here (i.e. in an instance method)
-                (TypedExpression_::This, Type::object(Some(self.env.ty)))
+                (TypedExpression_::This, Type::object(self.env.ty))
             }
             NewStaticClass(ref id, ref args) => {
-                let ty = Type::object(self.env.resolve_type_name(&*id.parts));
-                // FIXME: Check constructor call
-                // Check non-`final`
-                (TypedExpression_::NewStaticClass(
-                    ty.clone(),
-                    args.iter().map(|arg| self.expr(arg)).collect()
-                ), ty)
+                let tydef = self.env.resolve_type_name(&*id.parts);
+                let targs = args.iter().map(|arg| self.expr(arg)).collect();
+                if let Some(tydef) = tydef {
+                    self.new_expr_(tydef, targs)
+                } else {
+                    dummy_expr_()
+                }
             }
             NewDynamicClass(box _, _, _) => panic!("dynamic class"),
             NewArray(ref tyname, box ref size) => {
@@ -379,10 +387,21 @@ impl<'a, 'ast> Typer<'a, 'ast> {
                         bool_ty
                     }
                     Plus => {
-                        // FIXME: string concatenation
-                        expect_numeric_expr(&tl);
-                        expect_numeric_expr(&tr);
-                        Type::SimpleType(SimpleType::Int)
+                        let string_ty = Type::object(self.lang_items.string);
+                        if *tl.ty() == string_ty || *tr.ty() == string_ty {
+                            // string concatenation
+                            if *tl.ty() != string_ty {
+                                tl = self.stringify(tl);
+                            }
+                            if *tr.ty() != string_ty {
+                                tr = self.stringify(tr);
+                            }
+                            string_ty
+                        } else {
+                            expect_numeric_expr(&tl);
+                            expect_numeric_expr(&tr);
+                            Type::SimpleType(SimpleType::Int)
+                        }
                     }
                     Minus | Mult | Div | Modulo => {
                         expect_numeric_expr(&tl);
@@ -403,25 +422,32 @@ impl<'a, 'ast> Typer<'a, 'ast> {
         }
     }
 
-    fn lit(&mut self, lit: &'ast ast::Literal) -> (TypedExpression_<'a, 'ast>, Type<'a, 'ast>) {
+    fn lit(&self, lit: &'ast ast::Literal) -> (TypedExpression_<'a, 'ast>, Type<'a, 'ast>) {
         use ast::Literal::*;
         (TypedExpression_::Literal(lit),
          match *lit {
             Integer(..) => Type::SimpleType(SimpleType::Int),
             Boolean(..) => Type::SimpleType(SimpleType::Boolean),
             Character(..) => Type::SimpleType(SimpleType::Char),
-            String(..) => Type::Unknown, // FIXME
+            String(..) => Type::object(self.lang_items.string),
             Null => Type::Null,
         })
+    }
+
+    fn stringify(&self, expr: TypedExpression<'a, 'ast>) -> TypedExpression<'a, 'ast> {
+        spanned(expr.span, (TypedExpression_::ToString(box expr),
+                            Type::object(self.lang_items.string)))
     }
 }
 
 pub fn populate_method<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
                                  env: Environment<'a, 'ast>,
-                                 method: MethodRef<'a, 'ast>) {
+                                 method: MethodRef<'a, 'ast>,
+                                 lang_items: &LangItems<'a, 'ast>) {
     let mut typer = Typer {
         arena: arena,
         env: env,
+        lang_items: lang_items,
     };
     *method.args.borrow_mut() = method.ast.params.iter().map(|decl| typer.new_var(decl)).collect();
     if let Some(ref block) = method.ast.body {
@@ -431,10 +457,12 @@ pub fn populate_method<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
 
 pub fn populate_constructor<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
                                       env: Environment<'a, 'ast>,
-                                      ctor: ConstructorRef<'a, 'ast>) {
+                                      ctor: ConstructorRef<'a, 'ast>,
+                                      lang_items: &LangItems<'a, 'ast>) {
     let mut typer = Typer {
         arena: arena,
         env: env,
+        lang_items: lang_items,
     };
     *ctor.args.borrow_mut() = ctor.ast.params.iter().map(|decl| typer.new_var(decl)).collect();
     *ctor.body.borrow_mut() = Some(typer.block(&ctor.ast.body));
@@ -442,11 +470,13 @@ pub fn populate_constructor<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
 
 pub fn populate_field<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
                                 env: Environment<'a, 'ast>,
-                                field: FieldRef<'a, 'ast>) {
+                                field: FieldRef<'a, 'ast>,
+                                lang_items: &LangItems<'a, 'ast>) {
     if let Some(ref expr) = field.ast.initializer {
         let mut typer = Typer {
             arena: arena,
             env: env,
+            lang_items: lang_items,
         };
         let texpr = typer.expr(expr);
         let texpr = coerce_expr(&field.ty, texpr);

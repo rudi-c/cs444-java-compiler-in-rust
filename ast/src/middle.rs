@@ -296,12 +296,8 @@ impl<'a, 'ast> Type<'a, 'ast> {
         }
     }
 
-    pub fn object(t: Option<TypeDefinitionRef<'a, 'ast>>) -> Type<'a, 'ast> {
-        if let Some(t) = t {
-            Type::SimpleType(SimpleType::Other(t))
-        } else {
-            Type::Unknown
-        }
+    pub fn object(t: TypeDefinitionRef<'a, 'ast>) -> Type<'a, 'ast> {
+        Type::SimpleType(SimpleType::Other(t))
     }
 }
 
@@ -417,7 +413,7 @@ pub type TypedStatement<'a, 'ast> = Spanned<TypedStatement_<'a, 'ast>>;
 pub enum TypedExpression_<'a, 'ast: 'a> {
     Literal(&'ast ast::Literal),
     This,
-    NewStaticClass(Type<'a, 'ast>, Vec<TypedExpression<'a, 'ast>>),
+    NewStaticClass(TypeDefinitionRef<'a, 'ast>, Vec<TypedExpression<'a, 'ast>>),
     NewDynamicClass(Box<TypedExpression<'a, 'ast>>, Ident, Vec<TypedExpression<'a, 'ast>>),
     NewArray(SimpleType<'a, 'ast>, Box<TypedExpression<'a, 'ast>>),
     Variable(VariableRef<'a, 'ast>),
@@ -434,6 +430,8 @@ pub enum TypedExpression_<'a, 'ast: 'a> {
     Cast(Type<'a, 'ast>, Box<TypedExpression<'a, 'ast>>),
     // An implicit widening conversion.
     Widen(Box<TypedExpression<'a, 'ast>>),
+    // A "string conversion", as described in $15.18.1.1.
+    ToString(Box<TypedExpression<'a, 'ast>>),
 }
 pub type TypedExpression<'a, 'ast> = Spanned<(TypedExpression_<'a, 'ast>, Type<'a, 'ast>)>;
 

@@ -10,6 +10,12 @@ pub struct LangItems<'a, 'ast: 'a> {
     pub cloneable: TypeDefinitionRef<'a, 'ast>,
     /// `java.lang.String`
     pub string: TypeDefinitionRef<'a, 'ast>,
+    /// `java.lang.Character`
+    pub character: TypeDefinitionRef<'a, 'ast>,
+    /// `java.lang.Integer`
+    pub integer: TypeDefinitionRef<'a, 'ast>,
+    /// `java.lang.Boolean`
+    pub boolean: TypeDefinitionRef<'a, 'ast>,
     /// `java.io.Serializable`
     pub serializable: TypeDefinitionRef<'a, 'ast>,
 }
@@ -31,6 +37,9 @@ pub fn find_lang_items<'a, 'ast>(toplevel: PackageRef<'a, 'ast>) -> LangItems<'a
     let object = get!(lang["Object"] = TypeDefinition);
     let cloneable = get!(lang["Cloneable"] = TypeDefinition);
     let string = get!(lang["String"] = TypeDefinition);
+    let character = get!(lang["Character"] = TypeDefinition);
+    let integer = get!(lang["Integer"] = TypeDefinition);
+    let boolean = get!(lang["Boolean"] = TypeDefinition);
     let io = get!(java["io"] = Package);
     let serializable = get!(io["Serializable"] = TypeDefinition);
     LangItems {
@@ -38,6 +47,9 @@ pub fn find_lang_items<'a, 'ast>(toplevel: PackageRef<'a, 'ast>) -> LangItems<'a
         object: object,
         cloneable: cloneable,
         string: string,
+        character: character,
+        integer: integer,
+        boolean: boolean,
         serializable: serializable,
     }
 }

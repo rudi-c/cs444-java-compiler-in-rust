@@ -385,7 +385,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                 Some((TypedExpression_::Variable(var), var.ty.clone()))
             }
             Some(&Variable::Field(field)) => {
-                let this_ty = Type::object(Some(self.ty));
+                let this_ty = Type::object(self.ty);
                 let this = spanned(ident.span, (TypedExpression_::This, this_ty));
                 // TODO: check static / non-static
                 Some((TypedExpression_::FieldAccess(box this, field), field.ty.clone()))
@@ -807,12 +807,14 @@ enum ToPopulate<'a, 'ast: 'a> {
     Field(FieldRef<'a, 'ast>),
 }
 
-fn populate<'a, 'ast>(arena: &'a Arena<'a, 'ast>, methods: Vec<(Environment<'a, 'ast>, ToPopulate<'a, 'ast>)>) {
+fn populate<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
+                      methods: Vec<(Environment<'a, 'ast>, ToPopulate<'a, 'ast>)>,
+                      lang_items: &LangItems<'a, 'ast>) {
     for (env, thing) in methods.into_iter() {
         match thing {
-            ToPopulate::Method(method) => populate_method(arena, env, method),
-            ToPopulate::Constructor(constructor) => populate_constructor(arena, env, constructor),
-            ToPopulate::Field(field) => populate_field(arena, env, field),
+            ToPopulate::Method(method) => populate_method(arena, env, method, lang_items),
+            ToPopulate::Constructor(constructor) => populate_constructor(arena, env, constructor, lang_items),
+            ToPopulate::Field(field) => populate_field(arena, env, field, lang_items),
         }
     }
 }
@@ -822,7 +824,7 @@ pub fn name_resolve<'a, 'ast>(arena: &'a Arena<'a, 'ast>, asts: &'ast [ast::Comp
     let types = collect_types(arena, toplevel, asts);
     let lang_items = find_lang_items(toplevel);
     let methods = build_environments(arena, toplevel, &lang_items, &*types);
-    populate(arena, methods);
+    populate(arena, methods, &lang_items);
 
     toplevel
 }
