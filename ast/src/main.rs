@@ -34,6 +34,7 @@ pub mod walker;
 pub mod weed;
 pub mod arena;
 pub mod middle;
+pub mod lang_items;
 pub mod name_resolve;
 pub mod collect_types;
 pub mod collect_members;

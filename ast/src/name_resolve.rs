@@ -3,6 +3,7 @@ use name::*;
 use span::{DUMMY, Span, spanned, IntoSpan};
 
 use middle::*;
+use lang_items::*;
 use collect_types::collect_types;
 use collect_members::collect_members;
 use tycheck::{populate_method, populate_constructor, populate_field};
@@ -696,20 +697,15 @@ fn inheritance_topological_sort<'a, 'ast>(preprocessed_types: &[TypeEnvironmentP
 
 fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
                                 toplevel: PackageRef<'a, 'ast>,
-                                java_lang: PackageRef<'a, 'ast>,
+                                lang_items: &LangItems<'a, 'ast>,
                                 units: &[(PackageRef<'a, 'ast>, &'ast ast::CompilationUnit, Vec<TypeDefinitionRef<'a, 'ast>>)])
 -> Vec<(Environment<'a, 'ast>, ToPopulate<'a, 'ast>)> {
-    let java_lang_object = match java_lang.contents.borrow().get(&Symbol::from_str("Object")) {
-        Some(&PackageItem::TypeDefinition(tydef)) => tydef,
-        _ => panic!("java.lang.Object not found"),
-    };
-
     let mut preprocessed_types = vec![];
 
     for &(package, ast, ref tydefs) in units.iter() {
         let mut types_env: TypesEnvironment<'a, 'ast> = RbMap::new();
 
-        let mut on_demand_packages = vec![java_lang];
+        let mut on_demand_packages = vec![lang_items.lang];
 
         // Add all imports to initial environment for this compilation unit.
         for import in ast.imports.iter() {
@@ -748,7 +744,7 @@ fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
 
                 env.resolve_inheritance(tydef);
                 preprocessed_types.push((tydef, env));
-                if tydef == java_lang_object {
+                if tydef == lang_items.object {
                     // Make sure `java.lang.Object` is processed first...
                     // XXX: This is such a hack!
                     let ix = preprocessed_types.len()-1;
@@ -774,7 +770,7 @@ fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
         // Add the type itself to the environment.
         env.types = insert_declared_type(&env.types, name, tydef);
 
-        collect_members(arena, &env, tydef, java_lang_object);
+        collect_members(arena, &env, tydef, lang_items);
 
         env.add_fields(tydef);
 
@@ -825,11 +821,8 @@ fn populate<'a, 'ast>(arena: &'a Arena<'a, 'ast>, methods: Vec<(Environment<'a, 
 pub fn name_resolve<'a, 'ast>(arena: &'a Arena<'a, 'ast>, asts: &'ast [ast::CompilationUnit]) -> PackageRef<'a, 'ast> {
     let toplevel = arena.alloc(Package::new("top level".to_owned()));
     let types = collect_types(arena, toplevel, asts);
-    let java_lang = resolve_package(toplevel, &[
-        spanned(DUMMY, Symbol::from_str("java")),
-        spanned(DUMMY, Symbol::from_str("lang")),
-    ]).unwrap();
-    let methods = build_environments(arena, toplevel, java_lang, &*types);
+    let lang_items = find_lang_items(toplevel);
+    let methods = build_environments(arena, toplevel, &lang_items, &*types);
     populate(arena, methods);
 
     toplevel
