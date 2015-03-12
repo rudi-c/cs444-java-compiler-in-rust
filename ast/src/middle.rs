@@ -334,6 +334,13 @@ impl<'a, 'ast> SimpleType<'a, 'ast> {
             Boolean | Other(..) => false,
         }
     }
+    pub fn is_strict_numeric(&self) -> bool {
+        use self::SimpleType::*;
+        match *self {
+            Int | Short | Byte => true,
+            Boolean | Char | Other(..) => false,
+        }
+    }
 }
 
 impl<'a, 'ast> fmt::String for SimpleType<'a, 'ast> {
