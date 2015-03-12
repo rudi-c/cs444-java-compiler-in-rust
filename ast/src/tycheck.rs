@@ -7,6 +7,8 @@ use arena::*;
 use name_resolve::Environment;
 use lang_items::LangItems;
 
+use std::collections::{RingBuf, HashSet};
+
 struct Typer<'l, 'a: 'l, 'ast: 'a> {
     arena: &'a Arena<'a, 'ast>,
     env: Environment<'a, 'ast>,
@@ -58,59 +60,92 @@ fn unary_widen<'a, 'ast>(e: TypedExpression<'a, 'ast>) -> TypedExpression<'a, 'a
     }
 }
 
-// Check that there is a legal widening conversion from `ety` to `expect`.
-// Emits an error if there is not.
-fn check_simple_widening<'a, 'ast>(span: Span, expect: &SimpleType<'a, 'ast>, ety: &SimpleType<'a, 'ast>) {
-    use middle::SimpleType::*;
-    if expect == ety {
-        return;
-    }
-    match *expect {
-        Char | Boolean => {
-            span_error!(span, "no implicit conversion to `{}`", expect);
+impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
+    /// Is `sub` a subtype of `sup`?
+    /// (Every type is a subtype of `Object`.)
+    fn is_subtype(&self, sub: TypeDefinitionRef<'a, 'ast>, sup: TypeDefinitionRef<'a, 'ast>) -> bool {
+        if sup == self.lang_items.object {
+            return true;
         }
-        Byte | Short | Int => match *ety {
-            Byte | Short | Char | Int => {
-                fn numeric_width<'a, 'ast>(ty: &SimpleType<'a, 'ast>) -> i32 {
-                    match *ty {
-                        Byte => 1,
-                        Short | Char => 2,
-                        Int => 4,
-                        _ => panic!("not numeric")
+        let mut q: RingBuf<TypeDefinitionRef<'a, 'ast>> = RingBuf::new();
+        let mut visited: HashSet<TypeDefinitionRef<'a, 'ast>> = HashSet::new();
+        q.push_back(sub);
+        visited.insert(sub);
+        while let Some(next) = q.pop_front() {
+            if next == sup {
+                return true;
+            }
+            for &parent in next.extends.borrow().iter()
+                .chain(next.implements.borrow().iter()) {
+                if visited.insert(parent) {
+                    q.push_back(parent);
+                }
+            }
+        }
+        false
+    }
+
+    // Check that there is a legal widening conversion from `ety` to `expect`.
+    // Emits an error if there is not.
+    fn check_simple_widening(&self, span: Span, expect: &SimpleType<'a, 'ast>, ety: &SimpleType<'a, 'ast>) {
+        use middle::SimpleType::*;
+        if expect == ety {
+            return;
+        }
+        match *expect {
+            Char | Boolean => {
+                span_error!(span, "no implicit conversion to `{}`", expect);
+            }
+            Byte | Short | Int => match *ety {
+                Byte | Short | Char | Int => {
+                    fn numeric_width<'a, 'ast>(ty: &SimpleType<'a, 'ast>) -> i32 {
+                        match *ty {
+                            Byte => 1,
+                            Short | Char => 2,
+                            Int => 4,
+                            _ => panic!("not numeric")
+                        }
+                    }
+                    if numeric_width(expect) < numeric_width(ety) {
+                        span_error!(span,
+                                    "cast required for narrowing conversion from `{}` to `{}`",
+                                    ety, expect);
                     }
                 }
-                if numeric_width(expect) < numeric_width(ety) {
+                Boolean => {
                     span_error!(span,
-                                "cast required for narrowing conversion from `{}` to `{}`",
+                                "cannot convert from `{}` to `{}`",
                                 ety, expect);
                 }
-            }
-            Boolean => {
-                span_error!(span,
-                            "cannot convert from `{}` to `{}`",
-                            ety, expect);
-            }
-            _ => {
-                span_error!(span,
-                            "cannot convert from non-primitive type `{}` to `{}`",
-                            ety, expect);
-            }
-        },
-        Other(expect_tydef) => match *ety {
-            Other(expr_tydef) => {
-                // FIXME: Check that `expr_tydef` is a subtype of `expect_tydef`.
-                // (Remember that `expect_tydef` can be Object in all cases)
-            }
-            _ => {
-                span_error!(span,
-                            "cannot convert from primitive type `{}` to `{}`",
-                            ety, expect);
-            }
-        },
+                _ => {
+                    span_error!(span,
+                                "cannot convert from non-primitive type `{}` to `{}`",
+                                ety, expect);
+                }
+            },
+            Other(expect_tydef) => match *ety {
+                Other(expr_tydef) => {
+                    if !self.is_subtype(expr_tydef, expect_tydef) {
+                        if self.is_subtype(expect_tydef, expr_tydef) {
+                            span_error!(span,
+                                        "cast required for narrowing conversion from `{}` to `{}`",
+                                        ety, expect);
+                        } else {
+                            span_error!(span,
+                                        "no conversion from `{}` to `{}`",
+                                        ety, expect);
+                        }
+                    }
+                }
+                _ => {
+                    span_error!(span,
+                                "cannot convert from primitive type `{}` to `{}`",
+                                ety, expect);
+                }
+            },
+        }
     }
-}
 
-impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
     fn check_widening(&self, span: Span, expect: &Type<'a, 'ast>, ety: &Type<'a, 'ast>) {
         if expect == ety {
             return;
@@ -122,7 +157,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
 
             // simple types might be convertible to other simple types
             (&Type::SimpleType(ref a), &Type::SimpleType(ref b)) => {
-                check_simple_widening(span, a, b);
+                self.check_simple_widening(span, a, b);
             }
             // ... but not to arrays
             (&Type::ArrayType(_), &Type::SimpleType(_)) => {
@@ -143,7 +178,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
             }
             // and (some) other array types
             (&Type::ArrayType(ref expect_inner), &Type::ArrayType(ref expr_inner)) => {
-                check_simple_widening(span, expect_inner, expr_inner);
+                self.check_simple_widening(span, expect_inner, expr_inner);
             }
             // ... but not primitive types
             (&Type::SimpleType(_), &Type::ArrayType(_)) => {
