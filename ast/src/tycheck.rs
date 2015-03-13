@@ -366,10 +366,21 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
         spanned(expr.span, self.expr_(expr))
     }
 
-    fn new_expr_(&mut self, tydef: TypeDefinitionRef<'a, 'ast>, args: Vec<TypedExpression<'a, 'ast>>)
+    fn new_expr_(&mut self, span: Span,
+                 tydef: TypeDefinitionRef<'a, 'ast>,
+                 args: Vec<TypedExpression<'a, 'ast>>)
         -> (TypedExpression_<'a, 'ast>, Type<'a, 'ast>) {
-        // FIXME: Check constructor call
-        (TypedExpression_::NewStaticClass(tydef, args), Type::object(tydef))
+
+        let arg_types: Vec<_> = args.iter()
+            .map(|expr| expr.node.1.clone())
+            .collect();
+        if let Some(&constructor) = tydef.constructors.borrow().get(&arg_types) {
+            (TypedExpression_::NewStaticClass(tydef, constructor, args), Type::object(tydef))
+        } else {
+            // TODO: Better error message.
+            span_error!(span, "no matching constructor");
+            dummy_expr_()
+        }
     }
 
     fn expr_(&mut self, expr: &'ast ast::Expression) -> (TypedExpression_<'a, 'ast>, Type<'a, 'ast>) {
@@ -394,7 +405,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                         span_error!(expr.span, "cannot instantiate Abstract class type");
                         dummy_expr_()
                     } else {
-                        self.new_expr_(tydef, targs)
+                        self.new_expr_(expr.span, tydef, targs)
                     }
                 } else {
                     panic!("unable to find static class that should have been resolved");

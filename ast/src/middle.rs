@@ -414,7 +414,8 @@ pub type TypedStatement<'a, 'ast> = Spanned<TypedStatement_<'a, 'ast>>;
 pub enum TypedExpression_<'a, 'ast: 'a> {
     Literal(&'ast ast::Literal),
     This,
-    NewStaticClass(TypeDefinitionRef<'a, 'ast>, Vec<TypedExpression<'a, 'ast>>),
+    NewStaticClass(TypeDefinitionRef<'a, 'ast>, ConstructorRef<'a, 'ast>,
+                   Vec<TypedExpression<'a, 'ast>>),
     NewDynamicClass(Box<TypedExpression<'a, 'ast>>, Ident, Vec<TypedExpression<'a, 'ast>>),
     NewArray(SimpleType<'a, 'ast>, Box<TypedExpression<'a, 'ast>>),
     Variable(VariableRef<'a, 'ast>),
@@ -422,7 +423,8 @@ pub enum TypedExpression_<'a, 'ast: 'a> {
     FieldAccess(Box<TypedExpression<'a, 'ast>>, FieldRef<'a, 'ast>),
     // FIXME: Holy hack
     ArrayLength(Box<TypedExpression<'a, 'ast>>),
-    MethodInvocation(Option<Box<TypedExpression<'a, 'ast>>>, MethodRef<'a, 'ast>, Vec<TypedExpression<'a, 'ast>>),
+    MethodInvocation(Option<Box<TypedExpression<'a, 'ast>>>, MethodRef<'a, 'ast>,
+                     Vec<TypedExpression<'a, 'ast>>),
     ArrayAccess(Box<TypedExpression<'a, 'ast>>, Box<TypedExpression<'a, 'ast>>),
     Assignment(Box<TypedExpression<'a, 'ast>>, Box<TypedExpression<'a, 'ast>>),
     InstanceOf(Box<TypedExpression<'a, 'ast>>, Type<'a, 'ast>),
