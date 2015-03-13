@@ -339,6 +339,12 @@ impl<'a, 'ast> Environment<'a, 'ast> {
             Type::SimpleType(SimpleType::Other(tyref)) => {
                 if let Some(&field) = tyref.fields.borrow().get(&name.node) {
                     self.check_field_access_allowed(span, field, tyref);
+
+                    // Can't use static fields on expressions like a.MAX_VALUE
+                    if field.is_static() {
+                        span_error!(span, "using static field `{}` on instance", name);
+                    }
+
                     Some((TypedExpression_::FieldAccess(box texpr, field),
                          field.ty.clone()))
                 } else {
@@ -401,12 +407,24 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                 // can be more than just fields - e.g. local variables)
                 match self.resolve_ambiguous_path(init) {
                     AmbiguousResult::Type(typedef) => {
-                        self.resolve_typedef_method_access(span, typedef,
-                                                           last, targ_exprs)
+                        let resolved = self.resolve_typedef_method_access(span, typedef,
+                                                                          last, targ_exprs);
+                        if let Some((TypedExpression_::MethodInvocation(_, method, _), _)) = resolved {
+                            if !method.is_static() {
+                                span_error!(span, "calling non-static method on type");
+                            }
+                        }
+                        resolved
                     },
                     AmbiguousResult::Expression(texpr) => {
-                        self.resolve_expr_method_access(span, texpr,
-                                                        last, targ_exprs)
+                        let resolved = self.resolve_expr_method_access(span, texpr,
+                                                                       last, targ_exprs);
+                        if let Some((TypedExpression_::MethodInvocation(_, method, _), _)) = resolved {
+                            if method.is_static() {
+                                span_error!(span, "calling static method on instance");
+                            }
+                        }
+                        resolved
                     },
                     _ => {
                         span_error!(span, "no type for method invocation found");
@@ -530,10 +548,13 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                 Some((TypedExpression_::Variable(var), var.ty.clone()))
             }
             Some(&Variable::Field(field)) => {
-                let this_ty = Type::object(self.enclosing_type);
-                let this = spanned(ident.span, (TypedExpression_::This, this_ty));
-                // TODO: check static / non-static
-                Some((TypedExpression_::FieldAccess(box this, field), field.ty.clone()))
+                if field.is_static() {
+                    Some((TypedExpression_::StaticFieldAccess(field), field.ty.clone()))
+                } else {
+                    let this_ty = Type::object(self.enclosing_type);
+                    let this = spanned(ident.span, (TypedExpression_::This, this_ty));
+                    Some((TypedExpression_::FieldAccess(box this, field), field.ty.clone()))
+                }
             }
             None => {
                 None
@@ -566,8 +587,12 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                     }
                     AmbiguousResult::Type(tyref) => {
                         if let Some(&field) = tyref.fields.borrow().get(&last.node) {
-                            // TODO: Check that the field is static.
                             self.check_field_access_allowed(span, field, tyref);
+
+                            if !field.is_static() {
+                                span_error!(span, "using non-static field `{}` on type", last);
+                            }
+
                             Some((TypedExpression_::StaticFieldAccess(field),
                                   field.ty.clone()))
                         } else {
