@@ -98,8 +98,7 @@ impl<'env, 'a, 'ast> Walker<'ast> for Collector<'env, 'a, 'ast> {
                 self.env.resolve_type(&arg.node.ty)
             }).collect(),
         };
-        let ret_ty = method_ast.node.return_type.as_ref()
-            .map(|ty| self.env.resolve_type(ty));
+        let ret_ty = self.env.resolve_type(&method_ast.node.return_type);
         let fq_name = format!("{}.{}", tydef.fq_name, signature);
 
         let impled = match tydef.kind {

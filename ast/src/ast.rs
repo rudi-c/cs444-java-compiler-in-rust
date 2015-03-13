@@ -71,8 +71,7 @@ pub struct Method_ {
     pub name: Ident,
     pub modifiers: Vec<Modifier>,
     pub params: Vec<VariableDeclaration>,
-    // `void` == None
-    pub return_type: Option<Type>,
+    pub return_type: Type,
     pub body: Option<Block>,
 }
 pub type Method = Spanned<Method_>;
@@ -124,6 +123,7 @@ pub type VariableDeclaration = Spanned<VariableDeclaration_>;
 pub enum Type_ {
     SimpleType(SimpleType),
     ArrayType(SimpleType),
+    Void,
 }
 pub type Type = Spanned<Type_>;
 

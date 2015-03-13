@@ -101,7 +101,7 @@ pub enum Impled {
 pub struct Method<'a, 'ast: 'a> {
     pub fq_name: Name,
     pub origin: TypeDefinitionRef<'a, 'ast>,
-    pub ret_ty: Option<Type<'a, 'ast>>, // None = void
+    pub ret_ty: Type<'a, 'ast>,
     pub impled: Impled,
     /// These can be None if the method has no implementation, or if we simply haven't reached the
     /// typechecking phase yet.
@@ -114,7 +114,7 @@ pub type MethodRef<'a, 'ast> = &'a Method<'a, 'ast>;
 impl<'a, 'ast> Method<'a, 'ast> {
     pub fn new(name: String,
                origin: TypeDefinitionRef<'a, 'ast>,
-               ret_ty: Option<Type<'a, 'ast>>,
+               ret_ty: Type<'a, 'ast>,
                impled: Impled,
                ast: &'ast ast::Method) -> Method<'a, 'ast> {
         Method {
@@ -235,17 +235,6 @@ impl<'a, 'ast> Ord for TypeDefinitionRef<'a, 'ast> {
     }
 }
 
-// Helper function for printing a Type, handles the void case.
-impl<'a, 'ast> fmt::String for Option<Type<'a, 'ast>> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        if let Some(ref t) = *self {
-            t.fmt(f)
-        } else {
-            "void".fmt(f)
-        }
-    }
-}
-
 impl<'a, 'ast, H: hash::Hasher + hash::Writer> hash::Hash<H> for TypeDefinition<'a, 'ast> {
     fn hash(&self, state: &mut H) {
         self.fq_name.hash(state)
@@ -259,6 +248,8 @@ pub enum Type<'a, 'ast: 'a> {
 
     // The type of `null`.
     Null,
+
+    Void,
 
     // Placeholder when name resolution fails.
     Unknown,
@@ -305,6 +296,7 @@ impl<'a, 'ast> fmt::String for Type<'a, 'ast> {
             &Type::SimpleType(ref t) => t.fmt(f),
             &Type::ArrayType(ref t) => write!(f, "{}[]", t),
             &Type::Null => write!(f, "null"),
+            &Type::Void => write!(f, "void"),
             &Type::Unknown => write!(f, "_"),
         }
     }

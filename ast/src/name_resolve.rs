@@ -202,6 +202,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                 } else {
                     Type::Unknown
                 },
+            ast::Type_::Void => Type::Void,
         }
     }
 
@@ -370,6 +371,10 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                             name);
                 None
             }
+            Type::Void => {
+                span_error!(span, "void type has no fields");
+                None
+            }
             Type::Unknown => None
         }
     }
@@ -428,11 +433,10 @@ impl<'a, 'ast> Environment<'a, 'ast> {
         match texpr.ty().clone() {
             Type::SimpleType(SimpleType::Other(tyref)) => {
                 if let Some(&method) = tyref.methods.borrow().get(&signature) {
-                    // TODO: Handle void
                     Some((TypedExpression_::MethodInvocation(Some(box texpr),
                                                              method,
                                                              targ_exprs),
-                          method.ret_ty.clone().unwrap()))
+                          method.ret_ty.clone()))
                 } else {
                     span_error!(span,
                                 "reference type `{}` has no method `{}`",
@@ -456,6 +460,10 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                             name);
                 None
             }
+            Type::Void => {
+                span_error!(span, "void type has no fields");
+                None
+            }
             Type::Unknown => None
         }
     }
@@ -471,9 +479,8 @@ impl<'a, 'ast> Environment<'a, 'ast> {
         let signature = MethodSignature { name: name.node, args: arg_types };
 
         if let Some(&method) = tyref.methods.borrow().get(&signature) {
-            // TODO: Handle void
             Some((TypedExpression_::MethodInvocation(None, method, targ_exprs),
-                  method.ret_ty.clone().unwrap()))
+                  method.ret_ty.clone()))
         } else {
             span_error!(span,
                         "reference type `{}` has no method `{}`",

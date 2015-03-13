@@ -181,24 +181,28 @@ parser! parse {
         identifier[name] Assignment variableInitializer[init] => (name, Some(init)),
     }
 
+    voidLiteral: Type {
+        VOID => spanned!(Type_::Void),
+    }
+
     methodDeclaration: Method {
-        modifierList[mods] VOID identifier[name]
+        modifierList[mods] voidLiteral[t] identifier[name]
                 LParen parameterList[params] RParen block[b] =>
-            spanned!(Method_ { name: name, modifiers: mods, params: params, return_type: None, body: Some(b) }),
+            spanned!(Method_ { name: name, modifiers: mods, params: params, return_type: t, body: Some(b) }),
         modifierList[mods] ty[t] identifier[name]
                 LParen parameterList[params] RParen block[b] =>
-            spanned!(Method_ { name: name, modifiers: mods, params: params, return_type: Some(t), body: Some(b) }),
+            spanned!(Method_ { name: name, modifiers: mods, params: params, return_type: t, body: Some(b) }),
         methodDeclarationNoBody[dcl] => dcl,
     }
 
     // Method declaration ($8.4)
     methodDeclarationNoBody: Method {
-        modifierList[mods] VOID identifier[name]
+        modifierList[mods] voidLiteral[t] identifier[name]
                 LParen parameterList[params] RParen Semicolon =>
-            spanned!(Method_ { name: name, modifiers: mods, params: params, return_type: None, body: None }),
+            spanned!(Method_ { name: name, modifiers: mods, params: params, return_type: t, body: None }),
         modifierList[mods] ty[t] identifier[name]
                 LParen parameterList[params] RParen Semicolon =>
-            spanned!(Method_ { name: name, modifiers: mods, params: params, return_type: Some(t), body: None }),
+            spanned!(Method_ { name: name, modifiers: mods, params: params, return_type: t, body: None }),
     }
 
     // Class constructor ($8.8)

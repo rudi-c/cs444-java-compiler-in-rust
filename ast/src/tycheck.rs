@@ -130,6 +130,11 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
 
             (&Type::Null, _) => panic!("coerce to null type?"),
 
+            (&Type::Void, _)
+            | (_, &Type::Void) => {
+                span_error!(span, "cannot convert void types");
+            }
+
             // simple types might be convertible to other simple types
             (&Type::SimpleType(ref a), &Type::SimpleType(ref b)) => {
                 self.check_simple_widening(span, a, b);
@@ -271,6 +276,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
     }
 
     fn expr_(&mut self, expr: &'ast ast::Expression) -> (TypedExpression_<'a, 'ast>, Type<'a, 'ast>) {
+
         use ast::Expression_::*;
         match expr.node {
             Literal(ref lit) => self.lit(lit),
