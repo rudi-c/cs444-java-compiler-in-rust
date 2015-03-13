@@ -12,6 +12,10 @@ struct Typer<'l, 'a: 'l, 'ast: 'a> {
     arena: &'a Arena<'a, 'ast>,
     env: Environment<'a, 'ast>,
     lang_items: &'l LangItems<'a, 'ast>,
+
+    // true if we are typing a static method or field, can't access implicit
+    // nonstatic thid members
+    require_static: bool,
 }
 
 fn expect<'a, 'ast, S: IntoSpan>(expected: &Type<'a, 'ast>, actual: &Type<'a, 'ast>, sp: S) {
@@ -363,7 +367,26 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
     }
 
     fn expr(&mut self, expr: &'ast ast::Expression) -> TypedExpression<'a, 'ast> {
-        spanned(expr.span, self.expr_(expr))
+        let texpr = self.expr_(expr);
+
+        match texpr.0 {
+            TypedExpression_::FieldAccess(ref field_texpr, field) => {
+                match field_texpr.node.0 {
+                    TypedExpression_::This => {
+                        // Check that we don't access non-static field in static settings.
+                        if self.require_static {
+                            span_error!(expr.span,
+                                        "non-static access to static field `{}` in static setting",
+                                        field.fq_name);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+
+        spanned(expr.span, texpr)
     }
 
     fn new_expr_(&mut self, span: Span,
@@ -620,6 +643,7 @@ pub fn populate_method<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
         arena: arena,
         env: env,
         lang_items: lang_items,
+        require_static: method.is_static(),
     };
     *method.args.borrow_mut() = method.ast.params.iter().map(|decl| typer.new_var(decl)).collect();
     if let Some(ref block) = method.ast.body {
@@ -635,6 +659,7 @@ pub fn populate_constructor<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
         arena: arena,
         env: env,
         lang_items: lang_items,
+        require_static: false,
     };
     *ctor.args.borrow_mut() = ctor.ast.params.iter().map(|decl| typer.new_var(decl)).collect();
     *ctor.body.borrow_mut() = Some(typer.block(&ctor.ast.body));
@@ -649,6 +674,7 @@ pub fn populate_field<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
             arena: arena,
             env: env,
             lang_items: lang_items,
+            require_static: field.is_static(),
         };
         let texpr = typer.expr(expr);
         let texpr = typer.coerce_expr(&field.ty, texpr);
