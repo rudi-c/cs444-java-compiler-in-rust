@@ -304,26 +304,49 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
 
     fn stmt(&mut self, stmt: &'ast ast::Statement) -> TypedStatement<'a, 'ast> {
         use ast::Statement_::*;
+        fn expect_bool<'a, 'ast>(span: Span, ty: &Type<'a, 'ast>) {
+            if ty != &Type::SimpleType(SimpleType::Boolean) {
+                span_error!(span, "type mismatch - expected boolean, found `{}`", ty);
+            }
+        }
         spanned(stmt.span, match stmt.node {
             Expression(ref expr) => TypedStatement_::Expression(self.expr(expr)),
-            If(ref test, box ref then, ref els) =>
-                TypedStatement_::If(self.expr(test),
+            If(ref test, box ref then, ref els) => {
+               let test_texpr = self.expr(test);
+               expect_bool(test.span, test_texpr.ty());
+               TypedStatement_::If(test_texpr,
                                    box self.stmt(then),
-                                   els.as_ref().map(|&box ref s| box self.stmt(s))),
-            While(ref test, box ref inner) =>
-                TypedStatement_::While(self.expr(test), box self.stmt(inner)),
-            For(ref init, ref test, ref update, box ref inner) =>
+                                   els.as_ref().map(|&box ref s| box self.stmt(s)))
+            }
+            While(ref test, box ref inner) => {
+                let test_texpr = self.expr(test);
+                expect_bool(test.span, test_texpr.ty());
+                TypedStatement_::While(test_texpr, box self.stmt(inner))
+            }
+            For(ref init, ref test, ref update, box ref inner) => {
+                let init_texpr = init.as_ref().map(|i| self.expr(i));
+                let test_texpr_opt = test.as_ref().map(|t| self.expr(t));
+                if let Some(ref test_texpr) = test_texpr_opt {
+                    expect_bool(test.as_ref().unwrap().span, test_texpr.ty());
+                }
                 TypedStatement_::For(
-                    init.as_ref().map(|i| self.expr(i)),
-                    test.as_ref().map(|t| self.expr(t)),
+                    init_texpr,
+                    test_texpr_opt,
                     update.as_ref().map(|u| self.expr(u)),
-                    box self.stmt(inner)),
-            ForDecl(ref init, ref test, ref update, box ref inner) =>
+                    box self.stmt(inner))
+            }
+            ForDecl(ref init, ref test, ref update, box ref inner) => {
+                let init_texpr = self.local_variable(init);
+                let test_texpr_opt = test.as_ref().map(|t| self.expr(t));
+                if let Some(ref test_texpr) = test_texpr_opt {
+                    expect_bool(test.as_ref().unwrap().span, test_texpr.ty());
+                }
                 TypedStatement_::ForDecl(
-                    self.local_variable(init),
-                    test.as_ref().map(|t| self.expr(t)),
+                    init_texpr,
+                    test_texpr_opt,
                     update.as_ref().map(|u| self.expr(u)),
-                    box self.stmt(inner)),
+                    box self.stmt(inner))
+            }
             Empty => TypedStatement_::Empty,
             Return(ref expr) => {
                 // FIXME: check return types
@@ -374,7 +397,6 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                     }
                 } else {
                     panic!("unable to find static class that should have been resolved");
-                    dummy_expr_()
                 }
             }
             NewDynamicClass(box _, _, _) => panic!("dynamic class"),
