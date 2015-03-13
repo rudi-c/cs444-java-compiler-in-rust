@@ -89,7 +89,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                             _ => panic!("not numeric")
                         }
                     }
-                    if numeric_width(source) < numeric_width(target) {
+                    if numeric_width(source) <= numeric_width(target) {
                         span_error!(span,
                                     "cast required for narrowing conversion from `{}` to `{}`",
                                     target, source);
