@@ -5,9 +5,16 @@ shift
 
 set +o pipefail
 
-cargo build || exit $?
+if [[ "$1" == "--release" ]]; then
+    RELEASE="--release"
+    PROGRAM="./target/release/ast"
+    shift
+else
+    RELEASE=""
+    PROGRAM="./target/ast"
+fi
 
-PROGRAM="./target/ast"
+cargo build $RELEASE || exit $?
 
 STDLIB="../stdlib/${ASSIGN}.0/"
 
@@ -26,7 +33,12 @@ for test in "${TESTCASES[@]}"; do
     else
         PASS_CODE=0
     fi
-    "$PROGRAM" --multi $(find "$STDLIB" "$test" -name '*.java')
+    if [[ "$test" =~ custom ]]; then
+        MULTI="--multi"
+    else
+        MULTI=""
+    fi
+    "$PROGRAM" $MULTI $(find "$STDLIB" "$test" -name '*.java')
     CODE="$?"
     if [[ $CODE != $PASS_CODE ]]; then
         LOG="${LOG}$test expected exit code $PASS_CODE, got $CODE"$'\n'
