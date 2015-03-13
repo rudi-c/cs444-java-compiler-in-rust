@@ -91,6 +91,10 @@ impl<'a, 'ast> Field<'a, 'ast> {
         }
     }
 
+    pub fn is_static(&self) -> bool {
+        self.ast.node.has_modifier(ast::Modifier_::Static)
+    }
+
     pub fn is_protected(&self) -> bool {
         self.ast.node.has_modifier(ast::Modifier_::Protected)
     }
@@ -138,6 +142,10 @@ impl<'a, 'ast> Method<'a, 'ast> {
             args: RefCell::new(vec![]),
             ast: ast,
         }
+    }
+
+    pub fn is_static(&self) -> bool {
+        self.has_modifier(ast::Modifier_::Static)
     }
 
     pub fn is_protected(&self) -> bool {

@@ -338,18 +338,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
         match texpr.ty().clone() {
             Type::SimpleType(SimpleType::Other(tyref)) => {
                 if let Some(&field) = tyref.fields.borrow().get(&name.node) {
-                    // ($6.6.2) Protected access rules.
-                    // Access to protected members allowed within the same package
-                    // or in subtypes.
-                    if field.is_protected() && self.package != tyref.package {
-                        if !field.origin.dominates(self.enclosing_type) ||
-                           !self.enclosing_type.dominates(tyref) {
-                            span_error!(span,
-                                        "cannot access protected field `{}` of `{}`",
-                                        name, tyref.fq_name);
-                        }
-                    }
-
+                    self.check_field_access_allowed(span, field, tyref);
                     Some((TypedExpression_::FieldAccess(box texpr, field),
                          field.ty.clone()))
                 } else {
@@ -431,12 +420,27 @@ impl<'a, 'ast> Environment<'a, 'ast> {
         }
     }
 
+    fn check_field_access_allowed(&self, span: Span, field: FieldRef<'a, 'ast>,
+                                  tyref: TypeDefinitionRef<'a, 'ast>) {
+        // ($6.6.2) Protected access rules.
+        // Access to protected members allowed within the same package
+        // or in subtypes.
+        if field.is_protected() && self.package != tyref.package {
+            if !field.origin.dominates(self.enclosing_type) ||
+               (!field.is_static() && !self.enclosing_type.dominates(tyref)) {
+                span_error!(span,
+                            "cannot access protected field `{}` of `{}`",
+                            field.fq_name, tyref.fq_name);
+            }
+        }
+    }
+
     // ($6.2.2) Checks that we can access a given method.
     fn check_method_access_allowed(&self, span: Span, method: MethodRef<'a, 'ast>,
                                    tyref: TypeDefinitionRef<'a, 'ast>) {
         if method.is_protected() && self.package != tyref.package {
             if !method.origin.dominates(self.enclosing_type) ||
-               !self.enclosing_type.dominates(tyref) {
+               (!method.is_static() && !self.enclosing_type.dominates(tyref)) {
                 span_error!(span,
                             "cannot access protected method `{}` of `{}`",
                             method.fq_name, tyref.fq_name);
@@ -563,6 +567,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                     AmbiguousResult::Type(tyref) => {
                         if let Some(&field) = tyref.fields.borrow().get(&last.node) {
                             // TODO: Check that the field is static.
+                            self.check_field_access_allowed(span, field, tyref);
                             Some((TypedExpression_::StaticFieldAccess(field),
                                   field.ty.clone()))
                         } else {
