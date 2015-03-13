@@ -511,14 +511,22 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                     Plus => {
                         let string_ty = Type::object(self.lang_items.string);
                         if *tl.ty() == string_ty || *tr.ty() == string_ty {
-                            // string concatenation
-                            if *tl.ty() != string_ty {
-                                tl = self.stringify(tl);
+                            if *tl.ty() == Type::Void {
+                                span_error!(expr.span,
+                                            "type mismatch: + operator cannot be applied to void and String");
+                            } else if *tr.ty() == Type::Void {
+                                span_error!(expr.span,
+                                            "type mismatch: + operator cannot be applied to String and void");
+                            } else {
+                                // string concatenation
+                                if *tl.ty() != string_ty {
+                                    tl = self.stringify(tl);
+                                }
+                                if *tr.ty() != string_ty {
+                                    tr = self.stringify(tr);
+                                }
                             }
-                            if *tr.ty() != string_ty {
-                                tr = self.stringify(tr);
-                            }
-                            string_ty
+                           string_ty
                         } else {
                             tl = self.coerce_expr(&Type::SimpleType(SimpleType::Int), tl);
                             tr = self.coerce_expr(&Type::SimpleType(SimpleType::Int), tr);
