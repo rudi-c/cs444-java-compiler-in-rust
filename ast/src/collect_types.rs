@@ -24,7 +24,7 @@ impl<'a, 'ast> Walker<'ast> for Collector<'a, 'ast> {
         };
         self.scope.push(name.node);
         let fq_type = Qualified(self.scope.iter()).to_string();
-        let tydef = self.arena.alloc(TypeDefinition::new(fq_type, kind, ty_decl));
+        let tydef = self.arena.alloc(TypeDefinition::new(fq_type, kind, self.package, ty_decl));
 
         // Insert `tydef` into the package
         match self.package.contents.borrow_mut().entry(name.node) {

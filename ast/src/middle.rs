@@ -62,6 +62,14 @@ impl<'a, 'ast> Package<'a, 'ast> {
     }
 }
 
+impl<'a, 'ast> PartialEq for Package<'a, 'ast> {
+    fn eq(&self, other: &Self) -> bool {
+        self.fq_name.eq(&other.fq_name)
+    }
+}
+
+impl<'a, 'ast> Eq for Package<'a, 'ast> {}
+
 #[derive(Show)]
 pub struct Field<'a, 'ast: 'a> {
     pub fq_name: Name,
@@ -81,6 +89,10 @@ impl<'a, 'ast> Field<'a, 'ast> {
             initializer: RefCell::new(None),
             ast: ast,
         }
+    }
+
+    pub fn is_protected(&self) -> bool {
+        self.ast.node.has_modifier(ast::Modifier_::Protected)
     }
 }
 
@@ -128,6 +140,10 @@ impl<'a, 'ast> Method<'a, 'ast> {
         }
     }
 
+    pub fn is_protected(&self) -> bool {
+        self.has_modifier(ast::Modifier_::Protected)
+    }
+
     pub fn has_modifier(&self, modifier: ast::Modifier_) -> bool {
         self.ast.node.has_modifier(modifier)
     }
@@ -173,6 +189,7 @@ pub enum TypeKind {
 pub struct TypeDefinition<'a, 'ast: 'a> {
     pub fq_name: Name,
     pub kind: TypeKind,
+    pub package: PackageRef<'a, 'ast>,
 
     // Note that fields and methods can have the same name, therefore
     // need to be be in separate namespaces.
@@ -192,10 +209,13 @@ pub struct TypeDefinition<'a, 'ast: 'a> {
 pub type TypeDefinitionRef<'a, 'ast> = &'a TypeDefinition<'a, 'ast>;
 
 impl<'a, 'ast> TypeDefinition<'a, 'ast> {
-    pub fn new(name: String, kind: TypeKind, ast: &'ast ast::TypeDeclaration) -> TypeDefinition<'a, 'ast> {
+    pub fn new(name: String, kind: TypeKind,
+               package: PackageRef<'a, 'ast>,
+               ast: &'ast ast::TypeDeclaration) -> TypeDefinition<'a, 'ast> {
         TypeDefinition {
             fq_name: Name::fresh(name),
             kind: kind,
+            package: package,
             fields: RefCell::new(HashMap::new()),
             methods: RefCell::new(HashMap::new()),
             constructors: RefCell::new(HashMap::new()),

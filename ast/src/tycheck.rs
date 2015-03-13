@@ -426,7 +426,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
             }
             FieldAccess(box ref target, ref name) => {
                 let texpr = self.expr(target);
-                Environment::resolve_field_access(expr.span, texpr, name)
+                self.env.resolve_field_access(expr.span, texpr, name)
                     .unwrap_or_else(dummy_expr_)
             }
             NamedMethodInvocation(ref _name, ref args) => {
@@ -441,8 +441,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                 let _targs: Vec<_> = args.iter()
                     .map(|arg| self.expr(arg))
                     .collect();
-                Environment::resolve_expr_method_access(expr.span, _tcallee,
-                                                        _name, _targs)
+                self.env.resolve_expr_method_access(expr.span, _tcallee, _name, _targs)
                     .unwrap_or_else(dummy_expr_)
             }
             ArrayAccess(box ref array, box ref ix) => {

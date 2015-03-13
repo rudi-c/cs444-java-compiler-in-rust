@@ -332,14 +332,26 @@ impl<'a, 'ast> Environment<'a, 'ast> {
         })
     }
 
-    pub fn resolve_field_access(span: Span, texpr: TypedExpression<'a, 'ast>, name: &Ident)
+    pub fn resolve_field_access(&self, span: Span, texpr: TypedExpression<'a, 'ast>, name: &Ident)
             -> Option<(TypedExpression_<'a, 'ast>, Type<'a, 'ast>)> {
         // FIXME: bad clone
         match texpr.ty().clone() {
             Type::SimpleType(SimpleType::Other(tyref)) => {
                 if let Some(&field) = tyref.fields.borrow().get(&name.node) {
+                    // ($6.6.2) Protected access rules.
+                    // Access to protected members allowed within the same package
+                    // or in subtypes.
+                    if field.is_protected() && self.package != tyref.package {
+                        if !field.origin.dominates(self.enclosing_type) ||
+                           !self.enclosing_type.dominates(tyref) {
+                            span_error!(span,
+                                        "cannot access protected field `{}` of `{}`",
+                                        name, tyref.fq_name);
+                        }
+                    }
+
                     Some((TypedExpression_::FieldAccess(box texpr, field),
-                          field.ty.clone()))
+                         field.ty.clone()))
                 } else {
                     span_error!(span,
                                 "reference type `{}` has no field `{}`",
@@ -390,8 +402,8 @@ impl<'a, 'ast> Environment<'a, 'ast> {
             [ref ident] => {
                 // "If it is a simple name, that is, just an Identifier,
                 // then the name of the method is the Identifier."
-                Environment::resolve_typedef_method_access(span, self.enclosing_type,
-                                                           ident, targ_exprs)
+                self.resolve_typedef_method_access(span, self.enclosing_type,
+                                                   ident, targ_exprs)
             },
             [init.., ref last] => {
                 // "If it is a qualified name of the form TypeName . Identifier"
@@ -400,12 +412,12 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                 // can be more than just fields - e.g. local variables)
                 match self.resolve_ambiguous_path(init) {
                     AmbiguousResult::Type(typedef) => {
-                        Environment::resolve_typedef_method_access(span, typedef,
-                                                                   last, targ_exprs)
+                        self.resolve_typedef_method_access(span, typedef,
+                                                           last, targ_exprs)
                     },
                     AmbiguousResult::Expression(texpr) => {
-                        Environment::resolve_expr_method_access(span, texpr,
-                                                                last, targ_exprs)
+                        self.resolve_expr_method_access(span, texpr,
+                                                        last, targ_exprs)
                     },
                     _ => {
                         span_error!(span, "no type for method invocation found");
@@ -419,8 +431,21 @@ impl<'a, 'ast> Environment<'a, 'ast> {
         }
     }
 
+    // ($6.2.2) Checks that we can access a given method.
+    fn check_method_access_allowed(&self, span: Span, method: MethodRef<'a, 'ast>,
+                                   tyref: TypeDefinitionRef<'a, 'ast>) {
+        if method.is_protected() && self.package != tyref.package {
+            if !method.origin.dominates(self.enclosing_type) ||
+               !self.enclosing_type.dominates(tyref) {
+                span_error!(span,
+                            "cannot access protected method `{}` of `{}`",
+                            method.fq_name, tyref.fq_name);
+            }
+        }
+    }
+
     // Resolve a method that is called on an expression.
-    pub fn resolve_expr_method_access(span: Span, texpr: TypedExpression<'a, 'ast>,
+    pub fn resolve_expr_method_access(&self, span: Span, texpr: TypedExpression<'a, 'ast>,
                                       name: &Ident, targ_exprs: Vec<TypedExpression<'a, 'ast>>)
             -> Option<(TypedExpression_<'a, 'ast>, Type<'a, 'ast>)> {
 
@@ -433,6 +458,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
         match texpr.ty().clone() {
             Type::SimpleType(SimpleType::Other(tyref)) => {
                 if let Some(&method) = tyref.methods.borrow().get(&signature) {
+                    self.check_method_access_allowed(span, method, tyref);
                     Some((TypedExpression_::MethodInvocation(Some(box texpr),
                                                              method,
                                                              targ_exprs),
@@ -469,7 +495,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
     }
 
     // Resolve a method that is called directly.
-    fn resolve_typedef_method_access(span: Span, tyref: TypeDefinitionRef<'a, 'ast>,
+    fn resolve_typedef_method_access(&self, span: Span, tyref: TypeDefinitionRef<'a, 'ast>,
                                      name: &Ident, targ_exprs: Vec<TypedExpression<'a, 'ast>>)
             -> Option<(TypedExpression_<'a, 'ast>, Type<'a, 'ast>)> {
 
@@ -479,6 +505,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
         let signature = MethodSignature { name: name.node, args: arg_types };
 
         if let Some(&method) = tyref.methods.borrow().get(&signature) {
+            self.check_method_access_allowed(span, method, tyref);
             Some((TypedExpression_::MethodInvocation(None, method, targ_exprs),
                   method.ret_ty.clone()))
         } else {
@@ -546,7 +573,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                         }
                     }
                     AmbiguousResult::Expression(expr) => {
-                        Environment::resolve_field_access(path.into_span(), expr, last)
+                        self.resolve_field_access(path.into_span(), expr, last)
                     }
                     AmbiguousResult::Unknown => None
                 }
@@ -581,7 +608,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
             [init.., ref last] => {
                 match self.resolve_ambiguous_path(init) {
                     AmbiguousResult::Expression(expr) => {
-                        if let Some(expr) = Environment::resolve_field_access(span, expr, last) {
+                        if let Some(expr) = self.resolve_field_access(span, expr, last) {
                             AmbiguousResult::Expression(spanned(span, expr))
                         } else {
                             AmbiguousResult::Unknown

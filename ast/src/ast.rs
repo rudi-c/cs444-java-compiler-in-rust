@@ -91,6 +91,12 @@ pub struct Field_ {
 }
 pub type Field = Spanned<Field_>;
 
+impl Field_ {
+    pub fn has_modifier(&self, modifier: Modifier_) -> bool {
+        self.modifiers.iter().any(|spanned| spanned.node == modifier)
+    }
+}
+
 #[derive(Show)]
 pub struct Interface_ {
     pub name: Ident,
