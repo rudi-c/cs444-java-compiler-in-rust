@@ -158,9 +158,10 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                                 target, source);
                 }
             }
-            // and (some) other array types
-            (&Type::ArrayType(ref expect_inner), &Type::ArrayType(ref expr_inner)) => {
-                self.check_simple_widening(span, expect_inner, expr_inner);
+            (&Type::ArrayType(_), &Type::ArrayType(_)) => {
+                span_error!(span,
+                            "cannot convert from array type `{}` to array type `{}`",
+                            target, source);
             }
             // ... but not primitive types
             (&Type::SimpleType(_), &Type::ArrayType(_)) => {
