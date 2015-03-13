@@ -57,6 +57,16 @@ fn check_lvalue<'a, 'ast>(expr: &TypedExpression<'a, 'ast>) {
     }
 }
 
+fn numeric_width<'a, 'ast>(ty: &SimpleType<'a, 'ast>) -> i32 {
+    use middle::SimpleType::*;
+    match *ty {
+        Byte => 1,
+        Short | Char => 2,
+        Int => 4,
+        _ => panic!("not numeric")
+    }
+}
+
 impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
     /// Is `sub` a subtype of `sup`?
     /// (Every type is a subtype of `Object`.)
@@ -97,14 +107,6 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
             }
             Byte | Short | Int => match *source {
                 Byte | Short | Char | Int => {
-                    fn numeric_width<'a, 'ast>(ty: &SimpleType<'a, 'ast>) -> i32 {
-                        match *ty {
-                            Byte => 1,
-                            Short | Char => 2,
-                            Int => 4,
-                            _ => panic!("not numeric")
-                        }
-                    }
                     if numeric_width(target) <= numeric_width(source) {
                         Err(format!("cast required for narrowing conversion from `{}` to `{}`",
                                     source, target))
@@ -214,16 +216,41 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
         }
     }
 
+    // (5.1.3) Narrowing conversion rules
+    fn check_narrowing_conversion(&self, target: &Type<'a, 'ast>, source: &Type<'a, 'ast>) -> bool {
+        use middle::SimpleType::*;
+        match (target, source) {
+            (&Type::SimpleType(ref starget), &Type::SimpleType(ref ssource)) => {
+                match (starget, ssource) {
+                    (&Byte, &Char) => true,
+                    _ => {
+                        if starget.is_numeric() && ssource.is_numeric() {
+                            numeric_width(starget) <= numeric_width(ssource)
+                        } else {
+                            false
+                        }
+                    }
+                }
+            }
+            _ => false
+        }
+    }
+
+
     // Returns whether there is a legal Casting Conversion ($5.5)
     // from from `source` to `target`
     // TODO: Make sure the marmoset test cases cover every single one of these rules.
     fn check_casting_conversion(&self,
                                 target: &Type<'a, 'ast>,
                                 source: &Type<'a, 'ast>) -> bool {
-        match self.check_widening(source, target) {
+        match self.check_widening(target, source) {
             Ok(_) => { return true }
             _ => {}
         };
+
+        if self.check_narrowing_conversion(target, source) {
+            return true
+        }
 
         match (source, target) {
             (&Type::SimpleType(SimpleType::Other(source_tydef)),
@@ -610,7 +637,8 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                             // OK, bool equality
                         } else if lty.is_reference() && rty.is_reference() {
                             // OK, reference equality with casting conversions
-                            if !self.check_casting_conversion(&lty, &rty) {
+                            if !self.check_casting_conversion(&lty, &rty) &&
+                               !self.check_casting_conversion(&rty, &lty) {
                                 span_error!(expr.span,
                                             "type mismatch: cannot cast between `{}` and `{}`",
                                             lty, rty);
@@ -663,12 +691,16 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                 };
                 (TypedExpression_::Infix(op, box tl, box tr), ty)
             }
-            Cast(ref to, box ref expr) => {
-                let e = self.expr(expr);
-                let ty = self.env.resolve_type(to);
-                // FIXME check valid cast
+            Cast(ref target, box ref expr) => {
+                let texpr = self.expr(expr);
+                let target_ty = self.env.resolve_type(target);
                 // TODO distinguish between down and upcasts, for codegen
-                (TypedExpression_::Cast(ty.clone(), box e), ty)
+                if !self.check_casting_conversion(&target_ty, texpr.ty()) {
+                    span_error!(expr.span,
+                                "type mismatch: cannot cast from `{}` to `{}`",
+                                texpr.ty(), target_ty);
+                }
+                (TypedExpression_::Cast(target_ty.clone(), box texpr), target_ty)
             }
         }
     }
