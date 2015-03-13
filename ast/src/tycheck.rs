@@ -13,7 +13,7 @@ struct Typer<'l, 'a: 'l, 'ast: 'a> {
     arena: &'a Arena<'a, 'ast>,
     env: Environment<'a, 'ast>,
     // FIXME: This is not really the right place for this, IMO
-    method: Option<MethodRef<'a, 'ast>>,
+    method: Option<MethodImplRef<'a, 'ast>>,
     lang_items: &'l LangItems<'a, 'ast>,
 
     // true if we are typing a static method or field, can't access implicit
@@ -725,14 +725,14 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
 
 pub fn populate_method<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
                                  env: Environment<'a, 'ast>,
-                                 method: MethodRef<'a, 'ast>,
+                                 method: MethodImplRef<'a, 'ast>,
                                  lang_items: &LangItems<'a, 'ast>) {
     let mut typer = Typer {
         arena: arena,
         env: env,
         method: Some(method),
         lang_items: lang_items,
-        require_static: method.is_static(),
+        require_static: method.is_static,
     };
     *method.args.borrow_mut() = method.ast.params.iter().map(|decl| typer.new_var(decl)).collect();
     if let Some(ref block) = method.ast.body {

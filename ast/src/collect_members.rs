@@ -4,13 +4,17 @@ use arena::Arena;
 use name::*;
 
 use middle::*;
-use name_resolve::{Environment};
+use name_resolve::{Environment, ToPopulate};
 use lang_items::LangItems;
 
-struct Collector<'env, 'a: 'env, 'ast: 'a> {
+use std::collections::HashMap;
+
+struct Collector<'env, 'out, 'a: 'env + 'out, 'ast: 'a> {
     arena: &'a Arena<'a, 'ast>,
     env: &'env Environment<'a, 'ast>,
+    inherited_methods: HashMap<MethodSignature<'a, 'ast>, Vec<(TypeDefinitionRef<'a, 'ast>, MethodRef<'a, 'ast>)>>,
     type_definition: TypeDefinitionRef<'a, 'ast>,
+    to_populate: &'out mut Vec<ToPopulate<'a, 'ast>>,
 }
 
 fn insert_field<'a, 'ast>(tydef: TypeDefinitionRef<'a, 'ast>,
@@ -29,67 +33,117 @@ fn insert_field<'a, 'ast>(tydef: TypeDefinitionRef<'a, 'ast>,
     }
 }
 
-fn insert_method<'a, 'ast>(tydef: TypeDefinitionRef<'a, 'ast>,
+// If `defined` is Some(Method { ... }), then it MUST have an attached AST node.
+fn create_method<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
+                           tydef: TypeDefinitionRef<'a, 'ast>,
                            signature: MethodSignature<'a, 'ast>,
-                           method: MethodRef<'a, 'ast>) {
-    if let Some(old) = tydef.methods.borrow_mut().insert(signature.clone(), method) {
-        // override
-        if old.fq_name == method.fq_name {
-            // this is okay
-        } else if old.origin == tydef {
-            assert_eq!(method.origin, tydef);
-            // not really an override
-            span_error!(method.ast.span, "method `{}` already defined in `{}`",
-                        signature, tydef.fq_name);
-        } else if old.ret_ty != method.ret_ty {
-            // dOvs well-formedness constraint 6
-            span_error!(method.ast.span, "overrided method `{}` has the wrong return type (expected `{}`, found `{}`)",
-                        signature,
-                        old.ret_ty, method.ret_ty);
-        } else if method.has_modifier(ast::Modifier_::Static) != old.has_modifier(ast::Modifier_::Static) {
-            // dOvs well-formedness constraint 5
-            // XXX: deduplicate code
-            span_error!(method.ast.span,
-                        "{} method `{}` in `{}` cannot override {} method in `{}`",
-                        if method.has_modifier(ast::Modifier_::Static) { "static" } else { "instance" },
-                        signature,
-                        method.origin.fq_name,
-                        if old.has_modifier(ast::Modifier_::Static) { "static" } else { "instance" },
-                        old.origin.fq_name);
-        } else if method.has_modifier(ast::Modifier_::Protected) &&
-            old.has_modifier(ast::Modifier_::Public) {
-            // dOvs well-formedness constraint 7
-            span_error!(method.ast.span,
-                        "protected method `{}` in `{}` cannot override public method in `{}`",
-                        signature,
-                        method.origin.fq_name,
-                        old.origin.fq_name);
-        } else if old.has_modifier(ast::Modifier_::Final) {
+                           inherited: &[(TypeDefinitionRef<'a, 'ast>, MethodRef<'a, 'ast>)],
+                           defined: Option<MethodRef<'a, 'ast>>) {
+
+    let inherited_final = inherited.iter().find(|&&(_, ref method)| method.is_final)
+        .map(|&(origin, _)| origin);
+
+    let method = if let Some(method) = defined {
+        if let Some(old_origin) = inherited_final {
             // dOvs well-formedness constraint 9
-            span_error!(method.ast.span,
+            span_error!(method.ast.unwrap().span,
                         "method `{}` in `{}` cannot override final method in `{}`",
                         signature,
-                        method.origin.fq_name,
-                        old.origin.fq_name);
+                        tydef.fq_name,
+                        old_origin.fq_name);
         }
+        method
+    } else {
+        // Synthesize a method.
+        assert!(inherited.len() > 0);
+        let impled = inherited.iter()
+        // don't inherit stuff from interfaces
+        .filter(|&&(origin, _)| origin.kind == TypeKind::Class)
+        .fold(Abstract, |cur, &(_, method)| match (cur, &method.impled) {
+            (Abstract, x) => x.clone(),
+            (x @ Concrete(..), &Abstract) => x,
+            (Concrete(..), &Concrete(..)) => panic!("inherited two impls!?")
+        });
+        let accessibility = if inherited.iter().any(|&(_, method)| matches!(Public, method.accessibility)) {
+            Public
+        } else {
+            inherited.last().unwrap().1.accessibility.clone()
+        };
+        arena.alloc(Method::new(inherited[0].1.fq_name.to_string(),
+                                inherited[0].1.ret_ty.clone(),
+                                impled,
+                                inherited_final.is_some(),
+                                inherited[0].1.is_static,
+                                accessibility,
+                                None))
+    };
+
+    let span = if let Some(ast) = method.ast { ast.span } else { tydef.ast.span };
+
+    for &(parent_ty, parent_method) in inherited.iter() {
+        // dOvs well-formedness constraint 6: check return types equal
+        if parent_method.ret_ty != method.ret_ty {
+            if let Some(ast) = method.ast {
+                span_error!(ast.span,
+                            "overrided method `{}` has the wrong return type (expected `{}`, found `{}`)",
+                            signature, parent_method.ret_ty, method.ret_ty);
+            } else {
+                span_error!(tydef.ast.span,
+                            "bad inheritance: incompatible return types for method `{}` (expected `{}`, found `{}`)",
+                            signature, parent_method.ret_ty, method.ret_ty);
+                span_note!(tydef.ast.span,
+                           "conflicting methods inherited from types `{}`, `{}`",
+                           parent_ty.fq_name, inherited[0].0.fq_name);
+            }
+            break;
+        }
+
+        // dOvs well-formedness constraint 5: check static-ness equal
+        if parent_method.is_static != method.is_static {
+            span_error!(span,
+                        "{} method `{}` in `{}` cannot override {} method in `{}`",
+                        if method.is_static { "static" } else { "instance" },
+                        signature,
+                        tydef.fq_name,
+                        if parent_method.is_static { "static" } else { "instance" },
+                        parent_ty.fq_name);
+        }
+
+        // dOvs well-formedness constraint 7: check visibility
+        if matches!(Public, parent_method.accessibility) && matches!(Protected(..), method.accessibility) {
+            span_error!(span,
+                        "protected method `{}` in `{}` cannot override public method in `{}`",
+                        signature,
+                        tydef.fq_name,
+                        parent_ty.fq_name);
+        }
+    }
+
+    if let Some(old) = tydef.methods.borrow_mut().insert(signature.clone(), method) {
+        span_error!(method.ast.unwrap().span,
+                    "method `{}` already defined in `{}`",
+                    signature,
+                    tydef.fq_name);
+        span_note!(old.ast.unwrap().span,
+        "the old definition is here");
     }
 }
 
-impl<'env, 'a, 'ast> Walker<'ast> for Collector<'env, 'a, 'ast> {
+impl<'env, 'out, 'a, 'ast> Walker<'ast> for Collector<'env, 'out, 'a, 'ast> {
     fn walk_class_field(&mut self, field: &'ast ast::Field) {
         let tydef = self.type_definition;
         let field_name = field.node.name.node;
         let fq_name = format!("{}.{}", tydef.fq_name, field_name);
         let ty = self.env.resolve_type(&field.node.ty);
-        insert_field(tydef, field_name, self.arena.alloc(Field::new(fq_name, tydef, ty, field)));
+        let field = self.arena.alloc(Field::new(fq_name, tydef, ty, field));
+        self.to_populate.push(ToPopulate::Field(field));
+        insert_field(tydef, field_name, field);
 
         // FIXME: Add the field to env?
 
         // no need to walk deeper
     }
-    fn walk_class_method(&mut self, method_ast: &'ast ast::Method) {
-        // Note: Implementation is shared with interface methods
-
+    fn walk_method(&mut self, method_ast: &'ast ast::Method) {
         let tydef = self.type_definition;
         let method_name = method_ast.node.name.node;
         let signature = MethodSignature {
@@ -100,24 +154,33 @@ impl<'env, 'a, 'ast> Walker<'ast> for Collector<'env, 'a, 'ast> {
         };
         let ret_ty = self.env.resolve_type(&method_ast.node.return_type);
         let fq_name = format!("{}.{}", tydef.fq_name, signature);
+        let is_final = method_ast.node.has_modifier(ast::Modifier_::Final);
+        let is_static = method_ast.node.has_modifier(ast::Modifier_::Static);
+        let accessibility = if method_ast.node.has_modifier(ast::Modifier_::Protected) {
+            Protected(tydef)
+        } else {
+            Public
+        };
 
         let impled = match tydef.kind {
             TypeKind::Class => if method_ast.node.has_modifier(ast::Modifier_::Abstract) {
                 Abstract
             } else {
-                Concrete
+                let method_impl = self.arena.alloc(
+                    MethodImpl::new(fq_name.clone(), tydef, ret_ty.clone(), is_static, method_ast));
+                self.to_populate.push(ToPopulate::Method(method_impl));
+                Concrete(method_impl)
             },
             TypeKind::Interface => Abstract,
         };
 
-        insert_method(tydef, signature, self.arena.alloc(
-                Method::new(fq_name, tydef, ret_ty, impled, method_ast)));
+        let method = self.arena.alloc(
+            Method::new(fq_name, ret_ty, impled, is_final, is_static, accessibility, Some(method_ast)));
+
+        let inherited = self.inherited_methods.remove(&signature).unwrap_or_default();
+        create_method(self.arena, tydef, signature, &*inherited, Some(method));
 
         // no need to walk deeper
-    }
-    fn walk_interface_method(&mut self, method: &'ast ast::Method) {
-        // same as a class method
-        self.walk_class_method(method);
     }
     fn walk_constructor(&mut self, ast: &'ast ast::Constructor) {
         let tydef = self.type_definition;
@@ -125,6 +188,7 @@ impl<'env, 'a, 'ast> Walker<'ast> for Collector<'env, 'a, 'ast> {
         // XXX
         let fq_name = format!("{}.{}", tydef.fq_name, MethodSignature { name: Symbol::from_str("<ctor>"), args: args.clone() });
         let ctor = self.arena.alloc(Constructor::new(fq_name, ast));
+        self.to_populate.push(ToPopulate::Constructor(ctor));
         if let Some(old) = tydef.constructors.borrow_mut().insert(args.clone(), ctor) {
             span_error!(ast.span, "constructor is already defined in `{}`", tydef.fq_name);
             span_note!(old.ast.span, "the old definition is here");
@@ -135,24 +199,46 @@ impl<'env, 'a, 'ast> Walker<'ast> for Collector<'env, 'a, 'ast> {
 pub fn collect_members<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
                                  env: &Environment<'a, 'ast>,
                                  tydef: TypeDefinitionRef<'a, 'ast>,
-                                 lang_items: &LangItems<'a, 'ast>) {
+                                 lang_items: &LangItems<'a, 'ast>)
+-> Vec<ToPopulate<'a, 'ast>> {
+    let mut inherited_methods = HashMap::new();
     // Bring in parent members
-    for &parent in Some(&lang_items.object).into_iter()
-        .chain(tydef.implements.borrow().iter())
-        .chain(tydef.extends.borrow().iter()) {
+    for &parent in {
+        // Inherit from `Object`, unless we explicitly extend some class (from which we indirectly
+        // inherit from Object).
+        if tydef.kind == TypeKind::Interface || tydef.extends.borrow().len() == 0 {
+            Some(&lang_items.object)
+        } else {
+            None
+        }
+    }.into_iter()
+    .chain(tydef.implements.borrow().iter())
+    .chain(tydef.extends.borrow().iter()) {
         for (signature, &method) in parent.methods.borrow().iter() {
-            insert_method(tydef, signature.clone(), method);
+            inherited_methods.entry(signature.clone()).get()
+                .unwrap_or_else(|v| v.insert(vec![]))
+                .push((tydef, method));
         }
         for (&name, &field) in parent.fields.borrow().iter() {
             insert_field(tydef, name, field);
         }
     }
-    Collector {
-        arena: arena,
-        env: env,
-        type_definition: tydef,
-    }.walk_type_declaration(tydef.ast);
+    let mut r = vec![];
+    {
+        let mut collector = Collector {
+            arena: arena,
+            env: env,
+            type_definition: tydef,
+            inherited_methods: inherited_methods,
+            to_populate: &mut r,
+        };
+        collector.walk_type_declaration(tydef.ast);
+        for (signature, v) in collector.inherited_methods.into_iter() {
+            create_method(arena, tydef, signature, &*v, None);
+        }
+    }
     // TODO: This would be a good place to check that all methods have
     // been implemented (no method with no body that isn't abstract).
+    r
 }
 

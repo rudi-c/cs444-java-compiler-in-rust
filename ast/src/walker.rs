@@ -13,6 +13,7 @@ pub trait Walker<'a>: Sized {
     fn walk_class(&mut self, class: &'a Class) { default_walk_class(self, class); }
     fn walk_class_method(&mut self, method: &'a Method) { default_walk_class_method(self, method); }
     fn walk_class_field(&mut self, field: &'a Field) { default_walk_class_field(self, field); }
+    fn walk_method(&mut self, method: &'a Method) { default_walk_method(self, method); }
     fn walk_variable_declaration(&mut self, decl: &'a VariableDeclaration) { default_walk_variable_declaration(self, decl); }
     fn walk_local_variable(&mut self, var: &'a LocalVariable) { default_walk_local_variable(self, var); }
     fn walk_constructor(&mut self, ctor: &'a Constructor) { default_walk_constructor(self, ctor); }
@@ -41,7 +42,8 @@ pub fn default_walk_interface<'a, T: Walker<'a>>(walker: &mut T, interface: &'a 
         walker.walk_interface_method(method);
     }
 }
-pub fn default_walk_interface_method<'a, T: Walker<'a>>(_walker: &mut T, _method: &'a Method) {
+pub fn default_walk_interface_method<'a, T: Walker<'a>>(walker: &mut T, method: &'a Method) {
+    walker.walk_method(method);
 }
 pub fn default_walk_class<'a, T: Walker<'a>>(walker: &mut T, class: &'a Class) {
     for body_declaration in class.node.body.iter() {
@@ -68,16 +70,19 @@ pub fn default_walk_constructor<'a, T: Walker<'a>>(walker: &mut T, ctor: &'a Con
     walker.walk_block(&ctor.node.body);
 }
 pub fn default_walk_class_method<'a, T: Walker<'a>>(walker: &mut T, method: &'a Method) {
+    walker.walk_method(method);
+}
+pub fn default_walk_class_field<'a, T: Walker<'a>>(walker: &mut T, field: &'a Field) {
+    if let Some(ref init) = field.node.initializer {
+        walker.walk_expression(init);
+    }
+}
+pub fn default_walk_method<'a, T: Walker<'a>>(walker: &mut T, method: &'a Method) {
     for decl in method.node.params.iter() {
         walker.walk_variable_declaration(decl);
     }
     if let Some(ref body) = method.node.body {
         walker.walk_block(body);
-    }
-}
-pub fn default_walk_class_field<'a, T: Walker<'a>>(walker: &mut T, field: &'a Field) {
-    if let Some(ref init) = field.node.initializer {
-        walker.walk_expression(init);
     }
 }
 pub fn default_walk_block<'a, T: Walker<'a>>(walker: &mut T, block: &'a Block) {

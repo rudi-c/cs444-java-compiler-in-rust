@@ -33,6 +33,7 @@ make_arena! {
     package: Package,
     field: Field,
     method: Method,
+    method_impl: MethodImpl,
     tydef: TypeDefinition,
     var: VariableDef,
     ctor: Constructor

@@ -422,7 +422,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                         let resolved = self.resolve_typedef_method_access(span, typedef,
                                                                           last, targ_exprs);
                         if let Some((TypedExpression_::MethodInvocation(_, method, _), _)) = resolved {
-                            if !method.is_static() {
+                            if !method.is_static {
                                 span_error!(span, "calling non-static method on type");
                             }
                         }
@@ -432,7 +432,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                         let resolved = self.resolve_expr_method_access(span, texpr,
                                                                        last, targ_exprs);
                         if let Some((TypedExpression_::MethodInvocation(_, method, _), _)) = resolved {
-                            if method.is_static() {
+                            if method.is_static {
                                 span_error!(span, "calling static method on instance");
                             }
                         }
@@ -466,14 +466,16 @@ impl<'a, 'ast> Environment<'a, 'ast> {
     }
 
     // ($6.2.2) Checks that we can access a given method.
-    fn check_method_access_allowed(&self, span: Span, method: MethodRef<'a, 'ast>,
+    fn check_method_access_allowed(&self, span: Span,
+                                   method: MethodRef<'a, 'ast>,
                                    tyref: TypeDefinitionRef<'a, 'ast>) {
-        if method.is_protected() && self.package != tyref.package {
-            if !method.origin.dominates(self.enclosing_type) ||
-               (!method.is_static() && !self.enclosing_type.dominates(tyref)) {
+        if let Protected(defining_type) = method.accessibility {
+            if self.package != tyref.package
+                && (!defining_type.dominates(self.enclosing_type) ||
+                    (!method.is_static && !self.enclosing_type.dominates(tyref))) {
                 span_error!(span,
-                            "cannot access protected method `{}` of `{}`",
-                            method.fq_name, tyref.fq_name);
+                            "cannot access protected method `{}` of `{}` defined in `{}`",
+                            method.fq_name, tyref.fq_name, defining_type.fq_name);
             }
         }
     }
@@ -965,7 +967,7 @@ fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
         // Add the type itself to the environment.
         env.types = insert_declared_type(&env.types, name, tydef);
 
-        collect_members(arena, &env, tydef, lang_items);
+        let to_populate = collect_members(arena, &env, tydef, lang_items);
 
         env.add_fields(tydef);
 
@@ -973,32 +975,22 @@ fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
             // ($8.1.1.1) well-formedness contraint 4 - abstract methods => abstract class
             let should_be_abstract =
                 tydef.methods.borrow().iter()
-                    .any(|(_, &method)| method.impled == Abstract);
+                    .any(|(_, &method)| matches!(Abstract, method.impled));
             if should_be_abstract && !tydef.has_modifier(ast::Modifier_::Abstract) {
                 span_error!(tydef.ast.span,
                             "class with abstract methods must be abstract");
             }
         }
 
-        for (_, &method) in tydef.methods.borrow().iter() {
-            if method.origin == tydef {
-                r.push((env.clone(), ToPopulate::Method(method)));
-            }
-        }
-        for (_, &constructor) in tydef.constructors.borrow().iter() {
-            r.push((env.clone(), ToPopulate::Constructor(constructor)));
-        }
-        for (_, &field) in tydef.fields.borrow().iter() {
-            if field.origin == tydef {
-                r.push((env.clone(), ToPopulate::Field(field)));
-            }
+        for v in to_populate.into_iter() {
+            r.push((env.clone(), v));
         }
     }
     r
 }
 
-enum ToPopulate<'a, 'ast: 'a> {
-    Method(MethodRef<'a, 'ast>),
+pub enum ToPopulate<'a, 'ast: 'a> {
+    Method(MethodImplRef<'a, 'ast>),
     Constructor(ConstructorRef<'a, 'ast>),
     Field(FieldRef<'a, 'ast>),
 }

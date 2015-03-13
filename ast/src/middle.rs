@@ -8,6 +8,7 @@ use std::cmp::{Ord, Ordering};
 use std::{fmt, hash};
 
 pub use self::Impled::*;
+pub use self::Accessibility::*;
 
 // In this file, the variable name prefix 'fq_' abbreviates fully_qualified_
 
@@ -107,53 +108,80 @@ pub struct MethodSignature<'a, 'ast: 'a> {
     pub args: Arguments<'a, 'ast>,
 }
 
-#[derive(Show, Clone, Copy, PartialEq, Eq)]
-pub enum Impled {
+#[derive(Show, Clone)]
+pub enum Impled<'a, 'ast: 'a> {
     Abstract,
-    Concrete,
+    Concrete(MethodImplRef<'a, 'ast>),
+}
+
+#[derive(Show, Clone)]
+pub enum Accessibility<'a, 'ast: 'a> {
+    Protected(TypeDefinitionRef<'a, 'ast>),
+    Public,
 }
 
 #[derive(Show)]
 pub struct Method<'a, 'ast: 'a> {
     pub fq_name: Name,
-    pub origin: TypeDefinitionRef<'a, 'ast>,
     pub ret_ty: Type<'a, 'ast>,
-    pub impled: Impled,
-    /// These can be None if the method has no implementation, or if we simply haven't reached the
-    /// typechecking phase yet.
-    pub body: RefCell<Option<TypedBlock<'a, 'ast>>>,
-    pub args: RefCell<Vec<VariableRef<'a, 'ast>>>,
-    pub ast: &'ast ast::Method,
+    pub impled: Impled<'a, 'ast>,
+    pub is_final: bool,
+    pub is_static: bool,
+    pub accessibility: Accessibility<'a, 'ast>,
+    // In the case of inheritance, there may be no associated AST fragment.
+    pub ast: Option<&'ast ast::Method>,
 }
 pub type MethodRef<'a, 'ast> = &'a Method<'a, 'ast>;
 
 impl<'a, 'ast> Method<'a, 'ast> {
     pub fn new(name: String,
+               ret_ty: Type<'a, 'ast>,
+               impled: Impled<'a, 'ast>,
+               is_final: bool,
+               is_static: bool,
+               accessibility: Accessibility<'a, 'ast>,
+               ast: Option<&'ast ast::Method>) -> Method<'a, 'ast> {
+        Method {
+            fq_name: Name::fresh(name),
+            ret_ty: ret_ty,
+            impled: impled,
+            is_final: is_final,
+            is_static: is_static,
+            accessibility: accessibility,
+            ast: ast,
+        }
+    }
+}
+
+#[derive(Show)]
+pub struct MethodImpl<'a, 'ast: 'a> {
+    pub fq_name: Name,
+    pub origin: TypeDefinitionRef<'a, 'ast>,
+    // FIXME: This is duplicated from Method
+    pub ret_ty: Type<'a, 'ast>,
+    pub is_static: bool,
+    // These are initially "uninitialized" (None or empty) until typechecking.
+    pub body: RefCell<Option<TypedBlock<'a, 'ast>>>,
+    pub args: RefCell<Vec<VariableRef<'a, 'ast>>>,
+    pub ast: &'ast ast::Method,
+}
+pub type MethodImplRef<'a, 'ast> = &'a MethodImpl<'a, 'ast>;
+
+impl<'a, 'ast> MethodImpl<'a, 'ast> {
+    pub fn new(name: String,
                origin: TypeDefinitionRef<'a, 'ast>,
                ret_ty: Type<'a, 'ast>,
-               impled: Impled,
-               ast: &'ast ast::Method) -> Method<'a, 'ast> {
-        Method {
+               is_static: bool,
+               ast: &'ast ast::Method) -> Self {
+        MethodImpl {
             fq_name: Name::fresh(name),
             origin: origin,
             ret_ty: ret_ty,
-            impled: impled,
+            is_static: is_static,
             body: RefCell::new(None),
             args: RefCell::new(vec![]),
             ast: ast,
         }
-    }
-
-    pub fn is_static(&self) -> bool {
-        self.has_modifier(ast::Modifier_::Static)
-    }
-
-    pub fn is_protected(&self) -> bool {
-        self.has_modifier(ast::Modifier_::Protected)
-    }
-
-    pub fn has_modifier(&self, modifier: ast::Modifier_) -> bool {
-        self.ast.node.has_modifier(modifier)
     }
 }
 

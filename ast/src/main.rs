@@ -22,6 +22,10 @@ use context::{Context, CONTEXT};
 use error::{FatalError, ErrorReporter, ERRORS};
 use name_resolve::name_resolve;
 
+macro_rules! matches {
+    ($p: pat, $e: expr) => (if let $p = $e { true } else { false });
+}
+
 pub mod span;
 pub mod file;
 pub mod context;
