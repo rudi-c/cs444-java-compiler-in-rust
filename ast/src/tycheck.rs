@@ -188,7 +188,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
 
     fn new_var(&mut self, var: &'ast ast::VariableDeclaration) -> VariableRef<'a, 'ast> {
         let def = self.arena.alloc(VariableDef::new(
-                format!("{}.{}", self.env.ty.fq_name, var.name),
+                format!("{}.{}", self.env.enclosing_type.fq_name, var.name),
                 self.env.resolve_type(&var.ty),
                 var));
         self.env.add_var(var.name.node, def);
@@ -276,7 +276,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
             Literal(ref lit) => self.lit(lit),
             This => {
                 // TODO: Check that `this` is legal here (i.e. that we're in an instance method)
-                (TypedExpression_::This, Type::object(self.env.ty))
+                (TypedExpression_::This, Type::object(self.env.enclosing_type))
             }
             NewStaticClass(ref id, ref args) => {
                 let tydef = self.env.resolve_type_name(&*id.parts);

@@ -42,7 +42,7 @@ pub struct Environment<'a, 'ast: 'a> {
     pub variables: VariablesEnvironment<'a, 'ast>,
     pub toplevel: PackageRef<'a, 'ast>,
     pub package: PackageRef<'a, 'ast>,
-    pub ty: TypeDefinitionRef<'a, 'ast>,
+    pub enclosing_type: TypeDefinitionRef<'a, 'ast>,
 
     // Search here for more types.
     pub on_demand_packages: Vec<PackageRef<'a, 'ast>>
@@ -60,7 +60,7 @@ impl<'a, 'ast> fmt::Show for Environment<'a, 'ast> {
             try!(writeln!(f, "\t\t{} => {:?}", name, var));
         }
         try!(writeln!(f, "\tcurrent package: {}", self.package.fq_name));
-        try!(writeln!(f, "\tcurrent type: {}", self.ty.fq_name));
+        try!(writeln!(f, "\tenclosing type: {}", self.enclosing_type.fq_name));
         try!(writeln!(f, "}}"));
         Ok(())
     }
@@ -384,7 +384,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                 Some((TypedExpression_::Variable(var), var.ty.clone()))
             }
             Some(&Variable::Field(field)) => {
-                let this_ty = Type::object(self.ty);
+                let this_ty = Type::object(self.enclosing_type);
                 let this = spanned(ident.span, (TypedExpression_::This, this_ty));
                 // TODO: check static / non-static
                 Some((TypedExpression_::FieldAccess(box this, field), field.ty.clone()))
@@ -736,7 +736,7 @@ fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
                     variables: RbMap::new(),
                     toplevel: toplevel,
                     package: package,
-                    ty: tydef,
+                    enclosing_type: tydef,
                     on_demand_packages: on_demand_packages,
                 };
 
