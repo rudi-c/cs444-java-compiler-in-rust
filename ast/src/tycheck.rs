@@ -464,9 +464,19 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                  ty)
             }
             InstanceOf(box ref obj, ref tyname) => {
+                // ($15.20.2) instanceof rules
                 let tobj = self.expr(obj);
                 let ty = self.env.resolve_type(tyname);
-                // TODO: do we need to check that `ty` is anything in particular?
+
+                if !tobj.ty().is_reference() && !tobj.ty().is_null() {
+                    span_error!(obj.span,
+                                "type mismatch: expected reference type, found `{}`", tobj.ty());
+                }
+                if !ty.is_reference() {
+                    span_error!(tyname.span,
+                                "type mismatch: expected reference type, found `{}`", ty);
+                }
+
                 (TypedExpression_::InstanceOf(box tobj, ty),
                  Type::SimpleType(SimpleType::Boolean))
             }
