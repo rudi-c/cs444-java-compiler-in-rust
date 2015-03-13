@@ -1,6 +1,7 @@
 use middle::*;
 use name::Symbol;
 
+#[derive(Clone)]
 pub struct LangItems<'a, 'ast: 'a> {
     /// `java.lang`
     pub lang: PackageRef<'a, 'ast>,

@@ -44,6 +44,8 @@ pub struct Environment<'a, 'ast: 'a> {
     pub package: PackageRef<'a, 'ast>,
     pub enclosing_type: TypeDefinitionRef<'a, 'ast>,
 
+    pub lang_items: LangItems<'a, 'ast>,
+
     // Search here for more types.
     pub on_demand_packages: Vec<PackageRef<'a, 'ast>>
 }
@@ -517,8 +519,9 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                 None
             }
             ref ty @ Type::ArrayType(_) => {
-                // TODO: Method for array types.
-                None
+                // Array types have the same methods as Object does.
+                self.resolve_typedef_method_access(span, self.lang_items.object,
+                                                   name, targ_exprs)
             }
             Type::Null => {
                 span_error!(span,
@@ -927,6 +930,7 @@ fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
                     toplevel: toplevel,
                     package: package,
                     enclosing_type: tydef,
+                    lang_items: lang_items.clone(),
                     on_demand_packages: on_demand_packages,
                 };
 
