@@ -60,18 +60,20 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
         false
     }
 
-    // Check that there is a legal widening conversion from `ety` to `expect`.
+    // Check that there is a legal widening conversion from `source` to `target`.
     // Emits an error if there is not.
-    fn check_simple_widening(&self, span: Span, expect: &SimpleType<'a, 'ast>, ety: &SimpleType<'a, 'ast>) {
+    fn check_simple_widening(&self, span: Span,
+                             source: &SimpleType<'a, 'ast>,
+                             target: &SimpleType<'a, 'ast>) {
         use middle::SimpleType::*;
-        if expect == ety {
+        if source == target {
             return;
         }
-        match *expect {
+        match *source {
             Char | Boolean => {
-                span_error!(span, "no implicit conversion to `{}`", expect);
+                span_error!(span, "no implicit conversion to `{}`", source);
             }
-            Byte | Short | Int => match *ety {
+            Byte | Short | Int => match *target {
                 Byte | Short | Char | Int => {
                     fn numeric_width<'a, 'ast>(ty: &SimpleType<'a, 'ast>) -> i32 {
                         match *ty {
@@ -81,51 +83,51 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                             _ => panic!("not numeric")
                         }
                     }
-                    if numeric_width(expect) < numeric_width(ety) {
+                    if numeric_width(source) < numeric_width(target) {
                         span_error!(span,
                                     "cast required for narrowing conversion from `{}` to `{}`",
-                                    ety, expect);
+                                    target, source);
                     }
                 }
                 Boolean => {
                     span_error!(span,
                                 "cannot convert from `{}` to `{}`",
-                                ety, expect);
+                                target, source);
                 }
                 _ => {
                     span_error!(span,
                                 "cannot convert from non-primitive type `{}` to `{}`",
-                                ety, expect);
+                                target, source);
                 }
             },
-            Other(expect_tydef) => match *ety {
+            Other(expect_tydef) => match *target {
                 Other(expr_tydef) => {
                     if !self.is_subtype(expr_tydef, expect_tydef) {
                         if self.is_subtype(expect_tydef, expr_tydef) {
                             span_error!(span,
                                         "cast required for narrowing conversion from `{}` to `{}`",
-                                        ety, expect);
+                                        target, source);
                         } else {
                             span_error!(span,
                                         "no conversion from `{}` to `{}`",
-                                        ety, expect);
+                                        target, source);
                         }
                     }
                 }
                 _ => {
                     span_error!(span,
                                 "cannot convert from primitive type `{}` to `{}`",
-                                ety, expect);
+                                target, source);
                 }
             },
         }
     }
 
-    fn check_widening(&self, span: Span, expect: &Type<'a, 'ast>, ety: &Type<'a, 'ast>) {
-        if expect == ety {
+    fn check_widening(&self, span: Span, source: &Type<'a, 'ast>, target: &Type<'a, 'ast>) {
+        if source == target {
             return;
         }
-        match (expect, ety) {
+        match (source, target) {
             (_, &Type::Unknown) | (&Type::Unknown, _) => (),
 
             (&Type::Null, _) => panic!("coerce to null type?"),
@@ -143,7 +145,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
             (&Type::ArrayType(_), &Type::SimpleType(_)) => {
                 span_error!(span,
                             "cannot convert from `{}` to array type `{}`",
-                            ety, expect);
+                            target, source);
             }
 
             // arrays can be converted to some reference types
@@ -153,7 +155,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                     && expect_tydef != self.lang_items.serializable {
                     span_error!(span,
                                 "cannot convert from array type `{}` to `{}`",
-                                ety, expect);
+                                target, source);
                 }
             }
             // and (some) other array types
@@ -164,7 +166,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
             (&Type::SimpleType(_), &Type::ArrayType(_)) => {
                 span_error!(span,
                             "cannot convert from array type `{}` to primitive type `{}`",
-                            ety, expect);
+                            target, source);
             }
 
             // null can be converted to any reference type
@@ -174,8 +176,79 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
             (&Type::SimpleType(_), &Type::Null) => {
                 span_error!(span,
                             "cannot convert null to primitive type `{}`",
-                            expect);
+                            source);
             }
+        }
+    }
+
+    // Returns whether there is a legal Casting Conversion ($5.5)
+    // from from `source` to `target`
+    // TODO: Make sure the marmoset test cases cover every single one of these rules.
+    fn check_casting_conversion(&self,
+                                source: &Type<'a, 'ast>,
+                                target: &Type<'a, 'ast>) -> bool {
+        if source == target {
+            return true;
+        }
+        match (source, target) {
+            (&Type::SimpleType(SimpleType::Other(source_tydef)),
+             &Type::SimpleType(SimpleType::Other(target_tydef))) => {
+                match (source_tydef.kind, target_tydef.kind) {
+                    (TypeKind::Class, TypeKind::Class) => {
+                        source_tydef.dominates(target_tydef) ||
+                        target_tydef.dominates(source_tydef)
+                    }
+                    (TypeKind::Class, TypeKind::Interface) => {
+                        if source_tydef.has_modifier(ast::Modifier_::Final) {
+                            target_tydef.dominates(source_tydef)
+                        } else {
+                            true
+                        }
+                    }
+                    (TypeKind::Interface, TypeKind::Class) => {
+                        if target_tydef.has_modifier(ast::Modifier_::Final) {
+                            // TODO: Check this (not explicitely written in the spec)
+                            source_tydef.dominates(target_tydef)
+                        } else {
+                            true
+                        }
+                    }
+                    (TypeKind::Interface, TypeKind::Interface) => {
+                        // TODO
+                        // Need to check that the interfaces don't have confliciting
+                        // methods (different return types)
+                        true
+                    }
+                }
+            }
+            (&Type::SimpleType(SimpleType::Other(typedef)), &Type::ArrayType(_))
+            | (&Type::ArrayType(_), &Type::SimpleType(SimpleType::Other(typedef))) => {
+                match typedef.kind {
+                    TypeKind::Class => {
+                        typedef == self.lang_items.object
+                    }
+                    TypeKind::Interface => {
+                        // Arrays implement Serializable and Cloneable only
+                        typedef == self.lang_items.serializable ||
+                        typedef == self.lang_items.cloneable
+                    }
+                }
+            }
+
+            (&Type::ArrayType(ref source_array_ty),
+             &Type::ArrayType(ref target_array_ty)) => {
+                match (source_array_ty, target_array_ty) {
+                    (&SimpleType::Other(_),
+                     &SimpleType::Other(_)) => {
+                        self.check_casting_conversion(&Type::SimpleType(source_array_ty.clone()),
+                                                      &Type::SimpleType(target_array_ty.clone()))
+                    }
+                    _ => {
+                        source_array_ty == target_array_ty
+                    }
+                }
+            }
+            _ => panic!("expected only reference types")
         }
     }
 
@@ -391,6 +464,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                         bool_ty
                     }
                     Equals | NotEquals => {
+                        // ($15.21) Equality rules
                         let lty = tl.ty().clone();
                         let rty = tr.ty().clone();
                         if lty.is_unknown() || rty.is_unknown() {
@@ -401,9 +475,15 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                             tr = self.coerce_expr(&Type::SimpleType(SimpleType::Int), tr);
                         } else if lty == bool_ty && rty == bool_ty {
                             // OK, bool equality
+                        } else if lty.is_reference() && rty.is_reference() {
+                            // OK, reference equality with casting conversions
+                            if !self.check_casting_conversion(&lty, &rty) {
+                                span_error!(expr.span,
+                                            "type mismatch: cannot cast between `{}` and `{}`",
+                                            lty, rty);
+                            }
                         } else if (lty.is_reference() || lty.is_null())
                                && (rty.is_reference() || rty.is_null()) {
-                            // TODO: check conversions
                         } else {
                             span_error!(expr.span,
                                         "type mismatch: incomparable types `{}` and `{}`",

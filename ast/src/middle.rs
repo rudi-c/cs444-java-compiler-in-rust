@@ -213,6 +213,17 @@ impl<'a, 'ast> TypeDefinition<'a, 'ast> {
                 interface.node.modifiers.iter().any(|spanned| spanned.node == modifier),
         }
     }
+
+    // Dominates = is the same class or superclass of
+    // TODO: Diamond inheritance efficiency.
+    pub fn dominates(&'a self, other: TypeDefinitionRef<'a, 'ast>) -> bool {
+        if self == other {
+            true
+        } else {
+            other.extends.borrow().iter().any(|parent| self.dominates(*parent)) ||
+            other.implements.borrow().iter().any(|parent| self.dominates(*parent))
+        }
+    }
 }
 
 impl<'a, 'ast> PartialEq for TypeDefinitionRef<'a, 'ast> {
