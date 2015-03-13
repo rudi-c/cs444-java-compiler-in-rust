@@ -41,6 +41,21 @@ fn dummy_expr_<'a, 'ast>() -> (TypedExpression_<'a, 'ast>, Type<'a, 'ast>) {
     (TypedExpression_::Literal(&NULL), Type::Unknown)
 }
 
+fn check_lvalue<'a, 'ast>(expr: &TypedExpression<'a, 'ast>) {
+    match expr.node.0 {
+        TypedExpression_::StaticFieldAccess(..) |
+            TypedExpression_::FieldAccess(..) |
+            TypedExpression_::Variable(..) |
+            TypedExpression_::ArrayAccess(..) => {
+            // OK
+        }
+        _ => {
+            span_error!(expr.span,
+                        "expression is not a variable");
+        }
+    }
+}
+
 impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
     /// Is `sub` a subtype of `sup`?
     /// (Every type is a subtype of `Object`.)
@@ -527,6 +542,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
             }
             Assignment(box ref lhs, box ref rhs) => {
                 let tlhs = self.expr(lhs);
+                check_lvalue(&tlhs);
                 let trhs = self.expr(rhs);
                 let trhs = self.coerce_expr(tlhs.ty(), trhs);
                 let ty = tlhs.ty().clone();
