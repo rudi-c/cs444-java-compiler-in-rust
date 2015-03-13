@@ -360,9 +360,20 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
             NewStaticClass(ref id, ref args) => {
                 let tydef = self.env.resolve_type_name(&*id.parts);
                 let targs = args.iter().map(|arg| self.expr(arg)).collect();
+
                 if let Some(tydef) = tydef {
-                    self.new_expr_(tydef, targs)
+                    // Some types cannot be instantiated.
+                    if tydef.kind == TypeKind::Interface {
+                        span_error!(expr.span, "cannot instantiate Interface type");
+                        dummy_expr_()
+                    } else if tydef.has_modifier(ast::Modifier_::Abstract) {
+                        span_error!(expr.span, "cannot instantiate Abstract class type");
+                        dummy_expr_()
+                    } else {
+                        self.new_expr_(tydef, targs)
+                    }
                 } else {
+                    panic!("unable to find static class that should have been resolved");
                     dummy_expr_()
                 }
             }
