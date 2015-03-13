@@ -85,17 +85,17 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
     // Check that there is a legal widening conversion from `source` to `target`.
     // Emits an error if there is not.
     fn check_simple_widening(&self,
-                             source: &SimpleType<'a, 'ast>,
-                             target: &SimpleType<'a, 'ast>) -> Result<(), String> {
+                             target: &SimpleType<'a, 'ast>,
+                             source: &SimpleType<'a, 'ast>) -> Result<(), String> {
         use middle::SimpleType::*;
-        if source == target {
+        if target == source {
             return Ok(())
         }
-        match *source {
+        match *target {
             Char | Boolean => {
-                Err(format!("no implicit conversion to `{}`", source))
+                Err(format!("no implicit conversion to `{}`", target))
             }
-            Byte | Short | Int => match *target {
+            Byte | Short | Int => match *source {
                 Byte | Short | Char | Int => {
                     fn numeric_width<'a, 'ast>(ty: &SimpleType<'a, 'ast>) -> i32 {
                         match *ty {
@@ -105,30 +105,30 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                             _ => panic!("not numeric")
                         }
                     }
-                    if numeric_width(source) <= numeric_width(target) {
+                    if numeric_width(target) <= numeric_width(source) {
                         Err(format!("cast required for narrowing conversion from `{}` to `{}`",
-                                    target, source))
+                                    source, target))
                     } else {
                         Ok(())
                     }
                 }
                 Boolean => {
-                    Err(format!("cannot convert from `{}` to `{}`", target, source))
+                    Err(format!("cannot convert from `{}` to `{}`", source, target))
                 }
                 _ => {
                     Err(format!("cannot convert from non-primitive type `{}` to `{}`",
-                                 target, source))
+                                 source, target))
                 }
             },
-            Other(expect_tydef) => match *target {
+            Other(expect_tydef) => match *source {
                 Other(expr_tydef) => {
                     if !self.is_subtype(expr_tydef, expect_tydef) {
                         if self.is_subtype(expect_tydef, expr_tydef) {
                             Err(format!("cast required for narrowing conversion from `{}` to `{}`",
-                                        target, source))
+                                        source, target))
                         } else {
                             Err(format!("no conversion from `{}` to `{}`",
-                                        target, source))
+                                        source, target))
                         }
                     } else {
                         Ok(())
@@ -136,19 +136,19 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                 }
                 _ => {
                     Err(format!("cannot convert from primitive type `{}` to `{}`",
-                                target, source))
+                                source, target))
                 }
             },
         }
     }
 
-    fn check_widening(&self, source: &Type<'a, 'ast>, target: &Type<'a, 'ast>)
+    fn check_widening(&self, target: &Type<'a, 'ast>, source: &Type<'a, 'ast>)
             -> Result<(), String> {
 
-        if source == target {
+        if target == source {
             return Ok(())
         }
-        match (source, target) {
+        match (target, source) {
             (_, &Type::Unknown) | (&Type::Unknown, _) => Ok(()),
 
             (&Type::Null, _) => panic!("coerce to null type?"),
@@ -165,7 +165,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
             // ... but not to arrays
             (&Type::ArrayType(_), &Type::SimpleType(_)) => {
                 Err(format!("cannot convert from `{}` to array type `{}`",
-                            target, source))
+                            source, target))
             }
 
             // arrays can be converted to some reference types
@@ -174,7 +174,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                     && expect_tydef != self.lang_items.cloneable
                     && expect_tydef != self.lang_items.serializable {
                     Err(format!("cannot convert from array type `{}` to `{}`",
-                                target, source))
+                                source, target))
                 } else {
                     Ok(())
                 }
@@ -185,10 +185,10 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                 if !self.is_subtype(expr_tydef, expect_tydef) {
                     if self.is_subtype(expect_tydef, expr_tydef) {
                         Err(format!("cast required for narrowing conversion from `{}` to `{}`",
-                                    target, source))
+                                    source, target))
                     } else {
                         Err(format!("no conversion from `{}` to `{}`",
-                                    target, source))
+                                    source, target))
                     }
                 } else {
                     Ok(())
@@ -197,11 +197,11 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
             // ... but any other kind of conversion
             (&Type::ArrayType(_), &Type::ArrayType(_)) => {
                 Err(format!("cannot convert from array type `{}` to array type `{}`",
-                            target, source))
+                            source, target))
             }
             (&Type::SimpleType(_), &Type::ArrayType(_)) => {
                 Err(format!("cannot convert from array type `{}` to primitive type `{}`",
-                            target, source))
+                            source, target))
             }
 
             // null can be converted to any reference type
@@ -209,7 +209,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
             (&Type::ArrayType(_), &Type::Null) => Ok(()),
             // ... but not anything else
             (&Type::SimpleType(_), &Type::Null) => {
-                Err(format!("cannot convert null to primitive type `{}`", source))
+                Err(format!("cannot convert null to primitive type `{}`", target))
             }
         }
     }
@@ -218,8 +218,8 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
     // from from `source` to `target`
     // TODO: Make sure the marmoset test cases cover every single one of these rules.
     fn check_casting_conversion(&self,
-                                source: &Type<'a, 'ast>,
-                                target: &Type<'a, 'ast>) -> bool {
+                                target: &Type<'a, 'ast>,
+                                source: &Type<'a, 'ast>) -> bool {
         match self.check_widening(source, target) {
             Ok(_) => { return true }
             _ => {}
@@ -275,8 +275,8 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                 match (source_array_ty, target_array_ty) {
                     (&SimpleType::Other(_),
                      &SimpleType::Other(_)) => {
-                        self.check_casting_conversion(&Type::SimpleType(source_array_ty.clone()),
-                                                      &Type::SimpleType(target_array_ty.clone()))
+                        self.check_casting_conversion(&Type::SimpleType(target_array_ty.clone()),
+                                                      &Type::SimpleType(source_array_ty.clone()))
                     }
                     _ => {
                         source_array_ty == target_array_ty
