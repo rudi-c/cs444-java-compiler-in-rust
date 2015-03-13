@@ -388,6 +388,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
 
     // Resolve a named method.
     pub fn resolve_named_method_access(&self, span: Span,
+                                       require_static: bool,
                                        name: &QualifiedIdentifier,
                                        targ_exprs: Vec<TypedExpression<'a, 'ast>>)
             -> Option<(TypedExpression_<'a, 'ast>, Type<'a, 'ast>)> {
@@ -397,8 +398,14 @@ impl<'a, 'ast> Environment<'a, 'ast> {
             [ref ident] => {
                 // "If it is a simple name, that is, just an Identifier,
                 // then the name of the method is the Identifier."
-                self.resolve_typedef_method_access(span, self.enclosing_type,
-                                                   ident, targ_exprs)
+                let resolved = self.resolve_typedef_method_access(span, self.enclosing_type,
+                                                                  ident, targ_exprs);
+                if let Some((TypedExpression_::MethodInvocation(_, method, _), _)) = resolved {
+                    if !method.is_static() && require_static {
+                        span_error!(span, "calling non-static implicit this method on type");
+                    }
+                }
+                resolved
             },
             [init.., ref last] => {
                 // "If it is a qualified name of the form TypeName . Identifier"

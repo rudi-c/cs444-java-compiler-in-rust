@@ -464,7 +464,9 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
         match expr.node {
             Literal(ref lit) => self.lit(lit),
             This => {
-                // TODO: Check that `this` is legal here (i.e. that we're in an instance method)
+                if self.require_static {
+                    span_error!(expr.span, "cannot use `this` in static context");
+                }
                 (TypedExpression_::This, Type::object(self.env.enclosing_type))
             }
             NewStaticClass(ref id, ref args) => {
@@ -508,7 +510,8 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                 let _targs: Vec<_> = args.iter()
                     .map(|arg| self.expr(arg))
                     .collect();
-                self.env.resolve_named_method_access(expr.span, _name, _targs)
+                self.env.resolve_named_method_access(expr.span, self.require_static,
+                                                     _name, _targs)
                     .unwrap_or_else(dummy_expr_)
             }
             MethodInvocation(box ref callee, ref _name, ref args) => {
