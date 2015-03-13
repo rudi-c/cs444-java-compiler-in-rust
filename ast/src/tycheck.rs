@@ -162,12 +162,27 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                                 target, source);
                 }
             }
+            // ... or undergo reference conversion
+            (&Type::ArrayType(SimpleType::Other(expect_tydef)),
+             &Type::ArrayType(SimpleType::Other(expr_tydef))) => {
+                if !self.is_subtype(expr_tydef, expect_tydef) {
+                    if self.is_subtype(expect_tydef, expr_tydef) {
+                        span_error!(span,
+                                    "cast required for narrowing conversion from `{}` to `{}`",
+                                    target, source);
+                    } else {
+                        span_error!(span,
+                                    "no conversion from `{}` to `{}`",
+                                    target, source);
+                    }
+                }
+            }
+            // ... but any other kind of conversion
             (&Type::ArrayType(_), &Type::ArrayType(_)) => {
                 span_error!(span,
                             "cannot convert from array type `{}` to array type `{}`",
                             target, source);
             }
-            // ... but not primitive types
             (&Type::SimpleType(_), &Type::ArrayType(_)) => {
                 span_error!(span,
                             "cannot convert from array type `{}` to primitive type `{}`",
