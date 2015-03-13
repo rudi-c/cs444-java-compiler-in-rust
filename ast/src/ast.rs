@@ -66,6 +66,12 @@ pub struct Constructor_ {
 }
 pub type Constructor = Spanned<Constructor_>;
 
+impl Constructor_ {
+    pub fn has_modifier(&self, modifier: Modifier_) -> bool {
+        self.modifiers.iter().any(|spanned| spanned.node == modifier)
+    }
+}
+
 #[derive(Show)]
 pub struct Method_ {
     pub name: Ident,

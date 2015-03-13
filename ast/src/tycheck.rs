@@ -449,6 +449,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
             .map(|expr| expr.node.1.clone())
             .collect();
         if let Some(&constructor) = tydef.constructors.borrow().get(&arg_types) {
+            self.env.check_constructor_access_allowed(span, constructor, tydef);
             (TypedExpression_::NewStaticClass(tydef, constructor, args), Type::object(tydef))
         } else {
             // TODO: Better error message.
@@ -708,6 +709,21 @@ pub fn populate_constructor<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
                                       env: Environment<'a, 'ast>,
                                       ctor: ConstructorRef<'a, 'ast>,
                                       lang_items: &LangItems<'a, 'ast>) {
+    // ($8.8.5) Check that we can make an implicit super() call.
+    if let Some(parent) = env.enclosing_type.extends.borrow().first() {
+        match parent.constructors.borrow().get(&vec![]) {
+            None => {
+                // If there is an explicit constructor, then there is no implicit
+                // constructor with no arguments.
+                if parent.constructors.borrow().len() > 0 {
+                    span_error!(ctor.ast.span,
+                                "cannot make implicit super() call, no constructor found");
+                }
+            }
+            _ => {}
+        }
+    }
+
     let mut typer = Typer {
         arena: arena,
         env: env,

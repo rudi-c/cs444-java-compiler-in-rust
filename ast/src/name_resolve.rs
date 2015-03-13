@@ -466,6 +466,17 @@ impl<'a, 'ast> Environment<'a, 'ast> {
         }
     }
 
+    pub fn check_constructor_access_allowed(&self, span: Span, constructor: ConstructorRef<'a, 'ast>,
+                                            tyref: TypeDefinitionRef<'a, 'ast>) -> bool {
+        if constructor.is_protected() && self.package != tyref.package {
+            span_error!(span, "cannot access protected constructor of `{}`",
+                        tyref.fq_name);
+            false
+        } else {
+            true
+        }
+    }
+
     // Resolve a method that is called on an expression.
     pub fn resolve_expr_method_access(&self, span: Span, texpr: TypedExpression<'a, 'ast>,
                                       name: &Ident, targ_exprs: Vec<TypedExpression<'a, 'ast>>)

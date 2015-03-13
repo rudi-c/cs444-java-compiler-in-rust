@@ -185,6 +185,10 @@ impl<'a, 'ast> Constructor<'a, 'ast> {
             ast: ast,
         }
     }
+
+    pub fn is_protected(&self) -> bool {
+        self.ast.node.has_modifier(ast::Modifier_::Protected)
+    }
 }
 
 #[derive(Show, Copy, Eq, PartialEq)]
