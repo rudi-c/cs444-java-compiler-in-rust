@@ -6,6 +6,7 @@ use arena::*;
 use name_resolve::Environment;
 use lang_items::LangItems;
 
+use std::borrow::ToOwned;
 use std::collections::{RingBuf, HashSet};
 
 struct Typer<'l, 'a: 'l, 'ast: 'a> {
@@ -83,16 +84,16 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
 
     // Check that there is a legal widening conversion from `source` to `target`.
     // Emits an error if there is not.
-    fn check_simple_widening(&self, span: Span,
+    fn check_simple_widening(&self,
                              source: &SimpleType<'a, 'ast>,
-                             target: &SimpleType<'a, 'ast>) {
+                             target: &SimpleType<'a, 'ast>) -> Result<(), String> {
         use middle::SimpleType::*;
         if source == target {
-            return;
+            return Ok(())
         }
         match *source {
             Char | Boolean => {
-                span_error!(span, "no implicit conversion to `{}`", source);
+                Err(format!("no implicit conversion to `{}`", source))
             }
             Byte | Short | Int => match *target {
                 Byte | Short | Char | Int => {
@@ -105,68 +106,66 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                         }
                     }
                     if numeric_width(source) <= numeric_width(target) {
-                        span_error!(span,
-                                    "cast required for narrowing conversion from `{}` to `{}`",
-                                    target, source);
+                        Err(format!("cast required for narrowing conversion from `{}` to `{}`",
+                                    target, source))
+                    } else {
+                        Ok(())
                     }
                 }
                 Boolean => {
-                    span_error!(span,
-                                "cannot convert from `{}` to `{}`",
-                                target, source);
+                    Err(format!("cannot convert from `{}` to `{}`", target, source))
                 }
                 _ => {
-                    span_error!(span,
-                                "cannot convert from non-primitive type `{}` to `{}`",
-                                target, source);
+                    Err(format!("cannot convert from non-primitive type `{}` to `{}`",
+                                 target, source))
                 }
             },
             Other(expect_tydef) => match *target {
                 Other(expr_tydef) => {
                     if !self.is_subtype(expr_tydef, expect_tydef) {
                         if self.is_subtype(expect_tydef, expr_tydef) {
-                            span_error!(span,
-                                        "cast required for narrowing conversion from `{}` to `{}`",
-                                        target, source);
+                            Err(format!("cast required for narrowing conversion from `{}` to `{}`",
+                                        target, source))
                         } else {
-                            span_error!(span,
-                                        "no conversion from `{}` to `{}`",
-                                        target, source);
+                            Err(format!("no conversion from `{}` to `{}`",
+                                        target, source))
                         }
+                    } else {
+                        Ok(())
                     }
                 }
                 _ => {
-                    span_error!(span,
-                                "cannot convert from primitive type `{}` to `{}`",
-                                target, source);
+                    Err(format!("cannot convert from primitive type `{}` to `{}`",
+                                target, source))
                 }
             },
         }
     }
 
-    fn check_widening(&self, span: Span, source: &Type<'a, 'ast>, target: &Type<'a, 'ast>) {
+    fn check_widening(&self, source: &Type<'a, 'ast>, target: &Type<'a, 'ast>)
+            -> Result<(), String> {
+
         if source == target {
-            return;
+            return Ok(())
         }
         match (source, target) {
-            (_, &Type::Unknown) | (&Type::Unknown, _) => (),
+            (_, &Type::Unknown) | (&Type::Unknown, _) => Ok(()),
 
             (&Type::Null, _) => panic!("coerce to null type?"),
 
             (&Type::Void, _)
             | (_, &Type::Void) => {
-                span_error!(span, "cannot convert void types");
+                Err("cannot convert void types".to_owned())
             }
 
             // simple types might be convertible to other simple types
             (&Type::SimpleType(ref a), &Type::SimpleType(ref b)) => {
-                self.check_simple_widening(span, a, b);
+                self.check_simple_widening(a, b)
             }
             // ... but not to arrays
             (&Type::ArrayType(_), &Type::SimpleType(_)) => {
-                span_error!(span,
-                            "cannot convert from `{}` to array type `{}`",
-                            target, source);
+                Err(format!("cannot convert from `{}` to array type `{}`",
+                            target, source))
             }
 
             // arrays can be converted to some reference types
@@ -174,9 +173,10 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                 if expect_tydef != self.lang_items.object
                     && expect_tydef != self.lang_items.cloneable
                     && expect_tydef != self.lang_items.serializable {
-                    span_error!(span,
-                                "cannot convert from array type `{}` to `{}`",
-                                target, source);
+                    Err(format!("cannot convert from array type `{}` to `{}`",
+                                target, source))
+                } else {
+                    Ok(())
                 }
             }
             // ... or undergo reference conversion
@@ -184,36 +184,32 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
              &Type::ArrayType(SimpleType::Other(expr_tydef))) => {
                 if !self.is_subtype(expr_tydef, expect_tydef) {
                     if self.is_subtype(expect_tydef, expr_tydef) {
-                        span_error!(span,
-                                    "cast required for narrowing conversion from `{}` to `{}`",
-                                    target, source);
+                        Err(format!("cast required for narrowing conversion from `{}` to `{}`",
+                                    target, source))
                     } else {
-                        span_error!(span,
-                                    "no conversion from `{}` to `{}`",
-                                    target, source);
+                        Err(format!("no conversion from `{}` to `{}`",
+                                    target, source))
                     }
+                } else {
+                    Ok(())
                 }
             }
             // ... but any other kind of conversion
             (&Type::ArrayType(_), &Type::ArrayType(_)) => {
-                span_error!(span,
-                            "cannot convert from array type `{}` to array type `{}`",
-                            target, source);
+                Err(format!("cannot convert from array type `{}` to array type `{}`",
+                            target, source))
             }
             (&Type::SimpleType(_), &Type::ArrayType(_)) => {
-                span_error!(span,
-                            "cannot convert from array type `{}` to primitive type `{}`",
-                            target, source);
+                Err(format!("cannot convert from array type `{}` to primitive type `{}`",
+                            target, source))
             }
 
             // null can be converted to any reference type
             (&Type::SimpleType(SimpleType::Other(_)), &Type::Null) |
-            (&Type::ArrayType(_), &Type::Null) => (),
+            (&Type::ArrayType(_), &Type::Null) => Ok(()),
             // ... but not anything else
             (&Type::SimpleType(_), &Type::Null) => {
-                span_error!(span,
-                            "cannot convert null to primitive type `{}`",
-                            source);
+                Err(format!("cannot convert null to primitive type `{}`", source))
             }
         }
     }
@@ -224,9 +220,11 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
     fn check_casting_conversion(&self,
                                 source: &Type<'a, 'ast>,
                                 target: &Type<'a, 'ast>) -> bool {
-        if source == target {
-            return true;
-        }
+        match self.check_widening(source, target) {
+            Ok(_) => { return true }
+            _ => {}
+        };
+
         match (source, target) {
             (&Type::SimpleType(SimpleType::Other(source_tydef)),
              &Type::SimpleType(SimpleType::Other(target_tydef))) => {
@@ -285,7 +283,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                     }
                 }
             }
-            _ => panic!("expected only reference types")
+            _ => false
         }
     }
 
@@ -297,7 +295,9 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
         if expect == expr.ty() {
             return expr;
         }
-        self.check_widening(expr.span, expect, expr.ty());
+        if let Err(msg) = self.check_widening(expect, expr.ty()) {
+            span_error!(expr.span, "{}", msg);
+        }
         spanned(expr.span, (TypedExpression_::Widen(box expr), expect.clone()))
     }
 
