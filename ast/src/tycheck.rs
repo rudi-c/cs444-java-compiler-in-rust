@@ -11,6 +11,8 @@ use std::collections::{RingBuf, HashSet};
 struct Typer<'l, 'a: 'l, 'ast: 'a> {
     arena: &'a Arena<'a, 'ast>,
     env: Environment<'a, 'ast>,
+    // FIXME: This is not really the right place for this, IMO
+    method: Option<MethodRef<'a, 'ast>>,
     lang_items: &'l LangItems<'a, 'ast>,
 
     // true if we are typing a static method or field, can't access implicit
@@ -369,12 +371,31 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
             }
             Empty => TypedStatement_::Empty,
             Return(ref expr) => {
-                // FIXME: check return types
-                let texpr = if let Some(ref expr) = *expr {
+                let mut texpr = if let Some(ref expr) = *expr {
                     Some(self.expr(expr))
                 } else {
                     None
                 };
+                if let Some(method) = self.method {
+                    texpr = match (texpr, &method.ret_ty) {
+                        (None, &Type::Void) => None,
+                        (None, _) => {
+                            span_error!(stmt.span,
+                                        "missing value in `return` statement");
+                            None
+                        }
+                        (Some(texpr), &Type::Void) => {
+                            span_error!(stmt.span,
+                                        "`return` statement with a value in a method returning void");
+                            Some(texpr)
+                        }
+                        (Some(texpr), ty) =>
+                            Some(self.coerce_expr(ty, texpr)),
+                    }
+                } else {
+                    span_error!(stmt.span,
+                                "`return` statement found outside of a method");
+                }
                 TypedStatement_::Return(texpr)
             }
             Block(ref block) => TypedStatement_::Block(self.block(block)),
@@ -657,6 +678,7 @@ pub fn populate_method<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
     let mut typer = Typer {
         arena: arena,
         env: env,
+        method: Some(method),
         lang_items: lang_items,
         require_static: method.is_static(),
     };
@@ -673,6 +695,7 @@ pub fn populate_constructor<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
     let mut typer = Typer {
         arena: arena,
         env: env,
+        method: None,
         lang_items: lang_items,
         require_static: false,
     };
@@ -688,6 +711,7 @@ pub fn populate_field<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
         let mut typer = Typer {
             arena: arena,
             env: env,
+            method: None,
             lang_items: lang_items,
             require_static: field.is_static(),
         };
