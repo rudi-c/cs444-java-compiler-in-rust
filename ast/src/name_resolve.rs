@@ -406,6 +406,9 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                     if !method.is_static() && require_static {
                         span_error!(span, "calling non-static implicit this method on type");
                     }
+                    if method.is_static() {
+                        span_error!(span, "calling static method without naming class");
+                    }
                 }
                 resolved
             },
