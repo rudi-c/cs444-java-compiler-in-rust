@@ -181,7 +181,7 @@ pub enum Expression_ {
     NewArray(SimpleType, Box<Expression>),
     FieldAccess(Box<Expression>, Ident),
     NamedMethodInvocation(QualifiedIdentifier, Vec<Expression>),
-    MethodInvocation(Option<Box<Expression>>, Ident, Vec<Expression>),
+    MethodInvocation(Box<Expression>, Ident, Vec<Expression>),
     ArrayAccess(Box<Expression>, Box<Expression>),
     Name(QualifiedIdentifier),
     Assignment(Box<Expression>, Box<Expression>),

@@ -332,7 +332,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
     }
 
     pub fn resolve_field_access(span: Span, texpr: TypedExpression<'a, 'ast>, name: &Ident)
-        -> Option<(TypedExpression_<'a, 'ast>, Type<'a, 'ast>)> {
+            -> Option<(TypedExpression_<'a, 'ast>, Type<'a, 'ast>)> {
         // FIXME: bad clone
         match texpr.ty().clone() {
             Type::SimpleType(SimpleType::Other(tyref)) => {
@@ -371,6 +371,114 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                 None
             }
             Type::Unknown => None
+        }
+    }
+
+    // Resolve a named method.
+    pub fn resolve_named_method_access(&self, span: Span,
+                                       name: &QualifiedIdentifier,
+                                       targ_exprs: Vec<TypedExpression<'a, 'ast>>)
+            -> Option<(TypedExpression_<'a, 'ast>, Type<'a, 'ast>)> {
+
+        // ($15.12.1) Rules for handling named methods.
+        match name.parts.as_slice() {
+            [ref ident] => {
+                // "If it is a simple name, that is, just an Identifier,
+                // then the name of the method is the Identifier."
+                Environment::resolve_typedef_method_access(span, self.enclosing_type,
+                                                           ident, targ_exprs)
+            },
+            [init.., ref last] => {
+                // "If it is a qualified name of the form TypeName . Identifier"
+                // "In all other cases, the qualified name has the
+                //  form FieldName . Identifier" (note" spec has a mistake, it
+                // can be more than just fields - e.g. local variables)
+                match self.resolve_ambiguous_path(init) {
+                    AmbiguousResult::Type(typedef) => {
+                        Environment::resolve_typedef_method_access(span, typedef,
+                                                                   last, targ_exprs)
+                    },
+                    AmbiguousResult::Expression(texpr) => {
+                        Environment::resolve_expr_method_access(span, texpr,
+                                                                last, targ_exprs)
+                    },
+                    _ => {
+                        span_error!(span, "no type for method invocation found");
+                        None
+                    },
+                }
+            },
+            [] => {
+                panic!("empty name?")
+            },
+        }
+    }
+
+    // Resolve a method that is called on an expression.
+    pub fn resolve_expr_method_access(span: Span, texpr: TypedExpression<'a, 'ast>,
+                                      name: &Ident, targ_exprs: Vec<TypedExpression<'a, 'ast>>)
+            -> Option<(TypedExpression_<'a, 'ast>, Type<'a, 'ast>)> {
+
+        let arg_types: Vec<_> = targ_exprs.iter()
+            .map(|expr| expr.node.1.clone())
+            .collect();
+        let signature = MethodSignature { name: name.node, args: arg_types };
+
+        // FIXME: bad clone
+        match texpr.ty().clone() {
+            Type::SimpleType(SimpleType::Other(tyref)) => {
+                if let Some(&method) = tyref.methods.borrow().get(&signature) {
+                    // TODO: Handle void
+                    Some((TypedExpression_::MethodInvocation(Some(box texpr),
+                                                             method,
+                                                             targ_exprs),
+                          method.ret_ty.clone().unwrap()))
+                } else {
+                    span_error!(span,
+                                "reference type `{}` has no method `{}`",
+                                tyref.fq_name, name);
+                    None
+                }
+            }
+            ref ty @ Type::SimpleType(_) => {
+                span_error!(span,
+                            "primitive type `{}` has no method `{}`",
+                            ty, name);
+                None
+            }
+            ref ty @ Type::ArrayType(_) => {
+                // TODO: Method for array types.
+                None
+            }
+            Type::Null => {
+                span_error!(span,
+                            "`null` has no method `{}`",
+                            name);
+                None
+            }
+            Type::Unknown => None
+        }
+    }
+
+    // Resolve a method that is called directly.
+    fn resolve_typedef_method_access(span: Span, tyref: TypeDefinitionRef<'a, 'ast>,
+                                     name: &Ident, targ_exprs: Vec<TypedExpression<'a, 'ast>>)
+            -> Option<(TypedExpression_<'a, 'ast>, Type<'a, 'ast>)> {
+
+        let arg_types: Vec<_> = targ_exprs.iter()
+            .map(|expr| expr.node.1.clone())
+            .collect();
+        let signature = MethodSignature { name: name.node, args: arg_types };
+
+        if let Some(&method) = tyref.methods.borrow().get(&signature) {
+            // TODO: Handle void
+            Some((TypedExpression_::MethodInvocation(None, method, targ_exprs),
+                  method.ret_ty.clone().unwrap()))
+        } else {
+            span_error!(span,
+                        "reference type `{}` has no method `{}`",
+                        tyref.fq_name, name);
+            None
         }
     }
 

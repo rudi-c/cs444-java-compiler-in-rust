@@ -345,7 +345,7 @@ parser! parse {
             spanned!(Expression_::NamedMethodInvocation(ids, args))
         }
         primary[expr] Dot identifier[ident] LParen argumentList[args] RParen =>
-            spanned!(Expression_::MethodInvocation(Some(box expr), ident, args)),
+            spanned!(Expression_::MethodInvocation(box expr, ident, args)),
     }
 
     // Array access expressions ($15.13)

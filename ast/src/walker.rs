@@ -147,7 +147,7 @@ pub fn default_walk_expression<'a, T: Walker<'a>>(walker: &mut T, expression: &'
         Expression_::This => (),
 
         Expression_::NewDynamicClass(box ref expr, _, ref exprs)
-        | Expression_::MethodInvocation(Some(box ref expr), _, ref exprs) => {
+        | Expression_::MethodInvocation(box ref expr, _, ref exprs) => {
             walker.walk_expression(expr);
             for expr in exprs.iter() {
                 walker.walk_expression(expr);
@@ -155,8 +155,7 @@ pub fn default_walk_expression<'a, T: Walker<'a>>(walker: &mut T, expression: &'
         },
 
         Expression_::NewStaticClass(_, ref exprs)
-        | Expression_::NamedMethodInvocation(_, ref exprs)
-        | Expression_::MethodInvocation(_, _, ref exprs) => {
+        | Expression_::NamedMethodInvocation(_, ref exprs) => {
             for expr in exprs.iter() {
                 walker.walk_expression(expr);
             }

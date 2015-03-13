@@ -309,16 +309,17 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                 let _targs: Vec<_> = args.iter()
                     .map(|arg| self.expr(arg))
                     .collect();
-                // TODO
-                dummy_expr_()
+                self.env.resolve_named_method_access(expr.span, _name, _targs)
+                    .unwrap_or_else(dummy_expr_)
             }
-            MethodInvocation(ref callee, ref _name, ref args) => {
-                let _tcallee = callee.as_ref().map(|&box ref c| box self.expr(c));
+            MethodInvocation(box ref callee, ref _name, ref args) => {
+                let _tcallee = self.expr(callee);
                 let _targs: Vec<_> = args.iter()
                     .map(|arg| self.expr(arg))
                     .collect();
-                // TODO
-                dummy_expr_()
+                Environment::resolve_expr_method_access(expr.span, _tcallee,
+                                                        _name, _targs)
+                    .unwrap_or_else(dummy_expr_)
             }
             ArrayAccess(box ref array, box ref ix) => {
                 let tarray = self.expr(array);
