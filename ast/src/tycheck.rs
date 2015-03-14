@@ -13,7 +13,7 @@ struct Typer<'l, 'a: 'l, 'ast: 'a> {
     arena: &'a Arena<'a, 'ast>,
     env: Environment<'a, 'ast>,
     // FIXME: This is not really the right place for this, IMO
-    method: Option<MethodImplRef<'a, 'ast>>,
+    ret_ty: Option<Type<'a, 'ast>>,
     lang_items: &'l LangItems<'a, 'ast>,
 
     // true if we are typing a static method or field, can't access implicit
@@ -419,8 +419,8 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                 } else {
                     None
                 };
-                if let Some(method) = self.method {
-                    texpr = match (texpr, &method.ret_ty) {
+                if let Some(ref ret_ty) = self.ret_ty {
+                    texpr = match (texpr, ret_ty) {
                         (None, &Type::Void) => None,
                         (None, _) => {
                             span_error!(stmt.span,
@@ -726,7 +726,7 @@ pub fn populate_method<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
     let mut typer = Typer {
         arena: arena,
         env: env,
-        method: Some(method),
+        ret_ty: Some(method.ret_ty.clone()),
         lang_items: lang_items,
         require_static: method.is_static,
     };
@@ -758,7 +758,7 @@ pub fn populate_constructor<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
     let mut typer = Typer {
         arena: arena,
         env: env,
-        method: None,
+        ret_ty: Some(Type::Void), // constructors can have empty return statements
         lang_items: lang_items,
         require_static: false,
     };
@@ -774,7 +774,7 @@ pub fn populate_field<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
         let mut typer = Typer {
             arena: arena,
             env: env,
-            method: None,
+            ret_ty: None,
             lang_items: lang_items,
             require_static: field.is_static(),
         };
