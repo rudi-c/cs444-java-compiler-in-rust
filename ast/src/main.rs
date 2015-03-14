@@ -43,6 +43,8 @@ pub mod name_resolve;
 pub mod collect_types;
 pub mod collect_members;
 pub mod tycheck;
+pub mod typed_walker;
+pub mod ordering;
 
 fn create_ast(ctx: &RefCell<Context>, filename: &str) -> Option<CompilationUnit> {
     let file_ix = match ctx.borrow_mut().add_file(Path::new(filename)) {

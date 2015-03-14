@@ -30,6 +30,8 @@ fn insert_field<'a, 'ast>(tydef: TypeDefinitionRef<'a, 'ast>,
         } else {
             // hides parent field, no problem.
         }
+    } else {
+        tydef.ordered_fields.borrow_mut().push(field_name);
     }
 }
 

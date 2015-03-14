@@ -233,6 +233,7 @@ pub struct TypeDefinition<'a, 'ast: 'a> {
 
     // Note that fields and methods can have the same name, therefore
     // need to be be in separate namespaces.
+    pub ordered_fields: RefCell<Vec<Symbol>>,
     pub fields: RefCell<HashMap<Symbol, FieldRef<'a, 'ast>>>,
 
     // Method overloads can have the same name, but must have different signatures.
@@ -256,6 +257,7 @@ impl<'a, 'ast> TypeDefinition<'a, 'ast> {
             fq_name: Name::fresh(name),
             kind: kind,
             package: package,
+            ordered_fields: RefCell::new(Vec::new()),
             fields: RefCell::new(HashMap::new()),
             methods: RefCell::new(HashMap::new()),
             constructors: RefCell::new(HashMap::new()),
@@ -481,6 +483,7 @@ pub enum TypedExpression_<'a, 'ast: 'a> {
     Variable(VariableRef<'a, 'ast>),
     StaticFieldAccess(FieldRef<'a, 'ast>),
     FieldAccess(Box<TypedExpression<'a, 'ast>>, FieldRef<'a, 'ast>),
+    ThisFieldAccess(FieldRef<'a, 'ast>),
     // FIXME: Holy hack
     ArrayLength(Box<TypedExpression<'a, 'ast>>),
     MethodInvocation(Option<Box<TypedExpression<'a, 'ast>>>, MethodRef<'a, 'ast>,

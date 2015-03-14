@@ -93,9 +93,9 @@ fn resolve_create_package<'a, 'ast>(arena: &'a Arena<'a, 'ast>, toplevel: Packag
 // Phase 1.
 pub fn collect_types<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
                                toplevel: PackageRef<'a, 'ast>,
+                               default_package: PackageRef<'a, 'ast>,
                                asts: &'ast [ast::CompilationUnit])
 -> Vec<(PackageRef<'a, 'ast>, &'ast ast::CompilationUnit, Vec<TypeDefinitionRef<'a, 'ast>>)> {
-    let default_package = arena.alloc(Package::new("default package".to_owned()));
     asts.iter().map(|ast| {
         let (package, scope) = if let Some(ref package_identifier) = ast.package {
             (resolve_create_package(arena, toplevel, &*package_identifier.parts),

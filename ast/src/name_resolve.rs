@@ -7,6 +7,7 @@ use lang_items::*;
 use collect_types::collect_types;
 use collect_members::collect_members;
 use tycheck::{populate_method, populate_constructor, populate_field};
+use ordering::check_ordering;
 use arena::Arena;
 
 use rbtree::RbMap;
@@ -403,10 +404,10 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                 let resolved = self.resolve_typedef_method_access(span, self.enclosing_type,
                                                                   ident, targ_exprs);
                 if let Some((TypedExpression_::MethodInvocation(_, method, _), _)) = resolved {
-                    if !method.is_static() && require_static {
+                    if !method.is_static && require_static {
                         span_error!(span, "calling non-static implicit this method on type");
                     }
-                    if method.is_static() {
+                    if method.is_static {
                         span_error!(span, "calling static method without naming class");
                     }
                 }
@@ -577,9 +578,8 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                 if field.is_static() {
                     Some((TypedExpression_::StaticFieldAccess(field), field.ty.clone()))
                 } else {
-                    let this_ty = Type::object(self.enclosing_type);
-                    let this = spanned(ident.span, (TypedExpression_::This, this_ty));
-                    Some((TypedExpression_::FieldAccess(box this, field), field.ty.clone()))
+                    // FIXME: `this` existence is only checked later
+                    Some((TypedExpression_::ThisFieldAccess(field), field.ty.clone()))
                 }
             }
             None => {
@@ -1009,10 +1009,13 @@ fn populate<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
 
 pub fn name_resolve<'a, 'ast>(arena: &'a Arena<'a, 'ast>, asts: &'ast [ast::CompilationUnit]) -> PackageRef<'a, 'ast> {
     let toplevel = arena.alloc(Package::new("top level".to_owned()));
-    let types = collect_types(arena, toplevel, asts);
+    let default_package = arena.alloc(Package::new("default package".to_owned()));
+    let types = collect_types(arena, toplevel, default_package, asts);
     let lang_items = find_lang_items(toplevel);
     let methods = build_environments(arena, toplevel, &lang_items, &*types);
     populate(arena, methods, &lang_items);
+    check_ordering(default_package);
+    check_ordering(toplevel);
 
     toplevel
 }

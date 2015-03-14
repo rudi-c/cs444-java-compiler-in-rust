@@ -46,6 +46,7 @@ fn check_lvalue<'a, 'ast>(expr: &TypedExpression<'a, 'ast>) {
     match expr.node.0 {
         TypedExpression_::StaticFieldAccess(..) |
             TypedExpression_::FieldAccess(..) |
+            TypedExpression_::ThisFieldAccess(..) |
             TypedExpression_::Variable(..) |
             TypedExpression_::ArrayAccess(..) => {
             // OK
@@ -448,17 +449,12 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
         let texpr = self.expr_(expr);
 
         match texpr.0 {
-            TypedExpression_::FieldAccess(ref field_texpr, field) => {
-                match field_texpr.node.0 {
-                    TypedExpression_::This => {
-                        // Check that we don't access non-static field in static settings.
-                        if self.require_static {
-                            span_error!(expr.span,
-                                        "non-static access to static field `{}` in static setting",
-                                        field.fq_name);
-                        }
-                    }
-                    _ => {}
+            TypedExpression_::ThisFieldAccess(field) => {
+                // Check that we don't access non-static field in static settings.
+                if self.require_static {
+                    span_error!(expr.span,
+                                "non-static access to static field `{}` in static setting",
+                                field.fq_name);
                 }
             }
             _ => {}
