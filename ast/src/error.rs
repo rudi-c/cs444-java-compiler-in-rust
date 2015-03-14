@@ -37,6 +37,8 @@ pub trait ErrorReporter {
 
 /// Exit in a controlled manner.
 pub fn fatal() -> ! {
+    // Drop the panic message.
+    io::stdio::set_stderr(box io::util::NullWriter);
     panic!(FatalError)
 }
 
