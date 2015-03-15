@@ -485,7 +485,8 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                         self.new_expr_(expr.span, tydef, targs)
                     }
                 } else {
-                    panic!("unable to find static class that should have been resolved");
+                    // An error was already emitted.
+                    dummy_expr_()
                 }
             }
             NewDynamicClass(box _, _, _) => panic!("dynamic class"),
