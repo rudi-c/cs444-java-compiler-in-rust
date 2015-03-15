@@ -14,7 +14,7 @@ use rbtree::RbMap;
 
 use std::fmt;
 use std::borrow::ToOwned;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, RingBuf};
 
 #[derive(Clone)]
 pub enum Variable<'a, 'ast: 'a> {
@@ -79,6 +79,30 @@ enum AmbiguousResult<'a, 'ast: 'a> {
 }
 
 impl<'a, 'ast> Environment<'a, 'ast> {
+    /// Is `sub` a subtype of `sup`?
+    /// (Every type is a subtype of `Object`.)
+    pub fn is_subtype(&self, sub: TypeDefinitionRef<'a, 'ast>, sup: TypeDefinitionRef<'a, 'ast>) -> bool {
+        if sup == self.lang_items.object {
+            return true;
+        }
+        let mut q: RingBuf<TypeDefinitionRef<'a, 'ast>> = RingBuf::new();
+        let mut visited: HashSet<TypeDefinitionRef<'a, 'ast>> = HashSet::new();
+        q.push_back(sub);
+        visited.insert(sub);
+        while let Some(next) = q.pop_front() {
+            if next == sup {
+                return true;
+            }
+            for &parent in next.extends.borrow().iter()
+                .chain(next.implements.borrow().iter()) {
+                if visited.insert(parent) {
+                    q.push_back(parent);
+                }
+            }
+        }
+        false
+    }
+
     // Resolve extends and implements. This is done separately from walking
     // the AST because we need to process the compilations in topological
     // order (with respect to inheritance).
@@ -457,8 +481,8 @@ impl<'a, 'ast> Environment<'a, 'ast> {
         // Access to protected members allowed within the same package
         // or in subtypes.
         if field.is_protected() && self.package != tyref.package {
-            if !field.origin.dominates(self.enclosing_type) ||
-               (!field.is_static() && !self.enclosing_type.dominates(tyref)) {
+            if !self.is_subtype(self.enclosing_type, field.origin) ||
+               (!field.is_static() && !self.is_subtype(tyref, self.enclosing_type)) {
                 span_error!(span,
                             "cannot access protected field `{}` of `{}`",
                             field.fq_name, tyref.fq_name);
@@ -472,8 +496,8 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                                    tyref: TypeDefinitionRef<'a, 'ast>) {
         if let Protected(defining_type) = method.accessibility {
             if self.package != tyref.package
-                && (!defining_type.dominates(self.enclosing_type) ||
-                    (!method.is_static && !self.enclosing_type.dominates(tyref))) {
+                && (!self.is_subtype(self.enclosing_type, defining_type) ||
+                    (!method.is_static && !self.is_subtype(tyref, self.enclosing_type))) {
                 span_error!(span,
                             "cannot access protected method `{}` of `{}` defined in `{}`",
                             method.fq_name, tyref.fq_name, defining_type.fq_name);

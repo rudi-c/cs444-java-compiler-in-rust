@@ -8,7 +8,6 @@ use lang_items::LangItems;
 use uses::check_not_used;
 
 use std::borrow::ToOwned;
-use std::collections::{RingBuf, HashSet};
 
 struct Typer<'l, 'a: 'l, 'ast: 'a> {
     arena: &'a Arena<'a, 'ast>,
@@ -70,30 +69,6 @@ fn numeric_width<'a, 'ast>(ty: &SimpleType<'a, 'ast>) -> i32 {
 }
 
 impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
-    /// Is `sub` a subtype of `sup`?
-    /// (Every type is a subtype of `Object`.)
-    fn is_subtype(&self, sub: TypeDefinitionRef<'a, 'ast>, sup: TypeDefinitionRef<'a, 'ast>) -> bool {
-        if sup == self.lang_items.object {
-            return true;
-        }
-        let mut q: RingBuf<TypeDefinitionRef<'a, 'ast>> = RingBuf::new();
-        let mut visited: HashSet<TypeDefinitionRef<'a, 'ast>> = HashSet::new();
-        q.push_back(sub);
-        visited.insert(sub);
-        while let Some(next) = q.pop_front() {
-            if next == sup {
-                return true;
-            }
-            for &parent in next.extends.borrow().iter()
-                .chain(next.implements.borrow().iter()) {
-                if visited.insert(parent) {
-                    q.push_back(parent);
-                }
-            }
-        }
-        false
-    }
-
     // Check that there is a legal widening conversion from `source` to `target`.
     // Emits an error if there is not.
     fn check_simple_widening(&self,
@@ -126,8 +101,8 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
             },
             Other(expect_tydef) => match *source {
                 Other(expr_tydef) => {
-                    if !self.is_subtype(expr_tydef, expect_tydef) {
-                        if self.is_subtype(expect_tydef, expr_tydef) {
+                    if !self.env.is_subtype(expr_tydef, expect_tydef) {
+                        if self.env.is_subtype(expect_tydef, expr_tydef) {
                             Err(format!("cast required for narrowing conversion from `{}` to `{}`",
                                         source, target))
                         } else {
@@ -186,8 +161,8 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
             // ... or undergo reference conversion
             (&Type::ArrayType(SimpleType::Other(expect_tydef)),
              &Type::ArrayType(SimpleType::Other(expr_tydef))) => {
-                if !self.is_subtype(expr_tydef, expect_tydef) {
-                    if self.is_subtype(expect_tydef, expr_tydef) {
+                if !self.env.is_subtype(expr_tydef, expect_tydef) {
+                    if self.env.is_subtype(expect_tydef, expr_tydef) {
                         Err(format!("cast required for narrowing conversion from `{}` to `{}`",
                                     source, target))
                     } else {
@@ -259,12 +234,12 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
              &Type::SimpleType(SimpleType::Other(target_tydef))) => {
                 match (source_tydef.kind, target_tydef.kind) {
                     (TypeKind::Class, TypeKind::Class) => {
-                        source_tydef.dominates(target_tydef) ||
-                        target_tydef.dominates(source_tydef)
+                        self.env.is_subtype(source_tydef, target_tydef) ||
+                        self.env.is_subtype(target_tydef, source_tydef)
                     }
                     (TypeKind::Class, TypeKind::Interface) => {
                         if source_tydef.has_modifier(ast::Modifier_::Final) {
-                            target_tydef.dominates(source_tydef)
+                            self.env.is_subtype(source_tydef, target_tydef)
                         } else {
                             true
                         }
@@ -272,7 +247,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                     (TypeKind::Interface, TypeKind::Class) => {
                         if target_tydef.has_modifier(ast::Modifier_::Final) {
                             // TODO: Check this (not explicitely written in the spec)
-                            source_tydef.dominates(target_tydef)
+                            self.env.is_subtype(target_tydef, source_tydef)
                         } else {
                             true
                         }
