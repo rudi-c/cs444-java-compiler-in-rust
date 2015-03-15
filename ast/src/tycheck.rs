@@ -5,6 +5,7 @@ use arena::*;
 
 use name_resolve::Environment;
 use lang_items::LangItems;
+use uses::check_not_used;
 
 use std::borrow::ToOwned;
 use std::collections::{RingBuf, HashSet};
@@ -341,6 +342,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
     fn local_variable(&mut self, var: &'ast ast::LocalVariable) -> TypedLocalVariable<'a, 'ast> {
         let v = self.new_var(&var.variable);
         let init = self.expr(&var.initializer);
+        check_not_used(&init, v);
         let init = self.coerce_expr(&v.ty, init);
         spanned(var.span, TypedLocalVariable_ {
             variable: v,

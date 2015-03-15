@@ -170,6 +170,7 @@ impl<'env, 'out, 'a, 'ast> Walker<'ast> for Collector<'env, 'out, 'a, 'ast> {
             } else {
                 let method_impl = self.arena.alloc(
                     MethodImpl::new(fq_name.clone(), tydef, ret_ty.clone(), is_static, method_ast));
+                tydef.method_impls.borrow_mut().push(method_impl);
                 self.to_populate.push(ToPopulate::Method(method_impl));
                 Concrete(method_impl)
             },

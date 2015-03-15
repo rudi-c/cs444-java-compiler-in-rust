@@ -6,10 +6,10 @@ pub trait Walker<'a, 'ast>: Sized {
     fn walk_type_definition(&mut self, tydef: TypeDefinitionRef<'a, 'ast>) { default_walk_type_definition(self, tydef); }
     fn walk_field(&mut self, name: Symbol, field: FieldRef<'a, 'ast>) { default_walk_field(self, name, field); }
     fn walk_method(&mut self, signature: &MethodSignature<'a, 'ast>, method: MethodRef<'a, 'ast>) { default_walk_method(self, signature, method); }
-    fn walk_method_impl(&mut self, signature: &MethodSignature<'a, 'ast>, method: MethodImplRef<'a, 'ast>) { default_walk_method_impl(self, signature, method); }
-    fn walk_constructor(&mut self, args: &Arguments<'a, 'ast>, constructor: ConstructorRef<'a, 'ast>) { default_walk_constructor(self, args, constructor); }
-    fn walk_type(&mut self, ty: &Type<'a, 'ast>) { default_walk_type(self, ty); }
+    fn walk_method_impl(&mut self, method: MethodImplRef<'a, 'ast>) { default_walk_method_impl(self, method); }
+    fn walk_constructor(&mut self, constructor: ConstructorRef<'a, 'ast>) { default_walk_constructor(self, constructor); }
     fn walk_variable(&mut self, var: VariableRef<'a, 'ast>) { default_walk_variable(self, var); }
+    fn walk_local_variable(&mut self, var: &TypedLocalVariable<'a, 'ast>) { default_walk_local_variable(self, var); }
     fn walk_block(&mut self, block: &TypedBlock<'a, 'ast>) { default_walk_block(self, block); }
     fn walk_block_statement(&mut self, stmt: &TypedBlockStatement<'a, 'ast>) { default_walk_block_statement(self, stmt); }
     fn walk_statement(&mut self, stmt: &TypedStatement<'a, 'ast>) { default_walk_statement(self, stmt); }
@@ -31,30 +31,37 @@ pub fn default_walk_type_definition<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut 
     for (sig, &method) in tydef.methods.borrow().iter() {
         walker.walk_method(sig, method);
     }
-    for (args, &ctor) in tydef.constructors.borrow().iter() {
-        walker.walk_constructor(args, ctor);
+    for &method in tydef.method_impls.borrow().iter() {
+        walker.walk_method_impl(method);
+    }
+    for (_, &ctor) in tydef.constructors.borrow().iter() {
+        walker.walk_constructor(ctor);
     }
 }
 pub fn default_walk_field<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, _name: Symbol, field: FieldRef<'a, 'ast>) {
-    walker.walk_type(&field.ty);
     if let Some(ref init) = *field.initializer.borrow() {
         walker.walk_expression(init);
     }
 }
 pub fn default_walk_method<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, signature: &MethodSignature<'a, 'ast>, method: MethodRef<'a, 'ast>) {
-    // TODO later
 }
-pub fn default_walk_method_impl<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, signature: &MethodSignature<'a, 'ast>, method: MethodImplRef<'a, 'ast>) {
-    // TODO later
+pub fn default_walk_method_impl<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, method: MethodImplRef<'a, 'ast>) {
+    for &arg in method.args.borrow().iter() {
+        walker.walk_variable(arg);
+    }
+    walker.walk_block(method.body.borrow().as_ref().unwrap());
 }
-pub fn default_walk_constructor<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, args: &Arguments<'a, 'ast>, constructor: ConstructorRef<'a, 'ast>) {
-    // TODO later
-}
-pub fn default_walk_type<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, ty: &Type<'a, 'ast>)  {
-    // TODO later
+pub fn default_walk_constructor<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, constructor: ConstructorRef<'a, 'ast>) {
+    for &arg in constructor.args.borrow().iter() {
+        walker.walk_variable(arg);
+    }
+    walker.walk_block(constructor.body.borrow().as_ref().unwrap());
 }
 pub fn default_walk_variable<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, var: VariableRef<'a, 'ast>) {
-    // TODO later
+}
+pub fn default_walk_local_variable<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, var: &TypedLocalVariable<'a, 'ast>) {
+    walker.walk_variable(var.variable);
+    walker.walk_expression(&var.initializer);
 }
 pub fn default_walk_block<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, block: &TypedBlock<'a, 'ast>) {
     for stmt in block.stmts.iter() {
@@ -65,8 +72,7 @@ pub fn default_walk_block_statement<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut 
     use middle::TypedBlockStatement_::*;
     match stmt.node {
         LocalVariable(ref var) => {
-            // TODO
-            // walker.walk_local_variable(var);
+            walker.walk_local_variable(var);
         }
         Statement(ref stmt) => {
             walker.walk_statement(stmt);
@@ -145,7 +151,7 @@ pub fn default_walk_expression<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, ex
         StaticFieldAccess(_) => (),
         ThisFieldAccess(_) => (),
 
-        Variable(var) => walker.walk_variable(var),
+        Variable(_) => (),
 
         NewArray(_, box ref expr)
         | FieldAccess(box ref expr, _)

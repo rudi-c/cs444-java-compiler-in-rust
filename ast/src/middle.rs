@@ -160,9 +160,9 @@ pub struct MethodImpl<'a, 'ast: 'a> {
     // FIXME: This is duplicated from Method
     pub ret_ty: Type<'a, 'ast>,
     pub is_static: bool,
-    // These are initially "uninitialized" (None or empty) until typechecking.
-    pub body: RefCell<Option<TypedBlock<'a, 'ast>>>,
+    // These are initially "uninitialized" (empty or None) until typechecking.
     pub args: RefCell<Vec<VariableRef<'a, 'ast>>>,
+    pub body: RefCell<Option<TypedBlock<'a, 'ast>>>,
     pub ast: &'ast ast::Method,
 }
 pub type MethodImplRef<'a, 'ast> = &'a MethodImpl<'a, 'ast>;
@@ -178,8 +178,8 @@ impl<'a, 'ast> MethodImpl<'a, 'ast> {
             origin: origin,
             ret_ty: ret_ty,
             is_static: is_static,
-            body: RefCell::new(None),
             args: RefCell::new(vec![]),
+            body: RefCell::new(None),
             ast: ast,
         }
     }
@@ -198,8 +198,8 @@ impl<'a, 'ast> fmt::String for MethodSignature<'a, 'ast> {
 #[derive(Show)]
 pub struct Constructor<'a, 'ast: 'a> {
     pub fq_name: Name,
-    pub body: RefCell<Option<TypedBlock<'a, 'ast>>>,
     pub args: RefCell<Vec<VariableRef<'a, 'ast>>>,
+    pub body: RefCell<Option<TypedBlock<'a, 'ast>>>,
     pub ast: &'ast ast::Constructor,
 }
 pub type ConstructorRef<'a, 'ast> = &'a Constructor<'a, 'ast>;
@@ -208,8 +208,8 @@ impl<'a, 'ast> Constructor<'a, 'ast> {
     pub fn new(name: String, ast: &'ast ast::Constructor) -> Self {
         Constructor {
             fq_name: Name::fresh(name),
-            body: RefCell::new(None),
             args: RefCell::new(vec![]),
+            body: RefCell::new(None),
             ast: ast,
         }
     }
@@ -238,6 +238,7 @@ pub struct TypeDefinition<'a, 'ast: 'a> {
 
     // Method overloads can have the same name, but must have different signatures.
     pub methods: RefCell<HashMap<MethodSignature<'a, 'ast>, MethodRef<'a, 'ast>>>,
+    pub method_impls: RefCell<Vec<MethodImplRef<'a, 'ast>>>,
     // Similarly, we can have multiple constructors, as long as their arguments have different
     // types.
     pub constructors: RefCell<HashMap<Arguments<'a, 'ast>, ConstructorRef<'a, 'ast>>>,
@@ -260,6 +261,7 @@ impl<'a, 'ast> TypeDefinition<'a, 'ast> {
             ordered_fields: RefCell::new(Vec::new()),
             fields: RefCell::new(HashMap::new()),
             methods: RefCell::new(HashMap::new()),
+            method_impls: RefCell::new(Vec::new()),
             constructors: RefCell::new(HashMap::new()),
             extends: RefCell::new(vec![]),
             implements: RefCell::new(vec![]),
