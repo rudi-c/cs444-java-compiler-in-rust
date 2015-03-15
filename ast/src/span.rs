@@ -12,8 +12,6 @@ pub struct Span {
     pub file: FileId,
 }
 
-pub const DUMMY: Span = Span { lo: 0, hi: 0, file: 0 };
-
 pub trait IntoSpan {
     fn into_span(self) -> Span;
 }
