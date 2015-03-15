@@ -1,6 +1,6 @@
 use ast;
 use name::*;
-use span::{DUMMY, Span, spanned, IntoSpan};
+use span::{Span, spanned, IntoSpan};
 
 use middle::*;
 use lang_items::*;
@@ -112,18 +112,6 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                 if let Some(ref extension) = class.node.extends {
                     // This class extends a parent class.
                     self.resolve_class_extension(tydef, &*extension.parts);
-                } else {
-                    // This class does not extend a parent class. Therefore,
-                    // we make it extend java.lang.Object by default.
-                    let name = &[spanned(DUMMY, Symbol::from_str("java")),
-                                 spanned(DUMMY, Symbol::from_str("lang")),
-                                 spanned(DUMMY, Symbol::from_str("Object"))];
-                    if let Some(parent) = self.resolve_type_name(name) {
-                        // Don't make java.lang.Object inherit itself.
-                        if parent.fq_name != tydef.fq_name {
-                            self.resolve_class_extension(tydef, name);
-                        }
-                    }
                 }
                 self.resolve_implements(tydef,
                                         class.node.implements.as_slice());
