@@ -58,15 +58,36 @@ fn create_method<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
     } else {
         // Synthesize a method.
         assert!(inherited.len() > 0);
-        let impled = inherited.iter()
-        // don't inherit stuff from interfaces
-        .filter(|&&(origin, _)| origin.kind == TypeKind::Class)
-        .fold(Abstract, |cur, &(_, method)| match (cur, &method.impled) {
-            (Abstract, x) => x.clone(),
-            (x @ Concrete(..), &Abstract) => x,
-            (Concrete(..), &Concrete(..)) => panic!("inherited two impls!?")
-        });
-        let accessibility = if inherited.iter().any(|&(_, method)| matches!(Public, method.accessibility)) {
+        let concrete = {
+            let mut it = inherited.iter()
+            .filter_map(|&(origin, method)| {
+                match method.impled {
+                    // don't inherit stuff from interfaces
+                    Concrete(method_impl) if origin.kind == TypeKind::Class =>
+                        Some((origin, method, method_impl)),
+                    _ => None
+                }
+            }).fuse();
+            let r = it.next();
+            if it.count() > 0 {
+                panic!("inherited multiple impls!?");
+            }
+            r
+        };
+        let impled = if let Some((_, _, method_impl)) = concrete {
+            Concrete(method_impl)
+        } else {
+            Abstract
+        };
+        let accessibility = if let Some(&(origin, method)) = inherited.iter()
+            .find(|&&(_, method)| matches!(Public, method.accessibility)) {
+            if let Some((concrete_origin, concrete_method, _)) = concrete {
+                if matches!(Protected(..), concrete_method.accessibility) {
+                    span_error!(tydef.ast.span,
+                                "cannot implement public method `{}` of `{}` with protected method from `{}`",
+                                method.fq_name, origin.fq_name, concrete_origin.fq_name);
+                }
+            }
             Public
         } else {
             inherited.last().unwrap().1.accessibility.clone()
