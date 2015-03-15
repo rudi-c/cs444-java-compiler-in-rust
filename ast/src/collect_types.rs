@@ -3,7 +3,6 @@ use name::*;
 use walker::*;
 use arena::Arena;
 
-use std::borrow::ToOwned;
 use std::collections::hash_map;
 
 use middle::*;

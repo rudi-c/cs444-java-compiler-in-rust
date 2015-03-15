@@ -1,18 +1,24 @@
 use middle::*;
 use name::*;
 
-pub trait Walker<'a, 'ast>: Sized {
+pub trait Walker<'a, 'ast>: StatementWalker<'a, 'ast> {
     fn walk_package(&mut self, package: PackageRef<'a, 'ast>) { default_walk_package(self, package); }
     fn walk_type_definition(&mut self, tydef: TypeDefinitionRef<'a, 'ast>) { default_walk_type_definition(self, tydef); }
     fn walk_field(&mut self, name: Symbol, field: FieldRef<'a, 'ast>) { default_walk_field(self, name, field); }
     fn walk_method(&mut self, signature: &MethodSignature<'a, 'ast>, method: MethodRef<'a, 'ast>) { default_walk_method(self, signature, method); }
     fn walk_method_impl(&mut self, method: MethodImplRef<'a, 'ast>) { default_walk_method_impl(self, method); }
     fn walk_constructor(&mut self, constructor: ConstructorRef<'a, 'ast>) { default_walk_constructor(self, constructor); }
+}
+
+pub trait StatementWalker<'a, 'ast>: ExpressionWalker<'a, 'ast> {
     fn walk_variable(&mut self, var: VariableRef<'a, 'ast>) { default_walk_variable(self, var); }
     fn walk_local_variable(&mut self, var: &TypedLocalVariable<'a, 'ast>) { default_walk_local_variable(self, var); }
     fn walk_block(&mut self, block: &TypedBlock<'a, 'ast>) { default_walk_block(self, block); }
     fn walk_block_statement(&mut self, stmt: &TypedBlockStatement<'a, 'ast>) { default_walk_block_statement(self, stmt); }
     fn walk_statement(&mut self, stmt: &TypedStatement<'a, 'ast>) { default_walk_statement(self, stmt); }
+}
+
+pub trait ExpressionWalker<'a, 'ast>: Sized {
     fn walk_expression(&mut self, expr: &TypedExpression<'a, 'ast>) { default_walk_expression(self, expr); }
 }
 
@@ -43,7 +49,7 @@ pub fn default_walk_field<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, _name: 
         walker.walk_expression(init);
     }
 }
-pub fn default_walk_method<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, signature: &MethodSignature<'a, 'ast>, method: MethodRef<'a, 'ast>) {
+pub fn default_walk_method<'a, 'ast, W: Walker<'a, 'ast>>(_walker: &mut W, _signature: &MethodSignature<'a, 'ast>, _method: MethodRef<'a, 'ast>) {
 }
 pub fn default_walk_method_impl<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, method: MethodImplRef<'a, 'ast>) {
     for &arg in method.args.borrow().iter() {
@@ -57,18 +63,18 @@ pub fn default_walk_constructor<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, c
     }
     walker.walk_block(constructor.body.borrow().as_ref().unwrap());
 }
-pub fn default_walk_variable<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, var: VariableRef<'a, 'ast>) {
+pub fn default_walk_variable<'a, 'ast, W: StatementWalker<'a, 'ast>>(_walker: &mut W, _var: VariableRef<'a, 'ast>) {
 }
-pub fn default_walk_local_variable<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, var: &TypedLocalVariable<'a, 'ast>) {
+pub fn default_walk_local_variable<'a, 'ast, W: StatementWalker<'a, 'ast>>(walker: &mut W, var: &TypedLocalVariable<'a, 'ast>) {
     walker.walk_variable(var.variable);
     walker.walk_expression(&var.initializer);
 }
-pub fn default_walk_block<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, block: &TypedBlock<'a, 'ast>) {
+pub fn default_walk_block<'a, 'ast, W: StatementWalker<'a, 'ast>>(walker: &mut W, block: &TypedBlock<'a, 'ast>) {
     for stmt in block.stmts.iter() {
         walker.walk_block_statement(stmt);
     }
 }
-pub fn default_walk_block_statement<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, stmt: &TypedBlockStatement<'a, 'ast>) {
+pub fn default_walk_block_statement<'a, 'ast, W: StatementWalker<'a, 'ast>>(walker: &mut W, stmt: &TypedBlockStatement<'a, 'ast>) {
     use middle::TypedBlockStatement_::*;
     match stmt.node {
         LocalVariable(ref var) => {
@@ -79,7 +85,7 @@ pub fn default_walk_block_statement<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut 
         }
     }
 }
-pub fn default_walk_statement<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, stmt: &TypedStatement<'a, 'ast>) {
+pub fn default_walk_statement<'a, 'ast, W: StatementWalker<'a, 'ast>>(walker: &mut W, stmt: &TypedStatement<'a, 'ast>) {
     use middle::TypedStatement_::*;
     match stmt.node {
         Expression(ref expr) => walker.walk_expression(expr),
@@ -107,7 +113,7 @@ pub fn default_walk_statement<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, stm
             walker.walk_statement(stmt);
         }
         ForDecl(ref var, ref expr1, ref expr2, box ref stmt) => {
-            // walker.walk_local_variable(var);
+            walker.walk_local_variable(var);
             if let Some(ref expr1) = *expr1 {
                 walker.walk_expression(expr1);
             }
@@ -126,13 +132,13 @@ pub fn default_walk_statement<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, stm
     }
 }
 
-pub fn default_walk_expression<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, expr: &TypedExpression<'a, 'ast>) {
+pub fn default_walk_expression<'a, 'ast, W: ExpressionWalker<'a, 'ast>>(walker: &mut W, expr: &TypedExpression<'a, 'ast>) {
     use middle::TypedExpression_::*;
     match expr.node.0 {
         Literal(_) => (),
         This => (),
 
-        NewDynamicClass(box ref expr, _, ref exprs) => panic!(),
+        NewDynamicClass(box ref _expr, _, ref _exprs) => panic!(),
         MethodInvocation(ref expr, _, ref exprs) => {
             if let Some(box ref expr) = *expr {
                 walker.walk_expression(expr);

@@ -1,4 +1,3 @@
-use name::*;
 use middle::*;
 use typed_walker::*;
 
@@ -6,7 +5,7 @@ struct Uses<'a, 'ast: 'a> {
     var: VariableRef<'a, 'ast>,
 }
 
-impl<'a, 'ast> Walker<'a, 'ast> for Uses<'a, 'ast> {
+impl<'a, 'ast> ExpressionWalker<'a, 'ast> for Uses<'a, 'ast> {
     fn walk_expression(&mut self, expr: &TypedExpression<'a, 'ast>) {
         use middle::TypedExpression_::*;
         match expr.0 {

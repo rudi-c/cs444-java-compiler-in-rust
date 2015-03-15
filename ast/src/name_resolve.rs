@@ -524,7 +524,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                             ty, name);
                 None
             }
-            ref ty @ Type::ArrayType(_) => {
+            Type::ArrayType(_) => {
                 // Array types have the same methods as Object does.
                 self.resolve_typedef_method_access(span, self.lang_items.object,
                                                    name, targ_exprs)

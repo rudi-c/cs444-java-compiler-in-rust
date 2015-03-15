@@ -25,7 +25,12 @@ impl<'a, 'ast> Walker<'a, 'ast> for Order {
             self.seen.insert(field.fq_name);
         }
     }
+}
 
+impl<'a, 'ast> StatementWalker<'a, 'ast> for Order {
+}
+
+impl<'a, 'ast> ExpressionWalker<'a, 'ast> for Order {
     fn walk_expression(&mut self, expr: &TypedExpression<'a, 'ast>) {
         use middle::TypedExpression_::*;
         match expr.0 {
