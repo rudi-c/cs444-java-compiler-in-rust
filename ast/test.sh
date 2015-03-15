@@ -3,7 +3,7 @@
 ASSIGN=$1
 shift
 
-set +o pipefail
+shopt -s globstar
 
 if [[ "$1" == "--release" ]]; then
     RELEASE="--release"
@@ -16,7 +16,7 @@ fi
 
 cargo build $RELEASE || exit $?
 
-STDLIB="../stdlib/${ASSIGN}.0/"
+STDLIB=("../stdlib/${ASSIGN}.0/"**/*.java)
 
 if [[ $# > 0 ]]; then
     TESTCASES=("$@")
@@ -38,7 +38,11 @@ for test in "${TESTCASES[@]}"; do
     else
         MULTI=""
     fi
-    "$PROGRAM" $MULTI $(find "$STDLIB" "$test" -name '*.java')
+    if [[ -f "$test" ]]; then
+        "$PROGRAM" $MULTI "${STDLIB[@]}" "$test"
+    else
+        "$PROGRAM" $MULTI "${STDLIB[@]}" "$test"/**/*.java
+    fi
     CODE="$?"
     if [[ $CODE != $PASS_CODE ]]; then
         LOG="${LOG}$test expected exit code $PASS_CODE, got $CODE"$'\n'
