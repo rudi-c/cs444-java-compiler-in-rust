@@ -185,14 +185,15 @@ impl<'env, 'out, 'a, 'ast> Walker<'ast> for Collector<'env, 'out, 'a, 'ast> {
             Public
         };
 
+        let method_impl = self.arena.alloc(
+            MethodImpl::new(fq_name.clone(), tydef, ret_ty.clone(), is_static, method_ast));
+        tydef.method_impls.borrow_mut().push(method_impl);
+        self.to_populate.push(ToPopulate::Method(method_impl));
         let impled = match tydef.kind {
             TypeKind::Class => if method_ast.node.has_modifier(ast::Modifier_::Abstract) {
+                // Still create a MethodImpl, just for the parameters.
                 Abstract
             } else {
-                let method_impl = self.arena.alloc(
-                    MethodImpl::new(fq_name.clone(), tydef, ret_ty.clone(), is_static, method_ast));
-                tydef.method_impls.borrow_mut().push(method_impl);
-                self.to_populate.push(ToPopulate::Method(method_impl));
                 Concrete(method_impl)
             },
             TypeKind::Interface => Abstract,
