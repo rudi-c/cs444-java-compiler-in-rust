@@ -2,6 +2,7 @@ use ast;
 use span::*;
 use middle::*;
 use arena::*;
+use error::have_error;
 
 use name_resolve::Environment;
 use lang_items::LangItems;
@@ -39,6 +40,7 @@ fn expect_expr<'a, 'ast>(expected: &Type<'a, 'ast>, expr: &TypedExpression<'a, '
 
 static NULL: ast::Literal = ast::Literal::Null;
 fn dummy_expr_<'a, 'ast>() -> (TypedExpression_<'a, 'ast>, Type<'a, 'ast>) {
+    assert!(have_error());
     (TypedExpression_::Literal(&NULL), Type::Unknown)
 }
 

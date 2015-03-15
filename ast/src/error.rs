@@ -45,6 +45,10 @@ pub fn fatal() -> ! {
 /// The number of errors reported.
 thread_local!(pub static ERRORS: Cell<u32> = Cell::new(0));
 
+pub fn have_error() -> bool {
+    ERRORS.with(|v| v.get() > 0)
+}
+
 /// A `Terminal` that doesn't support any terminal features.
 /// Used when `term::stderr` fails to return a working Terminal.
 struct DummyTerminal {

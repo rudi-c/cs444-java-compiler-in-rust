@@ -2,6 +2,7 @@ use ast;
 use walker::*;
 use arena::Arena;
 use name::*;
+use error::have_error;
 
 use middle::*;
 use name_resolve::{Environment, ToPopulate};
@@ -70,7 +71,7 @@ fn create_method<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
             }).fuse();
             let r = it.next();
             if it.count() > 0 {
-                panic!("inherited multiple impls!?");
+                assert!(have_error());
             }
             r
         };
