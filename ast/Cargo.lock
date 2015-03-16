@@ -3,6 +3,7 @@ name = "ast"
 version = "0.0.1"
 dependencies = [
  "dfagen 0.0.1",
+ "ivar 0.0.1",
  "lalrgen 0.0.1",
  "rbtree 0.0.1",
 ]
@@ -13,6 +14,10 @@ version = "0.0.1"
 dependencies = [
  "regex_dfa 0.0.1",
 ]
+
+[[package]]
+name = "ivar"
+version = "0.0.1"
 
 [[package]]
 name = "lalr"

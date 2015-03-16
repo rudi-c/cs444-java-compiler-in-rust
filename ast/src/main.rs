@@ -4,6 +4,7 @@
 #[no_link] #[plugin] extern crate dfagen;
 #[no_link] #[plugin] extern crate lalrgen;
 extern crate rbtree;
+extern crate ivar;
 extern crate getopts;
 extern crate term;
 

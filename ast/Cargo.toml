@@ -15,3 +15,7 @@ path = "../lalrgen"
 [dependencies.rbtree]
 
 path = "../rbtree"
+
+[dependencies.ivar]
+
+path = "../ivar"

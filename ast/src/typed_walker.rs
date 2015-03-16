@@ -45,23 +45,25 @@ pub fn default_walk_type_definition<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut 
     }
 }
 pub fn default_walk_field<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, _name: Symbol, field: FieldRef<'a, 'ast>) {
-    if let Some(ref init) = *field.initializer.borrow() {
+    if let Some(ref init) = *field.initializer {
         walker.walk_expression(init);
     }
 }
 pub fn default_walk_method<'a, 'ast, W: Walker<'a, 'ast>>(_walker: &mut W, _signature: &MethodSignature<'a, 'ast>, _method: MethodRef<'a, 'ast>) {
 }
 pub fn default_walk_method_impl<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, method: MethodImplRef<'a, 'ast>) {
-    for &arg in method.args.borrow().iter() {
+    for &arg in method.args.iter() {
         walker.walk_variable(arg);
     }
-    walker.walk_block(method.body.borrow().as_ref().unwrap());
+    if let Some(ref body) = *method.body {
+        walker.walk_block(body);
+    }
 }
 pub fn default_walk_constructor<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, constructor: ConstructorRef<'a, 'ast>) {
-    for &arg in constructor.args.borrow().iter() {
+    for &arg in constructor.args.iter() {
         walker.walk_variable(arg);
     }
-    walker.walk_block(constructor.body.borrow().as_ref().unwrap());
+    walker.walk_block(&*constructor.body);
 }
 pub fn default_walk_variable<'a, 'ast, W: StatementWalker<'a, 'ast>>(_walker: &mut W, _var: VariableRef<'a, 'ast>) {
 }

@@ -2,6 +2,7 @@ use ast;
 use name::*;
 use span::*;
 
+use ivar::Ivar;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::cmp::{Ord, Ordering};
@@ -13,7 +14,8 @@ pub use self::Accessibility::*;
 // In this file, the variable name prefix 'fq_' abbreviates fully_qualified_
 
 // The idea here is to have an object graph represented using borrowed references.
-// RefCell allows fields in the graph to be mutated by later passes.
+// RefCell allows fields in the graph to be mutated by later passes,
+// while Ivar allows fields to be initially unset but assigned just once.
 // All objects are allocated from a single `Arena`, and are deallocated at the same time.
 // This allows circular references without leaks or unsafety.
 // Every object has a unique `Name`, which can be used as an key for external maps. There is
@@ -76,7 +78,7 @@ pub struct Field<'a, 'ast: 'a> {
     pub fq_name: Name,
     pub origin: TypeDefinitionRef<'a, 'ast>,
     pub ty: Type<'a, 'ast>,
-    pub initializer: RefCell<Option<TypedExpression<'a, 'ast>>>,
+    pub initializer: Ivar<Option<TypedExpression<'a, 'ast>>>,
     pub ast: &'ast ast::Field,
 }
 pub type FieldRef<'a, 'ast> = &'a Field<'a, 'ast>;
@@ -87,7 +89,7 @@ impl<'a, 'ast> Field<'a, 'ast> {
             fq_name: Name::fresh(name),
             origin: origin,
             ty: ty,
-            initializer: RefCell::new(None),
+            initializer: Ivar::new(),
             ast: ast,
         }
     }
@@ -153,6 +155,8 @@ impl<'a, 'ast> Method<'a, 'ast> {
     }
 }
 
+// Despite the name, MethodImpls are created even for abstract methods.
+// Each MethodImpl corresponds to one method declaration in the source.
 #[derive(Show)]
 pub struct MethodImpl<'a, 'ast: 'a> {
     pub fq_name: Name,
@@ -160,9 +164,9 @@ pub struct MethodImpl<'a, 'ast: 'a> {
     // FIXME: This is duplicated from Method
     pub ret_ty: Type<'a, 'ast>,
     pub is_static: bool,
-    // These are initially "uninitialized" (empty or None) until typechecking.
-    pub args: RefCell<Vec<VariableRef<'a, 'ast>>>,
-    pub body: RefCell<Option<TypedBlock<'a, 'ast>>>,
+    // These are initially uninitialized  until typechecking.
+    pub args: Ivar<Vec<VariableRef<'a, 'ast>>>,
+    pub body: Ivar<Option<TypedBlock<'a, 'ast>>>,
     pub ast: &'ast ast::Method,
 }
 pub type MethodImplRef<'a, 'ast> = &'a MethodImpl<'a, 'ast>;
@@ -178,8 +182,8 @@ impl<'a, 'ast> MethodImpl<'a, 'ast> {
             origin: origin,
             ret_ty: ret_ty,
             is_static: is_static,
-            args: RefCell::new(vec![]),
-            body: RefCell::new(None),
+            args: Ivar::new(),
+            body: Ivar::new(),
             ast: ast,
         }
     }
@@ -198,8 +202,8 @@ impl<'a, 'ast> fmt::String for MethodSignature<'a, 'ast> {
 #[derive(Show)]
 pub struct Constructor<'a, 'ast: 'a> {
     pub fq_name: Name,
-    pub args: RefCell<Vec<VariableRef<'a, 'ast>>>,
-    pub body: RefCell<Option<TypedBlock<'a, 'ast>>>,
+    pub args: Ivar<Vec<VariableRef<'a, 'ast>>>,
+    pub body: Ivar<TypedBlock<'a, 'ast>>,
     pub ast: &'ast ast::Constructor,
 }
 pub type ConstructorRef<'a, 'ast> = &'a Constructor<'a, 'ast>;
@@ -208,8 +212,8 @@ impl<'a, 'ast> Constructor<'a, 'ast> {
     pub fn new(name: String, ast: &'ast ast::Constructor) -> Self {
         Constructor {
             fq_name: Name::fresh(name),
-            args: RefCell::new(vec![]),
-            body: RefCell::new(None),
+            args: Ivar::new(),
+            body: Ivar::new(),
             ast: ast,
         }
     }

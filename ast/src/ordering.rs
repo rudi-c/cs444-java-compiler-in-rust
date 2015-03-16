@@ -19,7 +19,7 @@ impl<'a, 'ast> Walker<'a, 'ast> for Order {
 
     fn walk_field(&mut self, _name: Symbol, field: FieldRef<'a, 'ast>) {
         if !field.is_static() {
-            if let Some(ref expr) = *field.initializer.borrow() {
+            if let Some(ref expr) = *field.initializer {
                 self.walk_expression(expr);
             }
             self.seen.insert(field.fq_name);

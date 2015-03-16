@@ -710,10 +710,8 @@ pub fn populate_method<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
         lang_items: lang_items,
         require_static: method.is_static,
     };
-    *method.args.borrow_mut() = method.ast.params.iter().map(|decl| typer.new_var(decl)).collect();
-    if let Some(ref block) = method.ast.body {
-        *method.body.borrow_mut() = Some(typer.block(block));
-    }
+    method.args.set(method.ast.params.iter().map(|decl| typer.new_var(decl)).collect());
+    method.body.set(method.ast.body.as_ref().map(|block| typer.block(block)));
 }
 
 pub fn populate_constructor<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
@@ -742,8 +740,8 @@ pub fn populate_constructor<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
         lang_items: lang_items,
         require_static: false,
     };
-    *ctor.args.borrow_mut() = ctor.ast.params.iter().map(|decl| typer.new_var(decl)).collect();
-    *ctor.body.borrow_mut() = Some(typer.block(&ctor.ast.body));
+    ctor.args.set(ctor.ast.params.iter().map(|decl| typer.new_var(decl)).collect());
+    ctor.body.set(typer.block(&ctor.ast.body));
 }
 
 pub fn populate_field<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
@@ -760,6 +758,8 @@ pub fn populate_field<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
         };
         let texpr = typer.expr(expr);
         let texpr = typer.coerce_expr(&field.ty, texpr);
-        *field.initializer.borrow_mut() = Some(texpr);
+        field.initializer.set(Some(texpr));
+    } else {
+        field.initializer.set(None);
     }
 }
