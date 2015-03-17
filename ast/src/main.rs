@@ -202,6 +202,11 @@ fn driver(ctx: &RefCell<Context>) {
     let arena = arena::Arena::new();
     let (default_package, toplevel) = name_resolve(&arena, &*asts);
 
+    if ERRORS.with(|v| v.get()) > 0 {
+        // Some errors occurred. It's not a good idea to continue, to avoid crashing the compiler.
+        return;
+    }
+
     // Static analysis
     check_ordering(default_package);
     check_ordering(toplevel);
