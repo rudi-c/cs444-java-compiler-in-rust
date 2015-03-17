@@ -7,7 +7,6 @@ use lang_items::*;
 use collect_types::collect_types;
 use collect_members::collect_members;
 use tycheck::{populate_method, populate_constructor, populate_field};
-use ordering::check_ordering;
 use arena::Arena;
 
 use rbtree::RbMap;
@@ -1019,16 +1018,16 @@ fn populate<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
     }
 }
 
-pub fn name_resolve<'a, 'ast>(arena: &'a Arena<'a, 'ast>, asts: &'ast [ast::CompilationUnit]) -> PackageRef<'a, 'ast> {
+pub fn name_resolve<'a, 'ast>(arena: &'a Arena<'a, 'ast>, asts: &'ast [ast::CompilationUnit])
+    -> (PackageRef<'a, 'ast>, PackageRef<'a, 'ast>) {
+
     let toplevel = arena.alloc(Package::new("top level".to_owned()));
     let default_package = arena.alloc(Package::new("default package".to_owned()));
     let types = collect_types(arena, toplevel, default_package, asts);
     let lang_items = find_lang_items(toplevel);
     let methods = build_environments(arena, toplevel, &lang_items, &*types);
     populate(arena, methods, &lang_items);
-    check_ordering(default_package);
-    check_ordering(toplevel);
 
-    toplevel
+    (default_package, toplevel)
 }
 

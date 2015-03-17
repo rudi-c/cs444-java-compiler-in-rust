@@ -23,6 +23,9 @@ use context::{Context, CONTEXT};
 use error::{FatalError, ErrorReporter, ERRORS};
 use name_resolve::name_resolve;
 
+use ordering::check_ordering;
+use reachability::check_reachability;
+
 macro_rules! matches {
     ($p: pat, $e: expr) => (if let $p = $e { true } else { false });
 }
@@ -46,6 +49,7 @@ pub mod collect_members;
 pub mod tycheck;
 pub mod typed_walker;
 pub mod ordering;
+pub mod reachability;
 pub mod uses;
 
 fn create_ast(ctx: &RefCell<Context>, filename: &str) -> Option<CompilationUnit> {
@@ -194,7 +198,14 @@ fn driver(ctx: &RefCell<Context>) {
             */
     }
 
-    name_resolve(&arena::Arena::new(), &*asts);
+    let arena = arena::Arena::new();
+    let (default_package, toplevel) = name_resolve(&arena, &*asts);
+
+    // Static analysis
+    check_ordering(default_package);
+    check_ordering(toplevel);
+    check_reachability(default_package);
+    check_reachability(toplevel);
 }
 
 fn main() {
