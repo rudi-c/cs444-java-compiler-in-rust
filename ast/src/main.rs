@@ -51,6 +51,7 @@ pub mod typed_walker;
 pub mod ordering;
 pub mod reachability;
 pub mod uses;
+pub mod eval;
 
 fn create_ast(ctx: &RefCell<Context>, filename: &str) -> Option<CompilationUnit> {
     let file_ix = match ctx.borrow_mut().add_file(Path::new(filename)) {
