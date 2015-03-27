@@ -267,7 +267,7 @@ pub fn collect_members<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
     for &parent in {
         // Inherit from `Object`, unless we explicitly extend some class (from which we indirectly
         // inherit from Object)...
-        if (tydef.kind == TypeKind::Interface || tydef.extends.borrow().len() == 0)
+        if (tydef.kind == TypeKind::Interface || tydef.extends.len() == 0)
         // as long as this isn't `Object` itself.
             && (tydef != lang_items.object) {
             Some(&lang_items.object)
@@ -275,8 +275,8 @@ pub fn collect_members<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
             None
         }
     }.into_iter()
-    .chain(tydef.implements.borrow().iter())
-    .chain(tydef.extends.borrow().iter()) {
+    .chain(tydef.implements.iter())
+    .chain(tydef.extends.iter()) {
         for (signature, &method) in parent.methods.iter() {
             collector.inherited_methods.entry(signature.clone()).get()
                 .unwrap_or_else(|v| v.insert(vec![]))

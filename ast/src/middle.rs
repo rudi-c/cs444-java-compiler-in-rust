@@ -273,8 +273,8 @@ pub struct TypeDefinition<'a, 'ast: 'a> {
     // types.
     pub constructors: Ivar<HashMap<Arguments<'a, 'ast>, ConstructorRef<'a, 'ast>>>,
 
-    pub extends: RefCell<Vec<TypeDefinitionRef<'a, 'ast>>>,
-    pub implements: RefCell<Vec<TypeDefinitionRef<'a, 'ast>>>,
+    pub extends: Ivar<Vec<TypeDefinitionRef<'a, 'ast>>>,
+    pub implements: Ivar<Vec<TypeDefinitionRef<'a, 'ast>>>,
 
     pub ast: &'ast ast::TypeDeclaration,
 }
@@ -293,8 +293,8 @@ impl<'a, 'ast> TypeDefinition<'a, 'ast> {
             methods: Ivar::new(),
             method_impls: Ivar::new(),
             constructors: Ivar::new(),
-            extends: RefCell::new(vec![]),
-            implements: RefCell::new(vec![]),
+            extends: Ivar::new(),
+            implements: Ivar::new(),
             ast: ast,
         }
     }

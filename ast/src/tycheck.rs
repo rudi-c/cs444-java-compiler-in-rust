@@ -719,7 +719,7 @@ pub fn populate_constructor<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
                                       ctor: ConstructorRef<'a, 'ast>,
                                       lang_items: &LangItems<'a, 'ast>) {
     // ($8.8.5) Check that we can make an implicit super() call.
-    if let Some(parent) = env.enclosing_type.extends.borrow().first() {
+    if let Some(parent) = env.enclosing_type.extends.first() {
         match parent.constructors.get(&vec![]) {
             None => {
                 // If there is an explicit constructor, then there is no implicit

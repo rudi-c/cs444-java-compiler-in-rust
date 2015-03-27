@@ -92,8 +92,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
             if next == sup {
                 return true;
             }
-            for &parent in next.extends.borrow().iter()
-                .chain(next.implements.borrow().iter()) {
+            for &parent in next.extends.iter().chain(next.implements.iter()) {
                 if visited.insert(parent) {
                     q.push_back(parent);
                 }
@@ -108,48 +107,43 @@ impl<'a, 'ast> Environment<'a, 'ast> {
     fn resolve_inheritance(&self, tydef: TypeDefinitionRef<'a, 'ast>) {
         match tydef.ast.node {
             ast::TypeDeclaration_::Class(ref class) => {
-                if let Some(ref extension) = class.node.extends {
+                if let Some(ty) = class.node.extends.as_ref()
+                    .and_then(|extension| self.resolve_class_extension(extension)) {
                     // This class extends a parent class.
-                    self.resolve_class_extension(tydef, &*extension.parts);
+                    tydef.extends.set(vec![ty]);
+                } else {
+                    tydef.extends.set(vec![]);
                 }
-                self.resolve_implements(tydef,
-                                        class.node.implements.as_slice());
+                tydef.implements.set(self.resolve_implements(&*class.node.implements));
             }
             ast::TypeDeclaration_::Interface(ref interface) => {
-                self.resolve_interface_extensions(tydef,
-                                                  interface.node.extends.as_slice());
+                tydef.extends.set(self.resolve_interface_extensions(&*interface.node.extends));
+                tydef.implements.set(vec![]);
             },
         }
     }
 
-    fn resolve_class_extension(&self,
-                               typedef: TypeDefinitionRef<'a, 'ast>,
-                               extension: &[Ident]) {
-        match self.resolve_type_name(extension) {
-            Some(extended_type) => {
-                if extended_type.kind == TypeKind::Interface {
-                    // ($8.1.3, dOvs simple constraint 1)
-                    span_error!(typedef.ast.span,
-                                "class cannot extend interface");
-                }
-                if extended_type.has_modifier(ast::Modifier_::Final) {
-                    // ($8.1.1.2/$8.1.3 dOvs simple constraint 4)
-                    span_error!(typedef.ast.span,
-                                "cannot extend final class `{}`",
-                                extended_type.fq_name);
-                }
-                typedef.extends.borrow_mut().push(extended_type);
-            },
-            None => {
-                // an error was already printed
-            },
-        }
+    fn resolve_class_extension(&self, extension: &QualifiedIdentifier)
+    -> Option<TypeDefinitionRef<'a, 'ast>> {
+        self.resolve_type_name(&*extension.parts).map(|extended_type| {
+            if extended_type.kind == TypeKind::Interface {
+                // ($8.1.3, dOvs simple constraint 1)
+                span_error!(extension,
+                            "class cannot extend interface");
+            }
+            if extended_type.has_modifier(ast::Modifier_::Final) {
+                // ($8.1.1.2/$8.1.3 dOvs simple constraint 4)
+                span_error!(extension,
+                            "cannot extend final class `{}`",
+                            extended_type.fq_name);
+            }
+            extended_type
+        })
     }
 
-    fn resolve_interface_extensions(&self,
-                                    typedef: TypeDefinitionRef<'a, 'ast>,
-                                    extensions: &[QualifiedIdentifier]) {
-        let mut seen = HashSet::new();
+    fn resolve_interface_extensions(&self, extensions: &[QualifiedIdentifier])
+    -> Vec<TypeDefinitionRef<'a, 'ast>> {
+        let mut seen = HashMap::new();
         for extension in extensions.iter() {
             match self.resolve_type_name(&*extension.parts) {
                 Some(extended_type) => {
@@ -161,23 +155,22 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                     // An interface must not be repeated in an implements clause,
                     // or in an extends clause of an interface.
                     // (JLS 8.1.4, dOvs simple constraint 3)
-                    if !seen.insert(&extended_type.fq_name) {
+                    if seen.insert(extended_type.fq_name, extended_type).is_some() {
                         span_error!(extension,
                                     "duplicate extended interface");
                     }
-                    typedef.extends.borrow_mut().push(extended_type);
                 },
                 None => {
                     // an error was already printed
                 },
             }
         }
+        seen.into_iter().map(|(_, t)| t).collect()
     }
 
-    fn resolve_implements(&self,
-                          typedef: TypeDefinitionRef<'a, 'ast>,
-                          implements: &[QualifiedIdentifier]) {
-        let mut seen = HashSet::new();
+    fn resolve_implements(&self, implements: &[QualifiedIdentifier])
+    -> Vec<TypeDefinitionRef<'a, 'ast>> {
+        let mut seen = HashMap::new();
         for implement in implements.iter() {
             match self.resolve_type_name(&*implement.parts) {
                 Some(implemented_type) => {
@@ -189,17 +182,17 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                     // An interface must not be repeated in an implements clause,
                     // or in an extends clause of an interface.
                     // (JLS 8.1.4, dOvs simple constraint 3)
-                    if !seen.insert(&implemented_type.fq_name) {
+                    if seen.insert(implemented_type.fq_name, implemented_type).is_some() {
                         span_error!(implement,
                                     "duplicate implemented interface");
                     }
-                    typedef.implements.borrow_mut().push(implemented_type);
                 },
                 None => {
                     // an error was already printed
                 },
             }
         }
+        seen.into_iter().map(|(_, t)| t).collect()
     }
 
     pub fn resolve_type(&self, ty: &ast::Type) -> Type<'a, 'ast> {
@@ -844,9 +837,7 @@ fn inheritance_topological_sort_search<'a, 'ast>(typedef: TypeDefinitionRef<'a, 
                                                  stack: &mut Vec<Name>,
                                                  sorted: &mut Vec<Name>)
         -> Result<(), ()> {
-    let extends_borrow = typedef.extends.borrow();
-    let implements_borrow = typedef.implements.borrow();
-    let mut parents = extends_borrow.iter().chain(implements_borrow.iter());
+    let mut parents = typedef.extends.iter().chain(typedef.implements.iter());
 
     stack.push(typedef.fq_name);
 

@@ -17,7 +17,7 @@ pub fn emit_descriptor<'a, 'ast>(ctx: &Context<'a, 'ast>,
             if tydef.fq_name == ctx.lang_items.object.fq_name {
                 println!("dd 0");
             } else {
-                let superclass = match &**tydef.extends.borrow() {
+                let superclass = match &**tydef.extends {
                     [] => ctx.lang_items.object,
                     [parent] => parent,
                     _ => panic!("class extends multiple types?")
@@ -41,7 +41,7 @@ pub fn emit_descriptor<'a, 'ast>(ctx: &Context<'a, 'ast>,
             println!("db '{}', 0", tydef.fq_name);
             println!("align 4,db 0");
             println!(".?intfs:");
-            for intf in tydef.implements.borrow().iter() {
+            for intf in tydef.implements.iter() {
                 println!("dd DESC{}", intf.mangle());
             }
             println!("dd 0");
