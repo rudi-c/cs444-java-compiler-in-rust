@@ -173,7 +173,8 @@ pub fn default_walk_expression<'a, 'ast, W: ExpressionWalker<'a, 'ast>>(walker: 
 
         ArrayAccess(box ref expr1, box ref expr2)
         | Assignment(box ref expr1, box ref expr2)
-        | Infix(_, box ref expr1, box ref expr2) => {
+        | Infix(_, box ref expr1, box ref expr2)
+        | Concat(box ref expr1, box ref expr2) => {
             walker.walk_expression(expr1);
             walker.walk_expression(expr2);
         }

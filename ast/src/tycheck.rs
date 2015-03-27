@@ -652,7 +652,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                                     tr = self.stringify(tr);
                                 }
                             }
-                           string_ty
+                            return (TypedExpression_::Concat(box tl, box tr), string_ty);
                         } else {
                             tl = self.coerce_expr(&Type::SimpleType(SimpleType::Int), tl);
                             tr = self.coerce_expr(&Type::SimpleType(SimpleType::Int), tr);

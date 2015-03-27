@@ -489,6 +489,8 @@ pub enum TypedExpression_<'a, 'ast: 'a> {
     Prefix(ast::PrefixOperator, Box<TypedExpression<'a, 'ast>>),
     Infix(ast::InfixOperator, Box<TypedExpression<'a, 'ast>>, Box<TypedExpression<'a, 'ast>>),
     Cast(Type<'a, 'ast>, Box<TypedExpression<'a, 'ast>>),
+    // String concatenation.
+    Concat(Box<TypedExpression<'a, 'ast>>, Box<TypedExpression<'a, 'ast>>),
     // An implicit widening conversion.
     Widen(Box<TypedExpression<'a, 'ast>>),
     // A "string conversion", as described in $15.18.1.1.

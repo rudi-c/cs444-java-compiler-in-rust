@@ -72,7 +72,6 @@ pub fn eval_const<'a, 'ast>(expr: &TypedExpression<'a, 'ast>) -> Option<Value> {
                 (GreaterEqual, _, _) => panic!("bad GreaterEqual"),
 
                 (Plus, Int(l), Int(r)) => Int(l + r),
-                (Plus, String(l), String(r)) => String(l + &*r),
                 (Plus, _, _) => panic!("bad Plus"),
                 (Minus, Int(l), Int(r)) => Int(l - r),
                 (Minus, _, _) => panic!("bad Minus"),
@@ -95,6 +94,12 @@ pub fn eval_const<'a, 'ast>(expr: &TypedExpression<'a, 'ast>) -> Option<Value> {
                     Int(v as i32)
                 }
                 (Modulo, _, _) => panic!("bad Modulo"),
+            }
+        }
+        Concat(box ref left, box ref right) => {
+            match (try_opt!(eval_const(left)), try_opt!(eval_const(right))) {
+                (String(l), String(r)) => String(l + &*r),
+                (_, _) => panic!("bad concat"),
             }
         }
         Cast(_, box ref inner) |
