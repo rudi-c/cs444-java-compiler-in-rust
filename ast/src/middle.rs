@@ -79,6 +79,21 @@ pub struct Universe<'a, 'ast: 'a> {
     pub default: PackageRef<'a, 'ast>,
 }
 
+impl<'a, 'ast> Universe<'a, 'ast> {
+    pub fn each_type<F: FnMut(TypeDefinitionRef<'a, 'ast>)>(&self, f: F) {
+        use typed_walker::{Walker, StatementWalker, ExpressionWalker};
+        struct Find<'a, 'ast: 'a, G>(G);
+        impl<'a, 'ast, G: FnMut(TypeDefinitionRef<'a, 'ast>)> Walker<'a, 'ast> for Find<'a, 'ast, G> {
+            fn walk_type_definition(&mut self, tydef: TypeDefinitionRef<'a, 'ast>) {
+                self.0(tydef);
+            }
+        }
+        impl<'a, 'ast, G> StatementWalker<'a, 'ast> for Find<'a, 'ast, G> { }
+        impl<'a, 'ast, G> ExpressionWalker<'a, 'ast> for Find<'a, 'ast, G> { }
+        Find(f).walk_universe(self);
+    }
+}
+
 #[derive(Show)]
 pub struct Field<'a, 'ast: 'a> {
     pub fq_name: Name,

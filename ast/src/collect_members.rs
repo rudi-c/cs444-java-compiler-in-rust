@@ -211,7 +211,7 @@ impl<'env, 'a, 'ast> Walker<'ast> for Collector<'env, 'a, 'ast> {
         };
 
         let method_impl = self.arena.alloc(
-            MethodImpl::new(fq_name.clone(), tydef, args, ret_ty.clone(), is_static, method_ast));
+            MethodImpl::new(format!("{}.{}", tydef.fq_name, method_name), tydef, args, ret_ty.clone(), is_static, method_ast));
         self.method_impls.push(method_impl);
         self.to_populate.push(ToPopulate::Method(method_impl));
         let impled = match tydef.kind {
