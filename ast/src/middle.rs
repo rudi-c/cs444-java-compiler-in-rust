@@ -161,9 +161,11 @@ impl<'a, 'ast> Method<'a, 'ast> {
 pub struct MethodImpl<'a, 'ast: 'a> {
     pub fq_name: Name,
     pub origin: TypeDefinitionRef<'a, 'ast>,
+    pub arg_types: Arguments<'a, 'ast>,
     // FIXME: This is duplicated from Method
     pub ret_ty: Type<'a, 'ast>,
     pub is_static: bool,
+    pub is_native: bool,
     // These are initially uninitialized  until typechecking.
     pub args: Ivar<Vec<VariableRef<'a, 'ast>>>,
     pub body: Ivar<Option<TypedBlock<'a, 'ast>>>,
@@ -174,14 +176,17 @@ pub type MethodImplRef<'a, 'ast> = &'a MethodImpl<'a, 'ast>;
 impl<'a, 'ast> MethodImpl<'a, 'ast> {
     pub fn new(name: String,
                origin: TypeDefinitionRef<'a, 'ast>,
+               arg_types: Arguments<'a, 'ast>,
                ret_ty: Type<'a, 'ast>,
                is_static: bool,
                ast: &'ast ast::Method) -> Self {
         MethodImpl {
             fq_name: Name::fresh(name),
             origin: origin,
+            arg_types: arg_types,
             ret_ty: ret_ty,
             is_static: is_static,
+            is_native: ast.node.has_modifier(ast::Modifier_::Native),
             args: Ivar::new(),
             body: Ivar::new(),
             ast: ast,

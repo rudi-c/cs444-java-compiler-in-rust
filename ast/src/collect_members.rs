@@ -170,11 +170,13 @@ impl<'env, 'out, 'a, 'ast> Walker<'ast> for Collector<'env, 'out, 'a, 'ast> {
     fn walk_method(&mut self, method_ast: &'ast ast::Method) {
         let tydef = self.type_definition;
         let method_name = method_ast.node.name.node;
+        let args: Vec<_> = method_ast.node.params.iter().map(|arg| {
+            self.env.resolve_type(&arg.node.ty)
+        }).collect();
+
         let signature = MethodSignature {
             name: method_name,
-            args: method_ast.node.params.iter().map(|arg| {
-                self.env.resolve_type(&arg.node.ty)
-            }).collect(),
+            args: args.clone(),
         };
         let ret_ty = self.env.resolve_type(&method_ast.node.return_type);
         let fq_name = format!("{}.{}", tydef.fq_name, signature);
@@ -187,7 +189,7 @@ impl<'env, 'out, 'a, 'ast> Walker<'ast> for Collector<'env, 'out, 'a, 'ast> {
         };
 
         let method_impl = self.arena.alloc(
-            MethodImpl::new(fq_name.clone(), tydef, ret_ty.clone(), is_static, method_ast));
+            MethodImpl::new(fq_name.clone(), tydef, args, ret_ty.clone(), is_static, method_ast));
         tydef.method_impls.borrow_mut().push(method_impl);
         self.to_populate.push(ToPopulate::Method(method_impl));
         let impled = match tydef.kind {
