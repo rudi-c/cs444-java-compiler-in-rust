@@ -56,6 +56,6 @@ impl<'a, 'ast> ExpressionWalker<'a, 'ast> for Order {
     }
 }
 
-pub fn check_ordering<'a, 'ast>(package: PackageRef<'a, 'ast>) {
-    Order { seen: HashSet::new() }.walk_package(package);
+pub fn check_ordering<'a, 'ast>(universe: &Universe<'a, 'ast>) {
+    Order { seen: HashSet::new() }.walk_universe(universe);
 }

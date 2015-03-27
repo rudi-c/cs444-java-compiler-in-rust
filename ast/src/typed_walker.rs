@@ -2,6 +2,7 @@ use middle::*;
 use name::*;
 
 pub trait Walker<'a, 'ast>: StatementWalker<'a, 'ast> {
+    fn walk_universe(&mut self, universe: &Universe<'a, 'ast>) { default_walk_universe(self, universe); }
     fn walk_package(&mut self, package: PackageRef<'a, 'ast>) { default_walk_package(self, package); }
     fn walk_type_definition(&mut self, tydef: TypeDefinitionRef<'a, 'ast>) { default_walk_type_definition(self, tydef); }
     fn walk_field(&mut self, name: Symbol, field: FieldRef<'a, 'ast>) { default_walk_field(self, name, field); }
@@ -20,6 +21,11 @@ pub trait StatementWalker<'a, 'ast>: ExpressionWalker<'a, 'ast> {
 
 pub trait ExpressionWalker<'a, 'ast>: Sized {
     fn walk_expression(&mut self, expr: &TypedExpression<'a, 'ast>) { default_walk_expression(self, expr); }
+}
+
+pub fn default_walk_universe<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, universe: &Universe<'a, 'ast>) {
+    walker.walk_package(universe.toplevel);
+    walker.walk_package(universe.default);
 }
 
 pub fn default_walk_package<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, package: PackageRef<'a, 'ast>) {

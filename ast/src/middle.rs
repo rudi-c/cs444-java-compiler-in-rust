@@ -74,6 +74,12 @@ impl<'a, 'ast> PartialEq for Package<'a, 'ast> {
 impl<'a, 'ast> Eq for Package<'a, 'ast> {}
 
 #[derive(Show)]
+pub struct Universe<'a, 'ast: 'a> {
+    pub toplevel: PackageRef<'a, 'ast>,
+    pub default: PackageRef<'a, 'ast>,
+}
+
+#[derive(Show)]
 pub struct Field<'a, 'ast: 'a> {
     pub fq_name: Name,
     pub origin: TypeDefinitionRef<'a, 'ast>,

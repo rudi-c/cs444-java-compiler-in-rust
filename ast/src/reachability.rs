@@ -85,7 +85,7 @@ fn check_statement<'a, 'ast>(in_maybe: bool, stmt: &TypedStatement<'a, 'ast>) ->
     }
 }
 
-pub fn check_reachability<'a, 'ast>(package: PackageRef<'a, 'ast>) {
-    Reachability.walk_package(package);
+pub fn check_reachability<'a, 'ast>(universe: &Universe<'a, 'ast>) {
+    Reachability.walk_universe(universe);
 }
 

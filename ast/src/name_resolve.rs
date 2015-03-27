@@ -1019,7 +1019,7 @@ fn populate<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
 }
 
 pub fn name_resolve<'a, 'ast>(arena: &'a Arena<'a, 'ast>, asts: &'ast [ast::CompilationUnit])
-    -> (PackageRef<'a, 'ast>, PackageRef<'a, 'ast>) {
+    -> Universe<'a, 'ast> {
 
     let toplevel = arena.alloc(Package::new("top level".to_owned()));
     let default_package = arena.alloc(Package::new("default package".to_owned()));
@@ -1028,6 +1028,6 @@ pub fn name_resolve<'a, 'ast>(arena: &'a Arena<'a, 'ast>, asts: &'ast [ast::Comp
     let methods = build_environments(arena, toplevel, &lang_items, &*types);
     populate(arena, methods, &lang_items);
 
-    (default_package, toplevel)
+    Universe { toplevel: toplevel, default: default_package }
 }
 
