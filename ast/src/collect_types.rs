@@ -100,7 +100,7 @@ pub fn collect_types<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
             (resolve_create_package(arena, toplevel, &*package_identifier.parts),
              package_identifier.parts.iter().map(|x| x.node).collect())
         } else {
-            (default_package, vec![])
+            (default_package, vec![Symbol::from_str("")])
         };
 
         let mut collector = Collector {
