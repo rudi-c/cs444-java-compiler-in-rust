@@ -12,8 +12,8 @@ struct Order {
 
 impl<'a, 'ast> Walker<'a, 'ast> for Order {
     fn walk_type_definition(&mut self, tydef: TypeDefinitionRef<'a, 'ast>) {
-        for &name in tydef.ordered_fields.borrow().iter() {
-            self.walk_field(name, *tydef.fields.borrow().get(&name).unwrap());
+        for &name in tydef.ordered_fields.iter() {
+            self.walk_field(name, *tydef.fields.get(&name).unwrap());
         }
     }
 

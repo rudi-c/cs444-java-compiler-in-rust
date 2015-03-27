@@ -351,7 +351,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
         // FIXME: bad clone
         match texpr.ty().clone() {
             Type::SimpleType(SimpleType::Other(tyref)) => {
-                if let Some(&field) = tyref.fields.borrow().get(&name.node) {
+                if let Some(&field) = tyref.fields.get(&name.node) {
                     self.check_field_access_allowed(span, field, tyref);
 
                     // Can't use static fields on expressions like a.MAX_VALUE
@@ -516,7 +516,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
         // FIXME: bad clone
         match texpr.ty().clone() {
             Type::SimpleType(SimpleType::Other(tyref)) => {
-                if let Some(&method) = tyref.methods.borrow().get(&signature) {
+                if let Some(&method) = tyref.methods.get(&signature) {
                     self.check_method_access_allowed(span, method, tyref);
                     Some((TypedExpression_::MethodInvocation(Some(box texpr),
                                                              method,
@@ -564,7 +564,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
             .collect();
         let signature = MethodSignature { name: name.node, args: arg_types };
 
-        if let Some(&method) = tyref.methods.borrow().get(&signature) {
+        if let Some(&method) = tyref.methods.get(&signature) {
             self.check_method_access_allowed(span, method, tyref);
             Some((TypedExpression_::MethodInvocation(None, method, targ_exprs),
                   method.ret_ty.clone()))
@@ -623,7 +623,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                         None
                     }
                     AmbiguousResult::Type(tyref) => {
-                        if let Some(&field) = tyref.fields.borrow().get(&last.node) {
+                        if let Some(&field) = tyref.fields.get(&last.node) {
                             self.check_field_access_allowed(span, field, tyref);
 
                             if !field.is_static() {
@@ -682,7 +682,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                         }
                     }
                     AmbiguousResult::Type(tydef) => {
-                        match tydef.fields.borrow().get(&last.node) {
+                        match tydef.fields.get(&last.node) {
                             Some(&field) => {
                                 let expr_ = (TypedExpression_::StaticFieldAccess(field),
                                              field.ty.clone());
@@ -717,7 +717,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
     }
 
     fn add_fields(&mut self, tydef: TypeDefinitionRef<'a, 'ast>) {
-        for (&name, &field) in tydef.fields.borrow().iter() {
+        for (&name, &field) in tydef.fields.iter() {
             self.add_field(name, field);
         }
     }
@@ -985,7 +985,7 @@ fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
         if tydef.kind == TypeKind::Class {
             // ($8.1.1.1) well-formedness contraint 4 - abstract methods => abstract class
             let should_be_abstract =
-                tydef.methods.borrow().iter()
+                tydef.methods.iter()
                     .any(|(_, &method)| matches!(Abstract, method.impled));
             if should_be_abstract && !tydef.has_modifier(ast::Modifier_::Abstract) {
                 span_error!(tydef.ast.span,

@@ -31,16 +31,16 @@ pub fn default_walk_package<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, packa
     }
 }
 pub fn default_walk_type_definition<'a, 'ast, W: Walker<'a, 'ast>>(walker: &mut W, tydef: TypeDefinitionRef<'a, 'ast>) {
-    for (&name, &field) in tydef.fields.borrow().iter() {
+    for (&name, &field) in tydef.fields.iter() {
         walker.walk_field(name, field);
     }
-    for (sig, &method) in tydef.methods.borrow().iter() {
+    for (sig, &method) in tydef.methods.iter() {
         walker.walk_method(sig, method);
     }
-    for &method in tydef.method_impls.borrow().iter() {
+    for &method in tydef.method_impls.iter() {
         walker.walk_method_impl(method);
     }
-    for (_, &ctor) in tydef.constructors.borrow().iter() {
+    for (_, &ctor) in tydef.constructors.iter() {
         walker.walk_constructor(ctor);
     }
 }

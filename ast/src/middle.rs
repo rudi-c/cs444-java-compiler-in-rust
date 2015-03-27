@@ -242,15 +242,15 @@ pub struct TypeDefinition<'a, 'ast: 'a> {
 
     // Note that fields and methods can have the same name, therefore
     // need to be be in separate namespaces.
-    pub ordered_fields: RefCell<Vec<Symbol>>,
-    pub fields: RefCell<HashMap<Symbol, FieldRef<'a, 'ast>>>,
+    pub ordered_fields: Ivar<Vec<Symbol>>,
+    pub fields: Ivar<HashMap<Symbol, FieldRef<'a, 'ast>>>,
 
     // Method overloads can have the same name, but must have different signatures.
-    pub methods: RefCell<HashMap<MethodSignature<'a, 'ast>, MethodRef<'a, 'ast>>>,
-    pub method_impls: RefCell<Vec<MethodImplRef<'a, 'ast>>>,
+    pub methods: Ivar<HashMap<MethodSignature<'a, 'ast>, MethodRef<'a, 'ast>>>,
+    pub method_impls: Ivar<Vec<MethodImplRef<'a, 'ast>>>,
     // Similarly, we can have multiple constructors, as long as their arguments have different
     // types.
-    pub constructors: RefCell<HashMap<Arguments<'a, 'ast>, ConstructorRef<'a, 'ast>>>,
+    pub constructors: Ivar<HashMap<Arguments<'a, 'ast>, ConstructorRef<'a, 'ast>>>,
 
     pub extends: RefCell<Vec<TypeDefinitionRef<'a, 'ast>>>,
     pub implements: RefCell<Vec<TypeDefinitionRef<'a, 'ast>>>,
@@ -267,11 +267,11 @@ impl<'a, 'ast> TypeDefinition<'a, 'ast> {
             fq_name: Name::fresh(name),
             kind: kind,
             package: package,
-            ordered_fields: RefCell::new(Vec::new()),
-            fields: RefCell::new(HashMap::new()),
-            methods: RefCell::new(HashMap::new()),
-            method_impls: RefCell::new(Vec::new()),
-            constructors: RefCell::new(HashMap::new()),
+            ordered_fields: Ivar::new(),
+            fields: Ivar::new(),
+            methods: Ivar::new(),
+            method_impls: Ivar::new(),
+            constructors: Ivar::new(),
             extends: RefCell::new(vec![]),
             implements: RefCell::new(vec![]),
             ast: ast,
