@@ -896,11 +896,11 @@ fn inheritance_topological_sort<'a, 'ast>(preprocessed_types: &[TypeEnvironmentP
 fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
                                 toplevel: PackageRef<'a, 'ast>,
                                 lang_items: &LangItems<'a, 'ast>,
-                                units: &[(PackageRef<'a, 'ast>, &'ast ast::CompilationUnit, Vec<TypeDefinitionRef<'a, 'ast>>)])
+                                units: &[(PackageRef<'a, 'ast>, &'ast ast::CompilationUnit, TypeDefinitionRef<'a, 'ast>)])
 -> Vec<(Environment<'a, 'ast>, ToPopulate<'a, 'ast>)> {
     let mut preprocessed_types = vec![];
 
-    for &(package, ast, ref tydefs) in units.iter() {
+    for &(package, ast, tydef) in units.iter() {
         let mut types_env: TypesEnvironment<'a, 'ast> = RbMap::new();
 
         let mut on_demand_packages = vec![lang_items.lang];
@@ -929,29 +929,23 @@ fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
             .map(|(_, package)| package)
             .collect();
 
-        match &**tydefs {
-            [tydef] => {
-                let env = Environment {
-                    types: types_env,
-                    variables: RbMap::new(),
-                    toplevel: toplevel,
-                    package: package,
-                    enclosing_type: tydef,
-                    lang_items: lang_items.clone(),
-                    on_demand_packages: on_demand_packages,
-                };
+        let env = Environment {
+            types: types_env,
+            variables: RbMap::new(),
+            toplevel: toplevel,
+            package: package,
+            enclosing_type: tydef,
+            lang_items: lang_items.clone(),
+            on_demand_packages: on_demand_packages,
+        };
 
-                env.resolve_inheritance(tydef);
-                preprocessed_types.push((tydef, env));
-                if tydef == lang_items.object {
-                    // Make sure `java.lang.Object` is processed first...
-                    // XXX: This is such a hack!
-                    let ix = preprocessed_types.len()-1;
-                    preprocessed_types.swap(0, ix);
-                }
-            }
-            [] => {}
-            _ => panic!("wrong number of types: {}", tydefs.len())
+        env.resolve_inheritance(tydef);
+        preprocessed_types.push((tydef, env));
+        if tydef == lang_items.object {
+            // Make sure `java.lang.Object` is processed first...
+            // XXX: This is such a hack!
+            let ix = preprocessed_types.len()-1;
+            preprocessed_types.swap(0, ix);
         }
     }
 
@@ -1019,6 +1013,6 @@ pub fn name_resolve<'a, 'ast>(arena: &'a Arena<'a, 'ast>, asts: &'ast [ast::Comp
     let methods = build_environments(arena, toplevel, &lang_items, &*types);
     populate(arena, methods, &lang_items);
 
-    Universe { toplevel: toplevel, default: default_package }
+    Universe { toplevel: toplevel, default: default_package, main: types[0].2 }
 }
 

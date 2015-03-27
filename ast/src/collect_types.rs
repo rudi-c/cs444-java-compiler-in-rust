@@ -11,7 +11,7 @@ struct Collector<'a, 'ast: 'a> {
     arena: &'a Arena<'a, 'ast>,
     package: PackageRef<'a, 'ast>,
     scope: Vec<Symbol>,
-    all_tydefs: Vec<TypeDefinitionRef<'a, 'ast>>,
+    tydef: Option<TypeDefinitionRef<'a, 'ast>>,
 }
 
 impl<'a, 'ast> Walker<'ast> for Collector<'a, 'ast> {
@@ -45,7 +45,7 @@ impl<'a, 'ast> Walker<'ast> for Collector<'a, 'ast> {
             }
         }
 
-        self.all_tydefs.push(tydef);
+        self.tydef = Some(tydef);
         self.scope.pop();
     }
 }
@@ -94,8 +94,9 @@ pub fn collect_types<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
                                toplevel: PackageRef<'a, 'ast>,
                                default_package: PackageRef<'a, 'ast>,
                                asts: &'ast [ast::CompilationUnit])
--> Vec<(PackageRef<'a, 'ast>, &'ast ast::CompilationUnit, Vec<TypeDefinitionRef<'a, 'ast>>)> {
-    asts.iter().map(|ast| {
+-> Vec<(PackageRef<'a, 'ast>, &'ast ast::CompilationUnit, TypeDefinitionRef<'a, 'ast>)> {
+    let mut r = vec![];
+    for ast in asts.iter() {
         let (package, scope) = if let Some(ref package_identifier) = ast.package {
             (resolve_create_package(arena, toplevel, &*package_identifier.parts),
              package_identifier.parts.iter().map(|x| x.node).collect())
@@ -107,11 +108,13 @@ pub fn collect_types<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
             arena: arena,
             package: package,
             scope: scope,
-            all_tydefs: vec![],
+            tydef: None,
         };
         collector.walk_compilation_unit(ast);
-
-        (package, ast, collector.all_tydefs)
-    }).collect()
+        if let Some(tydef) = collector.tydef {
+            r.push((package, ast, tydef));
+        }
+    }
+    r
 }
 

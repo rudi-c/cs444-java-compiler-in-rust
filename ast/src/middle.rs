@@ -77,6 +77,7 @@ impl<'a, 'ast> Eq for Package<'a, 'ast> {}
 pub struct Universe<'a, 'ast: 'a> {
     pub toplevel: PackageRef<'a, 'ast>,
     pub default: PackageRef<'a, 'ast>,
+    pub main: TypeDefinitionRef<'a, 'ast>,
 }
 
 impl<'a, 'ast> Universe<'a, 'ast> {

@@ -66,19 +66,11 @@ fn driver(ctx: &RefCell<Context>) {
         }
 
         if ERRORS.with(|v| v.get()) > 0 { return; }
-            /*
-            Err(_) => {
-                // If the verbose flag was on, we would already
-                // have printed the tokens.
-                if !context.verbose {
-                    for &(ref token, ref text) in tokenizer.tokens.iter() {
-                        println!("{:<25} {:?}", format!("{:?}", token), text);
-                    }
-                }
-                println!("{:?}", ast);
-                os::set_exit_status(42);
-            }
-            */
+    }
+
+    if asts.len() == 0 {
+        assert!(ERRORS.with(|v| v.get()) > 0);
+        return;
     }
 
     let arena = Arena::new();
