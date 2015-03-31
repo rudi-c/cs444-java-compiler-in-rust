@@ -9,8 +9,10 @@ pub struct Stack {
     // This is the number of dwords between `esp` and `ebp`.
     pub size: u32,
     // The index of each variable, relative to `ebp`.
-    // Local variables are at -1, -2, ...; parameters are at +1, +2, ....
+    // Local variables are at -1, -2, ...; parameters are at +2, +3, ....
     pub vars: RbMap<Name, i32>,
+    // The number of arguments above the stack frame.
+    pub args: u32,
 }
 
 thread_local!(static THIS: Name = Name::fresh("this".to_owned()));
@@ -21,18 +23,17 @@ fn this() -> Name {
 
 impl Stack {
     // Initialize the stack frame with the locations of this function's parameters.
-    pub fn new(args: &[VariableRef]) -> Self {
-        let mut s = Stack { size: 0, vars: RbMap::new() };
-        s.add_args(args);
-        s
-    }
-    pub fn add_args(&mut self, args: &[VariableRef]) {
+    pub fn new(args: &[VariableRef], is_static: bool) -> Self {
+        let mut vars = RbMap::new();
+        let mut nargs = 0;
         // Arguments are in reverse order; `this` is at the end.
         for (ix, name) in args.iter().rev().map(|var| var.fq_name)
-            .chain(Some(this()).into_iter())
+            .chain(if is_static { None } else { Some(this()) }.into_iter())
             .enumerate() {
-            self.vars.insert_in_place(name, ix as i32 + 1);
+            vars.insert_in_place(name, ix as i32 + 2);
+            nargs += 1;
         }
+        Stack { size: 0, vars: vars, args: nargs }
     }
     // Record that a new variable was pushed onto the stack.
     // (Doesn't emit a push instruction.)

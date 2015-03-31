@@ -406,7 +406,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                 // then the name of the method is the Identifier."
                 let resolved = self.resolve_typedef_method_access(span, self.enclosing_type,
                                                                   ident, targ_exprs);
-                if let Some((TypedExpression_::MethodInvocation(_, method, _), _)) = resolved {
+                if let Some((TypedExpression_::MethodInvocation(_, _, method, _), _)) = resolved {
                     if !method.is_static && require_static {
                         span_error!(span, "calling non-static implicit this method on type");
                     }
@@ -425,7 +425,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                     AmbiguousResult::Type(typedef) => {
                         let resolved = self.resolve_typedef_method_access(span, typedef,
                                                                           last, targ_exprs);
-                        if let Some((TypedExpression_::MethodInvocation(_, method, _), _)) = resolved {
+                        if let Some((TypedExpression_::MethodInvocation(_, _, method, _), _)) = resolved {
                             if !method.is_static {
                                 span_error!(span, "calling non-static method on type");
                             }
@@ -435,7 +435,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                     AmbiguousResult::Expression(texpr) => {
                         let resolved = self.resolve_expr_method_access(span, texpr,
                                                                        last, targ_exprs);
-                        if let Some((TypedExpression_::MethodInvocation(_, method, _), _)) = resolved {
+                        if let Some((TypedExpression_::MethodInvocation(_, _, method, _), _)) = resolved {
                             if method.is_static {
                                 span_error!(span, "calling static method on instance");
                             }
@@ -510,6 +510,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                 if let Some(&method) = tyref.methods.get(&signature) {
                     self.check_method_access_allowed(span, method, tyref);
                     Some((TypedExpression_::MethodInvocation(Some(box texpr),
+                                                             signature,
                                                              method,
                                                              targ_exprs),
                           method.ret_ty.clone()))
@@ -557,7 +558,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
 
         if let Some(&method) = tyref.methods.get(&signature) {
             self.check_method_access_allowed(span, method, tyref);
-            Some((TypedExpression_::MethodInvocation(None, method, targ_exprs),
+            Some((TypedExpression_::MethodInvocation(None, signature, method, targ_exprs),
                   method.ret_ty.clone()))
         } else {
             span_error!(span,

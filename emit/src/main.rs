@@ -2,7 +2,7 @@
 #![allow(unstable)]
 
 extern crate ast;
-extern crate middle;
+#[macro_use] extern crate middle;
 extern crate getopts;
 extern crate rbtree;
 

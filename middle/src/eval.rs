@@ -132,7 +132,7 @@ pub fn reduce_const_expr<'a, 'ast>(expr: &mut TypedExpression<'a, 'ast>) {
     match expr.node {
         Constant(_) | This | Null => (),
 
-        MethodInvocation(ref mut expr, _, ref mut exprs) => {
+        MethodInvocation(ref mut expr, _, _, ref mut exprs) => {
             if let Some(box ref mut expr) = *expr {
                 reduce_const_expr(expr);
             }

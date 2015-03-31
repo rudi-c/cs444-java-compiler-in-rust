@@ -145,7 +145,7 @@ pub fn default_walk_expression<'a, 'ast, W: ExpressionWalker<'a, 'ast>>(walker: 
     match expr.node {
         Constant(_) | This | Null => (),
 
-        MethodInvocation(ref expr, _, ref exprs) => {
+        MethodInvocation(ref expr, _, _, ref exprs) => {
             if let Some(box ref expr) = *expr {
                 walker.walk_expression(expr);
             }

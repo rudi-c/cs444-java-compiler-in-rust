@@ -12,7 +12,10 @@ pub fn emit_method<'a, 'ast>(ctx: &Context<'a, 'ast>,
 
     if let Some(ref body) = *method.body {
         println!("{}:", method.mangle());
-        let stack = Stack::new(&**method.args);
+        // prologue
+        println!("push ebp");
+        println!("mov ebp, esp");
+        let stack = Stack::new(&**method.args, method.is_static);
         emit_block(ctx, &stack, body);
         println!("; end method\n");
     }

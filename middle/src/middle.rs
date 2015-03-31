@@ -520,7 +520,9 @@ pub enum TypedExpression_<'a, 'ast: 'a> {
     ThisFieldAccess(FieldRef<'a, 'ast>),
     // FIXME: Holy hack
     ArrayLength(Box<TypedExpression<'a, 'ast>>),
-    MethodInvocation(Option<Box<TypedExpression<'a, 'ast>>>, MethodRef<'a, 'ast>,
+    MethodInvocation(Option<Box<TypedExpression<'a, 'ast>>>,
+                     MethodSignature<'a, 'ast>,
+                     MethodRef<'a, 'ast>,
                      Vec<TypedExpression<'a, 'ast>>),
     ArrayAccess(Box<TypedExpression<'a, 'ast>>, Box<TypedExpression<'a, 'ast>>),
     Assignment(Box<TypedExpression<'a, 'ast>>, Box<TypedExpression<'a, 'ast>>),
@@ -564,6 +566,7 @@ impl<'e, 'a, 'ast> IntoSpan for &'e TypedExpression<'a, 'ast> {
     }
 }
 
+#[macro_export]
 macro_rules! expr {
     ($p: pat) => ($crate::middle::TypedExpression { node: $p, .. });
 }
