@@ -166,7 +166,6 @@ pub type Block = Spanned<Block_>;
 #[derive(Show)]
 pub enum BlockStatement_ {
     LocalVariable(LocalVariable),
-    LocalClass(Class),
     Statement(Statement),
 }
 pub type BlockStatement = Spanned<BlockStatement_>;

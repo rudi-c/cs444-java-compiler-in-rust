@@ -341,7 +341,6 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
         use ast::BlockStatement_::*;
         spanned(stmt.span, match stmt.node {
             LocalVariable(ref local_var) => TypedBlockStatement_::LocalVariable(self.local_variable(local_var)),
-            LocalClass(ref _class) => panic!("local class"),
             Statement(ref stmt) => TypedBlockStatement_::Statement(self.stmt(stmt)),
         })
     }

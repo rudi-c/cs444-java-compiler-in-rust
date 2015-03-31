@@ -92,10 +92,6 @@ pub fn default_walk_block<'a, T: Walker<'a>>(walker: &mut T, block: &'a Block) {
                 walker.walk_statement(statement),
             BlockStatement_::LocalVariable(ref local) =>
                 walker.walk_local_variable(local),
-            BlockStatement_::LocalClass(_) => {
-                // XXX: What is this doing here?
-                panic!("local class?")
-            }
         }
     }
 }

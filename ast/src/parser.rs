@@ -549,7 +549,6 @@ parser! parse {
 
     blockStatement: BlockStatement {
         localVariableDeclaration[local] Semicolon => spanned!(BlockStatement_::LocalVariable(local)),
-        classDeclaration[c] => spanned!(BlockStatement_::LocalClass(c)),
         statement[s] => spanned!(BlockStatement_::Statement(s)),
     }
 
