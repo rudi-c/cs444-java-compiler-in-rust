@@ -494,9 +494,20 @@ pub enum TypedStatement_<'a, 'ast: 'a> {
 }
 pub type TypedStatement<'a, 'ast> = Spanned<TypedStatement_<'a, 'ast>>;
 
+#[derive(Show, Clone)]
+pub enum Value {
+    Int(i32),
+    Short(i16),
+    Char(i16), // a UTF-16 code unit
+    Byte(i8),
+    Bool(bool),
+    String(String),
+}
+
 #[derive(Show)]
 pub enum TypedExpression_<'a, 'ast: 'a> {
-    Literal(&'ast ast::Literal),
+    Constant(Value),
+    Null,
     This,
     NewStaticClass(TypeDefinitionRef<'a, 'ast>, ConstructorRef<'a, 'ast>,
                    Vec<TypedExpression<'a, 'ast>>),

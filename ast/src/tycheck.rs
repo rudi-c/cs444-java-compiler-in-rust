@@ -7,6 +7,7 @@ use error::have_error;
 use name_resolve::Environment;
 use lang_items::LangItems;
 use uses::check_not_used;
+use eval::reduce_const_expr;
 
 use std::borrow::ToOwned;
 
@@ -38,10 +39,9 @@ fn expect_expr<'a, 'ast>(expected: &Type<'a, 'ast>, expr: &TypedExpression<'a, '
     expect(expected, expr.ty(), expr.span)
 }
 
-static NULL: ast::Literal = ast::Literal::Null;
 fn dummy_expr_<'a, 'ast>() -> (TypedExpression_<'a, 'ast>, Type<'a, 'ast>) {
     assert!(have_error());
-    (TypedExpression_::Literal(&NULL), Type::Unknown)
+    (TypedExpression_::Null, Type::Unknown)
 }
 
 fn check_lvalue<'a, 'ast>(expr: &TypedExpression<'a, 'ast>) {
@@ -318,7 +318,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
 
     fn local_variable(&mut self, var: &'ast ast::LocalVariable) -> TypedLocalVariable<'a, 'ast> {
         let v = self.new_var(&var.variable);
-        let init = self.expr(&var.initializer);
+        let init = self.clean_expr(&var.initializer);
         check_not_used(&init, v);
         let init = self.coerce_expr(&v.ty, init);
         spanned(var.span, TypedLocalVariable_ {
@@ -353,47 +353,47 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
             }
         }
         spanned(stmt.span, match stmt.node {
-            Expression(ref expr) => TypedStatement_::Expression(self.expr(expr)),
+            Expression(ref expr) => TypedStatement_::Expression(self.clean_expr(expr)),
             If(ref test, box ref then, ref els) => {
-               let test_texpr = self.expr(test);
+               let test_texpr = self.clean_expr(test);
                expect_bool(test.span, test_texpr.ty());
                TypedStatement_::If(test_texpr,
                                    box self.stmt(then),
                                    els.as_ref().map(|&box ref s| box self.stmt(s)))
             }
             While(ref test, box ref inner) => {
-                let test_texpr = self.expr(test);
+                let test_texpr = self.clean_expr(test);
                 expect_bool(test.span, test_texpr.ty());
                 TypedStatement_::While(test_texpr, box self.stmt(inner))
             }
             For(ref init, ref test, ref update, box ref inner) => {
-                let init_texpr = init.as_ref().map(|i| self.expr(i));
-                let test_texpr_opt = test.as_ref().map(|t| self.expr(t));
+                let init_texpr = init.as_ref().map(|i| self.clean_expr(i));
+                let test_texpr_opt = test.as_ref().map(|t| self.clean_expr(t));
                 if let Some(ref test_texpr) = test_texpr_opt {
                     expect_bool(test.as_ref().unwrap().span, test_texpr.ty());
                 }
                 TypedStatement_::For(
                     init_texpr,
                     test_texpr_opt,
-                    update.as_ref().map(|u| self.expr(u)),
+                    update.as_ref().map(|u| self.clean_expr(u)),
                     box self.stmt(inner))
             }
             ForDecl(ref init, ref test, ref update, box ref inner) => {
                 let init_texpr = self.local_variable(init);
-                let test_texpr_opt = test.as_ref().map(|t| self.expr(t));
+                let test_texpr_opt = test.as_ref().map(|t| self.clean_expr(t));
                 if let Some(ref test_texpr) = test_texpr_opt {
                     expect_bool(test.as_ref().unwrap().span, test_texpr.ty());
                 }
                 TypedStatement_::ForDecl(
                     init_texpr,
                     test_texpr_opt,
-                    update.as_ref().map(|u| self.expr(u)),
+                    update.as_ref().map(|u| self.clean_expr(u)),
                     box self.stmt(inner))
             }
             Empty => TypedStatement_::Empty,
             Return(ref expr) => {
                 let mut texpr = if let Some(ref expr) = *expr {
-                    Some(self.expr(expr))
+                    Some(self.clean_expr(expr))
                 } else {
                     None
                 };
@@ -421,6 +421,12 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
             }
             Block(ref block) => TypedStatement_::Block(self.block(block)),
         })
+    }
+
+    fn clean_expr(&mut self, expr: &'ast ast::Expression) -> TypedExpression<'a, 'ast> {
+        let mut r = self.expr(expr);
+        reduce_const_expr(&mut r);
+        r
     }
 
     fn expr(&mut self, expr: &'ast ast::Expression) -> TypedExpression<'a, 'ast> {
@@ -681,14 +687,13 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
 
     fn lit(&self, lit: &'ast ast::Literal) -> (TypedExpression_<'a, 'ast>, Type<'a, 'ast>) {
         use ast::Literal::*;
-        (TypedExpression_::Literal(lit),
-         match *lit {
-            Integer(..) => Type::SimpleType(SimpleType::Int),
-            Boolean(..) => Type::SimpleType(SimpleType::Boolean),
-            Character(..) => Type::SimpleType(SimpleType::Char),
-            String(..) => Type::object(self.lang_items.string),
-            Null => Type::Null,
-        })
+        match *lit {
+            Integer(v) => (TypedExpression_::Constant(Value::Int(v as i32)), Type::SimpleType(SimpleType::Int)),
+            Boolean(v) => (TypedExpression_::Constant(Value::Bool(v)), Type::SimpleType(SimpleType::Boolean)),
+            Character(v) => (TypedExpression_::Constant(Value::Char(v as u32 as i16)), Type::SimpleType(SimpleType::Char)),
+            String(ref v) => (TypedExpression_::Constant(Value::String(v.clone())), Type::object(self.lang_items.string)),
+            Null => (TypedExpression_::Null, Type::Null),
+        }
     }
 
     fn stringify(&self, expr: TypedExpression<'a, 'ast>) -> TypedExpression<'a, 'ast> {
@@ -754,7 +759,7 @@ pub fn populate_field<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
             lang_items: lang_items,
             require_static: field.is_static(),
         };
-        let texpr = typer.expr(expr);
+        let texpr = typer.clean_expr(expr);
         let texpr = typer.coerce_expr(&field.ty, texpr);
         field.initializer.set(Some(texpr));
     } else {

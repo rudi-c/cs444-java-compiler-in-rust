@@ -1,146 +1,117 @@
 use middle::*;
-use ast;
+use span::Spanned;
+use std::mem::replace;
 
-#[derive(Show, Clone)]
-pub enum Value {
-    Int(i32),
-    Short(i16),
-    Char(i16), // a UTF-16 code unit
-    Byte(i8),
-    Bool(bool),
-    String(String),
+// Destructively move the String out of a &mut String
+fn grab(s: &mut String) -> String {
+    replace(s, String::new())
 }
 
-macro_rules! try_opt {
-    ($e: expr) => (match $e { Some(v) => v, None => return None });
-}
+// Because of a compiler bug, we have to expand this manually...
+// macro_rules! constant {
+//     ($i: pat) => (box ::span::Spanned { node: (::middle::TypedExpression_::Constant($i), _), .. });
+//     ($i: pat, $s: pat) => (box ::span::Spanned { node: (::middle::TypedExpression_::Constant($i), _), span: $s });
+// }
 
-pub fn eval_const<'a, 'ast>(expr: &TypedExpression<'a, 'ast>) -> Option<Value> {
+fn reduce_toplevel<'a, 'ast>(expr: &mut TypedExpression<'a, 'ast>) {
     use middle::TypedExpression_::*;
-    use self::Value::*;
-    let r = match expr.0 {
-        Literal(lit) => {
-            match *lit {
-                ast::Literal::Integer(v) => Int(v as i32),
-                ast::Literal::Boolean(v) => Bool(v),
-                ast::Literal::Character(v) => Char(v as u32 as i16),
-                ast::Literal::String(ref v) => String(v.clone()),
-                _ => return None,
-            }
-        }
-        Prefix(op, box ref inner) => {
+    use middle::Value::*;
+    let &mut Spanned { node: (ref mut expr_, ref ty), .. } = expr;
+    let r = match *expr_ {
+        Prefix(op, box Spanned { node: (Constant(ref inner), _), .. }) => {
             use ast::PrefixOperator::*;
-            match (op, try_opt!(eval_const(inner))) {
-                (Not, Bool(v)) => Bool(!v),
-                (Not, _) => panic!("bad Not"),
-                (Minus, Int(v)) => Int(-v),
-                (Minus, Short(_)) |
-                (Minus, Byte(_)) => panic!("unpromoted Minus operand"),
-                (Minus, _) => panic!("bad Minus"),
+            match (op, inner) {
+                (Not, &Bool(v)) => Bool(!v),
+                (Minus, &Int(v)) => Int(-v),
+                (Minus, &Short(_)) |
+                (Minus, &Byte(_)) => panic!("unpromoted Minus operand"),
+                _ => return,
             }
         }
-        Infix(op, box ref left, box ref right) => {
+        Infix(op, box Spanned { node: (Constant(ref left), _), .. },
+              box Spanned { node: (Constant(ref right), _), span: ref rspan }) => {
             use ast::InfixOperator::*;
-            match (op, try_opt!(eval_const(left)), try_opt!(eval_const(right))) {
-                (Xor, Bool(l), Bool(r)) => Bool(l ^ r),
-                (Xor, _, _) => panic!("bad Xor"),
-                (EagerOr, Bool(l), Bool(r)) |
-                (LazyOr, Bool(l), Bool(r)) => Bool(l || r),
-                (EagerOr, _, _) |
-                (LazyOr, _, _) => panic!("bad Or"),
-                (EagerAnd, Bool(l), Bool(r)) |
-                (LazyAnd, Bool(l), Bool(r)) => Bool(l && r),
-                (EagerAnd, _, _) |
-                (LazyAnd, _, _) => panic!("bad And"),
+            match (op, left, right) {
+                (Xor, &Bool(l), &Bool(r)) => Bool(l ^ r),
+                (EagerOr, &Bool(l), &Bool(r)) |
+                (LazyOr, &Bool(l), &Bool(r)) => Bool(l || r),
+                (EagerAnd, &Bool(l), &Bool(r)) |
+                (LazyAnd, &Bool(l), &Bool(r)) => Bool(l && r),
 
-                (Equals, Bool(l), Bool(r)) => Bool(l == r),
-                (Equals, Int(l), Int(r)) => Bool(l == r),
-                (Equals, String(l), String(r)) => Bool(l == r),
-                (Equals, _, _) => panic!("bad Equals"),
-                (NotEquals, Bool(l), Bool(r)) => Bool(l != r),
-                (NotEquals, Int(l), Int(r)) => Bool(l != r),
-                (NotEquals, String(l), String(r)) => Bool(l != r),
-                (NotEquals, _, _) => panic!("bad NotEquals"),
+                (Equals, &Bool(l), &Bool(r)) => Bool(l == r),
+                (Equals, &Int(l), &Int(r)) => Bool(l == r),
+                (Equals, &String(ref l), &String(ref r)) => Bool(l == r),
+                (NotEquals, &Bool(l), &Bool(r)) => Bool(l != r),
+                (NotEquals, &Int(l), &Int(r)) => Bool(l != r),
+                (NotEquals, &String(ref l), &String(ref r)) => Bool(l != r),
 
-                (LessThan, Int(l), Int(r)) => Bool(l < r),
-                (LessThan, _, _) => panic!("bad LessThan"),
-                (GreaterThan, Int(l), Int(r)) => Bool(l > r),
-                (GreaterThan, _, _) => panic!("bad GreaterThan"),
-                (LessEqual, Int(l), Int(r)) => Bool(l <= r),
-                (LessEqual, _, _) => panic!("bad LessEqual"),
-                (GreaterEqual, Int(l), Int(r)) => Bool(l >= r),
-                (GreaterEqual, _, _) => panic!("bad GreaterEqual"),
+                (LessThan, &Int(l), &Int(r)) => Bool(l < r),
+                (GreaterThan, &Int(l), &Int(r)) => Bool(l > r),
+                (LessEqual, &Int(l), &Int(r)) => Bool(l <= r),
+                (GreaterEqual, &Int(l), &Int(r)) => Bool(l >= r),
 
-                (Plus, Int(l), Int(r)) => Int(l + r),
-                (Plus, _, _) => panic!("bad Plus"),
-                (Minus, Int(l), Int(r)) => Int(l - r),
-                (Minus, _, _) => panic!("bad Minus"),
-                (Mult, Int(l), Int(r)) => Int(l * r),
-                (Mult, _, _) => panic!("bad Mult"),
+                (Plus, &Int(l), &Int(r)) => Int(l + r),
+                (Minus, &Int(l), &Int(r)) => Int(l - r),
+                (Mult, &Int(l), &Int(r)) => Int(l * r),
 
-                (Div, Int(_), Int(0)) |
-                (Modulo, Int(_), Int(0)) => {
-                    span_warning!(right.span, "division by zero");
-                    return None
+                (Div, &Int(_), &Int(0)) |
+                (Modulo, &Int(_), &Int(0)) => {
+                    span_warning!(*rspan, "division by zero");
+                    return
                 }
-                (Div, Int(l), Int(r)) => {
+                (Div, &Int(l), &Int(r)) => {
                     // Explicitly use 2's-complement overflow.
                     let v = l as i64 / r as i64;
                     Int(v as i32)
                 }
-                (Div, _, _) => panic!("bad Div"),
-                (Modulo, Int(l), Int(r)) => {
+                (Modulo, &Int(l), &Int(r)) => {
                     let v = l as i64 % r as i64;
                     Int(v as i32)
                 }
-                (Modulo, _, _) => panic!("bad Modulo"),
+                _ => return,
             }
         }
-        Concat(box ref left, box ref right) => {
-            match (try_opt!(eval_const(left)), try_opt!(eval_const(right))) {
-                (String(l), String(r)) => String(l + &*r),
-                (_, _) => panic!("bad concat"),
-            }
+        Concat(box Spanned { node: (Constant(String(ref mut l)), _), .. },
+               box Spanned { node: (Constant(String(ref mut r)), _), .. }) => {
+            String(grab(l) + &**r)
         }
-        Cast(_, box ref inner) |
-        Widen(box ref inner) => {
-            let val = try_opt!(eval_const(inner));
+        Cast(_, box Spanned { node: (Constant(ref val), _), .. }) |
+        Widen(box Spanned { node: (Constant(ref val), _), .. }) => {
             // To avoid combinatorial blowup, always convert numberic types to Int
             let val = match val {
-                Int(v) => Int(v),
-                Short(v) => Int(v as i32),
-                Char(v) => Int(v as i32),
-                Byte(v) => Int(v as i32),
-                v => v,
+                &Int(v) => Int(v),
+                &Short(v) => Int(v as i32),
+                &Char(v) => Int(v as i32),
+                &Byte(v) => Int(v as i32),
+                &Bool(v) => Bool(v),
+                _ => return,
             };
-            match (expr.ty(), val) {
+            match (ty, val) {
                 (&Type::SimpleType(SimpleType::Int), Int(v)) => Int(v),
-                (&Type::SimpleType(SimpleType::Int), _) => panic!("bad cast to int"),
                 (&Type::SimpleType(SimpleType::Short), Int(v)) => Short(v as i16),
-                (&Type::SimpleType(SimpleType::Short), _) => panic!("bad cast to short"),
                 (&Type::SimpleType(SimpleType::Char), Int(v)) => Char(v as i16),
-                (&Type::SimpleType(SimpleType::Char), _) => panic!("bad cast to char"),
                 (&Type::SimpleType(SimpleType::Byte), Int(v)) => Byte(v as i8),
-                (&Type::SimpleType(SimpleType::Byte), _) => panic!("bad cast to byte"),
                 (&Type::SimpleType(SimpleType::Boolean), Bool(v)) => Bool(v),
-                (&Type::SimpleType(SimpleType::Boolean), _) => panic!("bad cast to bool"),
-                (_, _) => return None
+                (_, _) => return
             }
         }
-        ToString(box ref inner) => {
-            String(match try_opt!(eval_const(inner)) {
+        ToString(box Spanned { node: (Constant(ref mut inner), _), .. }) => {
+            String(match *inner {
                 Int(v) => format!("{}", v),
                 Short(v) => format!("{}", v),
-                Char(v) => format!("{}", try_opt!(::std::char::from_u32(v as u32))),
+                Char(v) => format!("{}", match ::std::char::from_u32(v as u32) {
+                    Some(v) => v,
+                    None => return
+                }),
                 Byte(v) => format!("{}", v),
                 Bool(v) => format!("{}", v),
-                String(v) => v,
+                String(ref mut v) => grab(v),
             })
         }
-        _ => return None,
+        _ => return,
     };
     // sanity check
-    match (&r, expr.ty()) {
+    match (&r, ty) {
         (&Int(_), &Type::SimpleType(SimpleType::Int)) |
         (&Short(_), &Type::SimpleType(SimpleType::Short)) |
         (&Char(_), &Type::SimpleType(SimpleType::Char)) |
@@ -155,13 +126,58 @@ pub fn eval_const<'a, 'ast>(expr: &TypedExpression<'a, 'ast>) -> Option<Value> {
                    r, ty)
         }
     }
-    Some(r)
+    *expr_ = Constant(r);
 }
 
-pub fn eval_const_bool<'a, 'ast>(expr: &TypedExpression<'a, 'ast>) -> Option<bool> {
-    if let Some(Value::Bool(v)) = eval_const(expr) {
-        Some(v)
-    } else {
-        None
+// Replace constants inside the expression in-place.
+pub fn reduce_const_expr<'a, 'ast>(expr: &mut TypedExpression<'a, 'ast>) {
+    use middle::TypedExpression_::*;
+    // First reduce inner expressions.
+    match expr.node.0 {
+        Constant(_) | This | Null => (),
+
+        MethodInvocation(ref mut expr, _, ref mut exprs) => {
+            if let Some(box ref mut expr) = *expr {
+                reduce_const_expr(expr);
+            }
+            for expr in exprs.iter_mut() {
+                reduce_const_expr(expr);
+            }
+        },
+
+        NewStaticClass(_, _, ref mut exprs) => {
+            for expr in exprs.iter_mut() {
+                reduce_const_expr(expr);
+            }
+        },
+
+        StaticFieldAccess(_) => (),
+        ThisFieldAccess(_) => (),
+
+        Variable(_) => (),
+
+        NewArray(_, box ref mut expr)
+        | FieldAccess(box ref mut expr, _)
+        | Prefix(_, box ref mut expr)
+        | Cast(_, box ref mut expr)
+        | Widen(box ref mut expr)
+        | ToString(box ref mut expr)
+        | ArrayLength(box ref mut expr) => {
+            reduce_const_expr(expr);
+        },
+
+        ArrayAccess(box ref mut expr1, box ref mut expr2)
+        | Assignment(box ref mut expr1, box ref mut expr2)
+        | Infix(_, box ref mut expr1, box ref mut expr2)
+        | Concat(box ref mut expr1, box ref mut expr2) => {
+            reduce_const_expr(expr1);
+            reduce_const_expr(expr2);
+        }
+
+        InstanceOf(box ref mut expr, _) => {
+            reduce_const_expr(expr);
+        },
     }
+    // Then reduce the top-level expression.
+    reduce_toplevel(expr);
 }

@@ -1,7 +1,5 @@
-use name::*;
 use middle::*;
 use typed_walker::*;
-use eval::eval_const_bool;
 
 struct Reachability;
 
@@ -58,11 +56,11 @@ fn check_statement<'a, 'ast>(in_maybe: bool, stmt: &TypedStatement<'a, 'ast>) ->
     }
 
     match stmt.node {
-        If(ref test, box ref tstmt, None) => {
+        If(_, box ref tstmt, None) => {
             check_statement(in_maybe, tstmt);
             in_maybe
         }
-        If(ref test, box ref tstmt, Some(box ref fstmt)) => {
+        If(_, box ref tstmt, Some(box ref fstmt)) => {
             check_statement(in_maybe, tstmt) ||
             check_statement(in_maybe, fstmt)
         }
@@ -73,10 +71,10 @@ fn check_statement<'a, 'ast>(in_maybe: bool, stmt: &TypedStatement<'a, 'ast>) ->
         For(_, Some(ref test), _, box ref stmt) |
         ForDecl(_, Some(ref test), _, box ref stmt) |
         While(ref test, box ref stmt) => {
-            match eval_const_bool(test) {
-                Some(true) => { check_statement(in_maybe, stmt); false }
-                Some(false) => { check_statement(false, stmt); in_maybe }
-                None => { check_statement(in_maybe, stmt); in_maybe }
+            match test.0 {
+                TypedExpression_::Constant(Value::Bool(true)) => { check_statement(in_maybe, stmt); false }
+                TypedExpression_::Constant(Value::Bool(false)) => { check_statement(false, stmt); in_maybe }
+                _ => { check_statement(in_maybe, stmt); in_maybe }
             }
         }
         Return(_) => false,

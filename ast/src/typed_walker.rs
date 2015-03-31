@@ -143,8 +143,7 @@ pub fn default_walk_statement<'a, 'ast, W: StatementWalker<'a, 'ast>>(walker: &m
 pub fn default_walk_expression<'a, 'ast, W: ExpressionWalker<'a, 'ast>>(walker: &mut W, expr: &TypedExpression<'a, 'ast>) {
     use middle::TypedExpression_::*;
     match expr.node.0 {
-        Literal(_) => (),
-        This => (),
+        Constant(_) | This | Null => (),
 
         MethodInvocation(ref expr, _, ref exprs) => {
             if let Some(box ref expr) = *expr {
