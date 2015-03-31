@@ -2,11 +2,13 @@ use ast::middle::*;
 use ast::lang_items::*;
 
 use std::collections::{BTreeSet, HashMap};
+use std::cell::Cell;
 
 pub struct Context<'a, 'ast: 'a> {
     pub lang_items: LangItems<'a, 'ast>,
     pub all_methods: Vec<&'a MethodSignature<'a, 'ast>>,
     pub by_method: HashMap<&'a MethodSignature<'a, 'ast>, usize>,
+    pub next_label: Cell<u32>,
 }
 
 impl<'a, 'ast> Context<'a, 'ast> {
@@ -23,6 +25,13 @@ impl<'a, 'ast> Context<'a, 'ast> {
             lang_items: find_lang_items(universe.toplevel),
             all_methods: methods.iter().cloned().collect(),
             by_method: methods.into_iter().enumerate().map(|(x, y)| (y, x)).collect(),
+            next_label: Cell::new(0),
         }
+    }
+
+    pub fn label(&self) -> u32 {
+        let r = self.next_label.get();
+        self.next_label.set(r+1);
+        r
     }
 }

@@ -3,6 +3,7 @@
 
 extern crate ast;
 extern crate getopts;
+extern crate rbtree;
 
 use ast::ast::CompilationUnit;
 use ast::context::{Context, CONTEXT};
@@ -14,6 +15,7 @@ use ast::reachability::check_reachability;
 use ast::{create_ast, create_multi_ast};
 
 use descriptors::emit_descriptor;
+use method::emit_method;
 
 use getopts::{getopts, optflag};
 
@@ -24,6 +26,9 @@ use std::rt::unwind;
 pub mod context;
 pub mod mangle;
 pub mod descriptors;
+pub mod stack;
+pub mod code;
+pub mod method;
 
 fn driver(ctx: &RefCell<Context>) {
     let opts = &[
@@ -89,9 +94,16 @@ fn driver(ctx: &RefCell<Context>) {
         return;
     }
 
-    // All checking done. Start emitting code
+    // All checking done. Start emitting code.
     let emit_ctx = context::Context::create(&universe);
-    universe.each_type(|tydef| emit_descriptor(&emit_ctx, tydef));
+
+    universe.each_type(|tydef| {
+        // Emit type descriptors.
+        emit_descriptor(&emit_ctx, tydef);
+        for method in tydef.method_impls.iter() {
+            emit_method(&emit_ctx, *method);
+        }
+    });
 }
 
 fn main() {
