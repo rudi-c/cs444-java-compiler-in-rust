@@ -125,8 +125,8 @@ pub fn emit_statement<'a, 'ast>(ctx: &Context<'a, 'ast>,
 
 // Ensure that `eax` is not null.
 pub fn check_null() {
-    println!("test eax, eax");
-    println!("jz __exception");
+    println!("test eax, eax     ; check null");
+    println!("jz __exception    ; null exception");
 }
 
 pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
@@ -144,10 +144,23 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
         },
         Null => println!("xor eax, eax"), // eax = 0
         This => println!("mov eax, [ebp+{}]", stack.this_index() * 4),
-        Variable(var) => println!("mov eax, [ebp+{}]", stack.var_index(var.fq_name) * 4),
+        Variable(var) => println!("mov eax, [ebp+{}]    ; variable {}",
+                                  stack.var_index(var.fq_name) * 4,
+                                  var.fq_name),
         StaticFieldAccess(field) => println!("mov eax, [{}]", field.mangle()),
-        // FieldAccess(box ref expr, field)
-        // ThisFieldAccess(field),
+        FieldAccess(box ref expr, field) => {
+            emit_expression(ctx, stack, expr);
+            check_null();
+
+            let offset = ctx.field_offsets.get(&field).unwrap();
+            println!("mov eax, [eax + {}]   ; access field {}", offset, field.fq_name);
+        }
+        ThisFieldAccess(field) => {
+            println!("mov eax, [ebp+{}]     ; this", stack.this_index() * 4);
+
+            let offset = ctx.field_offsets.get(&field).unwrap();
+            println!("mov eax, [eax + {}]   ; access field {}", offset, field.fq_name);
+        }
         Assignment(box expr!(Variable(var)), box ref rhs) => {
             emit_expression(ctx, stack, rhs);
             println!("mov [ebp+{}], eax", stack.var_index(var.fq_name) * 4);
@@ -156,8 +169,22 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
             emit_expression(ctx, stack, rhs);
             println!("mov [{}], eax", field.mangle());
         }
-        // Assignment(box expr!(FieldAccess(box ref expr, field)), box ref rhs) =>
-        // Assignment(box expr!(ThisFieldAccess(field)), box ref rhs) =>
+        Assignment(box expr!(FieldAccess(box ref expr, field)), box ref rhs) => {
+            emit_expression(ctx, stack, expr);
+            println!("push eax");
+            emit_expression(ctx, stack, rhs);
+            println!("pop ebx");
+
+            let offset = ctx.field_offsets.get(&field).unwrap();
+            println!("mov [ebx + {}], eax   ; set field {}", offset, field.fq_name);
+        }
+        Assignment(box expr!(ThisFieldAccess(field)), box ref rhs) => {
+            emit_expression(ctx, stack, rhs);
+            println!("mov ebx, [ebp+{}]     ; this", stack.this_index() * 4);
+
+            let offset = ctx.field_offsets.get(&field).unwrap();
+            println!("mov [ebx + {}], eax   ; set field {}", offset, field.fq_name);
+        }
         // Assignment(..) => panic!("non-lvalue in assignment"),
         ArrayLength(box ref expr) => {
             emit_expression(ctx, stack, expr);
@@ -169,7 +196,7 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
             if method.is_static {
                 assert!(receiver.is_none());
             } else {
-                if let Some(box ref expr) = *receiver {
+               if let Some(box ref expr) = *receiver {
                     emit_expression(ctx, stack, expr);
                     check_null();
                 } else {

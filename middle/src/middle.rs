@@ -127,6 +127,20 @@ impl<'a, 'ast> Field<'a, 'ast> {
     }
 }
 
+impl<'a, 'ast> PartialEq for FieldRef<'a, 'ast> {
+    fn eq(&self, other: &Self) -> bool {
+        self.fq_name.eq(&other.fq_name)
+    }
+}
+
+impl<'a, 'ast> Eq for FieldRef<'a, 'ast> {}
+
+impl<'a, 'ast, H: hash::Hasher + hash::Writer> hash::Hash<H> for Field<'a, 'ast> {
+    fn hash(&self, state: &mut H) {
+        self.fq_name.hash(state)
+    }
+}
+
 pub type Arguments<'a, 'ast> = Vec<Type<'a, 'ast>>;
 #[derive(Show, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct MethodSignature<'a, 'ast: 'a> {
