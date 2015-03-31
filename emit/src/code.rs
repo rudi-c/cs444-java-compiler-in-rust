@@ -217,6 +217,85 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
             // index OK, look up element
             println!("mov eax, [ebx+12+4*eax]");
         }
+        Prefix(op, box ref expr) => {
+            use ast::PrefixOperator::*;
+            emit_expression(ctx, stack, expr);
+            match op {
+                Not => {
+                    // always a boolean
+                    println!("xor eax, 1");
+                }
+                Minus => {
+                    println!("neg eax");
+                }
+            }
+        }
+        Infix(op, box ref l, box ref r) => {
+            use ast::InfixOperator::*;
+            match op {
+                LazyOr | LazyAnd => {
+                    emit_expression(ctx, stack, l);
+                    println!("test eax, eax");
+                    let skip = ctx.label();
+                    match op {
+                        LazyOr => println!("jnz L{}", skip),
+                        LazyAnd => println!("jz L{}", skip),
+                        _ => unreachable!(),
+                    }
+                    emit_expression(ctx, stack, r);
+                    println!("L{}:", skip);
+                }
+                _ => {
+                    emit_expression(ctx, stack, l);
+                    println!("push eax");
+                    emit_expression(ctx, stack, r);
+                    println!("pop ebx");
+                    match op {
+                        LazyOr | LazyAnd => unreachable!(),
+                        Xor => println!("xor eax, ebx"),
+                        EagerOr => println!("or eax, ebx"),
+                        EagerAnd => println!("and eax, ebx"),
+                        Equals | NotEquals
+                        | LessThan | GreaterThan
+                        | LessEqual | GreaterEqual => {
+                            println!("cmp ebx, eax");
+                            println!("set{} al", match op {
+                                // Equality is also fine for pointers
+                                Equals => "e",
+                                NotEquals => "ne",
+                                // Numeric comparisons only happen for numbers.
+                                // Use signed comparison.
+                                LessThan => "l",
+                                GreaterThan => "g",
+                                LessEqual => "le",
+                                GreaterEqual => "ge",
+                                _ => unreachable!(),
+                            });
+                            println!("movzx eax, al");
+                        }
+                        // These operations are commutative.
+                        Plus => println!("add eax, ebx"),
+                        Mult => println!("imul ebx"),
+                        // These are not. `eax` and `ebx` are in the wrong order
+                        Minus | Div | Modulo => {
+                            println!("xchg eax, ebx");
+                            match op {
+                                Minus => println!("sub eax, ebx"),
+                                Div | Modulo => {
+                                    println!("cdq"); // clear out edx
+                                    println!("idiv ebx");
+                                    if let Modulo = op {
+                                        // remainder in edx
+                                        println!("mov eax, edx");
+                                    } // otherwise, quotient in eax
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
+                    }
+                }
+            }
+        }
         _ => println!("; TODO: expression goes here"),
     }
 }
