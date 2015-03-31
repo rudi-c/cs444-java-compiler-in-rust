@@ -1,3 +1,5 @@
+#![macro_use]
+
 use ast;
 use name::*;
 use span::*;
@@ -6,7 +8,7 @@ use ivar::Ivar;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::cmp::{Ord, Ordering};
-use std::{fmt, hash};
+use std::{fmt, hash, ops};
 
 pub use self::Impled::*;
 pub use self::Accessibility::*;
@@ -533,10 +535,35 @@ pub enum TypedExpression_<'a, 'ast: 'a> {
     // A "string conversion", as described in $15.18.1.1.
     ToString(Box<TypedExpression<'a, 'ast>>),
 }
-pub type TypedExpression<'a, 'ast> = Spanned<(TypedExpression_<'a, 'ast>, Type<'a, 'ast>)>;
+#[derive(Show)]
+pub struct TypedExpression<'a, 'ast: 'a> {
+    pub node: TypedExpression_<'a, 'ast>,
+    pub ty: Type<'a, 'ast>,
+    pub span: Span,
+}
 
 impl<'a, 'ast> TypedExpression<'a, 'ast> {
     pub fn ty(&self) -> &Type<'a, 'ast> {
-        &self.1
+        &self.ty
     }
+    pub fn spanned(sp: Span, (expr, ty): (TypedExpression_<'a, 'ast>, Type<'a, 'ast>)) -> Self {
+        TypedExpression { node: expr, ty: ty, span: sp }
+    }
+}
+
+impl<'a, 'ast> ops::Deref for TypedExpression<'a, 'ast> {
+    type Target = TypedExpression_<'a, 'ast>;
+    fn deref(&self) -> &TypedExpression_<'a, 'ast> {
+        &self.node
+    }
+}
+
+impl<'e, 'a, 'ast> IntoSpan for &'e TypedExpression<'a, 'ast> {
+    fn into_span(self) -> Span {
+        self.span
+    }
+}
+
+macro_rules! expr {
+    ($p: pat) => ($crate::middle::TypedExpression { node: $p, .. });
 }

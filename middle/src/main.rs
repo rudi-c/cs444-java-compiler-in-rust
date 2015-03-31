@@ -1,12 +1,10 @@
-#![feature(plugin, box_syntax, advanced_slice_patterns)]
+#![feature(box_syntax, advanced_slice_patterns)]
 #![allow(unstable)]
 
-#[no_link] #[plugin] extern crate dfagen;
-#[no_link] #[plugin] extern crate lalrgen;
+#[macro_use] extern crate ast;
 extern crate rbtree;
 extern crate ivar;
 extern crate getopts;
-extern crate term;
 
 use getopts::{getopts, optflag};
 
@@ -14,13 +12,14 @@ use std::{io, os};
 use std::cell::RefCell;
 use std::rt::unwind;
 
+pub use ast::{name, span, error};
 use ast::CompilationUnit;
-use parser::make_ast;
-use tokenizer::Tokenizer;
-use weed::weed;
-use span::Span;
-use context::{Context, CONTEXT};
-use error::{FatalError, ErrorReporter, ERRORS};
+use ast::parser::make_ast;
+use ast::tokenizer::{Token, Tokenizer};
+use ast::weed::weed;
+use ast::span::Span;
+use ast::context::{Context, CONTEXT};
+use ast::error::{FatalError, ErrorReporter, ERRORS};
 use name_resolve::name_resolve;
 
 use ordering::check_ordering;
@@ -30,16 +29,6 @@ macro_rules! matches {
     ($p: pat, $e: expr) => (if let $p = $e { true } else { false });
 }
 
-pub mod span;
-pub mod file;
-pub mod context;
-pub mod error;
-pub mod name;
-pub mod ast;
-pub mod parser;
-pub mod tokenizer;
-pub mod walker;
-pub mod weed;
 pub mod arena;
 pub mod middle;
 pub mod lang_items;
@@ -117,7 +106,7 @@ fn create_multi_ast(ctx: &RefCell<Context>, filename: &str) -> Vec<CompilationUn
         let (cur, next) = slice.split_at(
             slice.iter()
             .skip(1)
-            .position(|&(ref x, _)| if let tokenizer::Token::PACKAGE = *x { true } else { false })
+            .position(|&(ref x, _)| if let Token::PACKAGE = *x { true } else { false })
             .map(|x| x+1)
             .unwrap_or_else(|| slice.len()));
         slice = next;

@@ -8,14 +8,14 @@ struct Uses<'a, 'ast: 'a> {
 impl<'a, 'ast> ExpressionWalker<'a, 'ast> for Uses<'a, 'ast> {
     fn walk_expression(&mut self, expr: &TypedExpression<'a, 'ast>) {
         use middle::TypedExpression_::*;
-        match expr.0 {
+        match expr.node {
             Variable(var) if var.fq_name == self.var.fq_name => {
                 span_error!(expr.span,
                             "illegal use of variable `{}`",
                             var.fq_name);
             }
             // Special case: LHS of an assignment is ok.
-            Assignment(box node!((Variable(..), _)), box ref rhs) => {
+            Assignment(box expr!(Variable(..)), box ref rhs) => {
                 self.walk_expression(rhs);
                 return;
             }

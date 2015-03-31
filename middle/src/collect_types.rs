@@ -1,6 +1,6 @@
 use ast;
 use name::*;
-use walker::*;
+use ast::walker::*;
 use arena::Arena;
 
 use std::collections::hash_map;

@@ -1,6 +1,6 @@
 use ast;
 use name::*;
-use span::{Span, spanned, IntoSpan};
+use span::{Span, IntoSpan};
 
 use middle::*;
 use lang_items::*;
@@ -502,7 +502,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
             -> Option<(TypedExpression_<'a, 'ast>, Type<'a, 'ast>)> {
 
         let arg_types: Vec<_> = targ_exprs.iter()
-            .map(|expr| expr.node.1.clone())
+            .map(|expr| expr.ty.clone())
             .collect();
         let signature = MethodSignature { name: name.node, args: arg_types };
 
@@ -553,7 +553,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
             -> Option<(TypedExpression_<'a, 'ast>, Type<'a, 'ast>)> {
 
         let arg_types: Vec<_> = targ_exprs.iter()
-            .map(|expr| expr.node.1.clone())
+            .map(|expr| expr.ty.clone())
             .collect();
         let signature = MethodSignature { name: name.node, args: arg_types };
 
@@ -648,9 +648,9 @@ impl<'a, 'ast> Environment<'a, 'ast> {
             [] => unreachable!(),
             [ref ident] => {
                 if let Some(expr) = self.resolve_variable(ident) {
-                    let expr = spanned(Span::range(path.first().unwrap().span,
-                                                   path.last().unwrap().span),
-                                       expr);
+                    let expr = TypedExpression::spanned(Span::range(path.first().unwrap().span,
+                                                                    path.last().unwrap().span),
+                                                        expr);
                     AmbiguousResult::Expression(expr)
                 } else if let Some(tydef) = self.find_type(ident) {
                     AmbiguousResult::Type(tydef)
@@ -669,7 +669,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                 match self.resolve_ambiguous_path(init) {
                     AmbiguousResult::Expression(expr) => {
                         if let Some(expr) = self.resolve_field_access(span, expr, last) {
-                            AmbiguousResult::Expression(spanned(span, expr))
+                            AmbiguousResult::Expression(TypedExpression::spanned(span, expr))
                         } else {
                             AmbiguousResult::Unknown
                         }
@@ -679,7 +679,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                             Some(&field) => {
                                 let expr_ = (TypedExpression_::StaticFieldAccess(field),
                                              field.ty.clone());
-                                AmbiguousResult::Expression(spanned(span, expr_))
+                                AmbiguousResult::Expression(TypedExpression::spanned(span, expr_))
                             }
                             None => {
                                 span_error!(span,

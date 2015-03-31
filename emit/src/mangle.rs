@@ -1,4 +1,4 @@
-use ast::middle::*;
+use middle::middle::*;
 
 use std::fmt::Writer;
 
@@ -14,7 +14,7 @@ impl<'a, 'ast> Mangle for TypeDefinition<'a, 'ast> {
 
 impl<'a, 'ast> Mangle for SimpleType<'a, 'ast> {
     fn mangle(&self) -> String {
-        use ast::middle::SimpleType::*;
+        use middle::middle::SimpleType::*;
         match *self {
             Boolean => format!("bool"),
             Int => format!("int"),
@@ -28,7 +28,7 @@ impl<'a, 'ast> Mangle for SimpleType<'a, 'ast> {
 
 impl<'a, 'ast> Mangle for Type<'a, 'ast> {
     fn mangle(&self) -> String {
-        use ast::middle::Type::*;
+        use middle::middle::Type::*;
         match *self {
             SimpleType(ref ty) => ty.mangle(),
             ArrayType(ref ty) => format!("a@{}", ty.mangle()),

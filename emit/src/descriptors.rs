@@ -1,4 +1,4 @@
-use ast::middle::*;
+use middle::middle::*;
 use mangle::Mangle;
 use context::Context;
 

@@ -1,9 +1,9 @@
 [root]
-name = "emit"
+name = "middle"
 version = "0.0.1"
 dependencies = [
  "ast 0.0.1",
- "middle 0.0.1",
+ "ivar 0.0.1",
  "rbtree 0.0.1",
 ]
 
@@ -35,15 +35,6 @@ name = "lalrgen"
 version = "0.0.1"
 dependencies = [
  "lalr 0.0.1",
-]
-
-[[package]]
-name = "middle"
-version = "0.0.1"
-dependencies = [
- "ast 0.0.1",
- "ivar 0.0.1",
- "rbtree 0.0.1",
 ]
 
 [[package]]

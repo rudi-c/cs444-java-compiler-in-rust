@@ -7,11 +7,11 @@ shopt -s globstar
 
 if [[ "$1" == "--release" ]]; then
     RELEASE="--release"
-    PROGRAM="./target/release/ast"
+    PROGRAM="./target/release/middle"
     shift
 else
     RELEASE=""
-    PROGRAM="./target/ast"
+    PROGRAM="./target/middle"
 fi
 
 cargo build $RELEASE || exit $?

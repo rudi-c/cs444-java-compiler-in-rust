@@ -45,7 +45,7 @@ fn dummy_expr_<'a, 'ast>() -> (TypedExpression_<'a, 'ast>, Type<'a, 'ast>) {
 }
 
 fn check_lvalue<'a, 'ast>(expr: &TypedExpression<'a, 'ast>) {
-    match expr.node.0 {
+    match expr.node {
         TypedExpression_::StaticFieldAccess(..) |
             TypedExpression_::FieldAccess(..) |
             TypedExpression_::ThisFieldAccess(..) |
@@ -302,9 +302,13 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
             return expr;
         }
         if let Err(msg) = self.check_widening(expect, expr.ty()) {
-            span_error!(expr.span, "{}", msg);
+            span_error!(&expr, "{}", msg);
         }
-        spanned(expr.span, (TypedExpression_::Widen(box expr), expect.clone()))
+        TypedExpression {
+            span: expr.span,
+            node: TypedExpression_::Widen(box expr),
+            ty: expect.clone(),
+        }
     }
 
     fn new_var(&mut self, var: &'ast ast::VariableDeclaration) -> VariableRef<'a, 'ast> {
@@ -444,7 +448,11 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
             _ => {}
         }
 
-        spanned(expr.span, texpr)
+        TypedExpression {
+            node: texpr.0,
+            ty: texpr.1,
+            span: expr.span,
+        }
     }
 
     fn new_expr_(&mut self, span: Span,
@@ -453,7 +461,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
         -> (TypedExpression_<'a, 'ast>, Type<'a, 'ast>) {
 
         let arg_types: Vec<_> = args.iter()
-            .map(|expr| expr.node.1.clone())
+            .map(|expr| expr.ty.clone())
             .collect();
         if let Some(&constructor) = tydef.constructors.get(&arg_types) {
             self.env.check_constructor_access_allowed(span, constructor, tydef);
@@ -697,8 +705,11 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
     }
 
     fn stringify(&self, expr: TypedExpression<'a, 'ast>) -> TypedExpression<'a, 'ast> {
-        spanned(expr.span, (TypedExpression_::ToString(box expr),
-                            Type::object(self.lang_items.string)))
+        TypedExpression {
+            span: expr.span,
+            node: TypedExpression_::ToString(box expr),
+            ty: Type::object(self.lang_items.string),
+        }
     }
 }
 

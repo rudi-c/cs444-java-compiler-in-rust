@@ -1,4 +1,4 @@
-use ast::middle::*;
+use middle::middle::*;
 use mangle::Mangle;
 use context::Context;
 use stack::Stack;
@@ -7,7 +7,7 @@ pub fn emit_block<'a, 'ast>(ctx: &Context<'a, 'ast>,
                             stack: &Stack,
                             block: &TypedBlock<'a, 'ast>) {
     stack.scope(|stack| {
-        use ast::middle::TypedBlockStatement_::*;
+        use middle::middle::TypedBlockStatement_::*;
         for stmt in block.stmts.iter() {
             match stmt.node {
                 LocalVariable(ref var) => emit_variable(ctx, stack, var),
@@ -28,7 +28,7 @@ pub fn emit_variable<'a, 'ast>(ctx: &Context<'a, 'ast>,
 pub fn emit_statement<'a, 'ast>(ctx: &Context<'a, 'ast>,
                                 stack: &Stack,
                                 stmt: &TypedStatement<'a, 'ast>) {
-    use ast::middle::TypedStatement_::*;
+    use middle::middle::TypedStatement_::*;
     match stmt.node {
         Expression(ref expr) => {
             emit_expression(ctx, stack, expr);
@@ -125,5 +125,8 @@ pub fn emit_statement<'a, 'ast>(ctx: &Context<'a, 'ast>,
 pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
                                  stack: &Stack,
                                  expr: &TypedExpression<'a, 'ast>) {
-    println!("; todo: expression goes here");
+    use middle::middle::TypedExpression_::*;
+    match expr.node {
+        _ => println!("; TODO: expression goes here"),
+    }
 }

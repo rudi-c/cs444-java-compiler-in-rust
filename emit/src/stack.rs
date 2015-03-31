@@ -1,4 +1,4 @@
-use ast::middle::*;
+use middle::middle::*;
 use ast::name::Name;
 use rbtree::RbMap;
 use std::borrow::ToOwned;

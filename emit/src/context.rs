@@ -1,5 +1,5 @@
-use ast::middle::*;
-use ast::lang_items::*;
+use middle::middle::*;
+use middle::lang_items::*;
 
 use std::collections::{BTreeSet, HashMap};
 use std::cell::Cell;

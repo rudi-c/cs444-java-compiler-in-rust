@@ -1,5 +1,5 @@
 use ast;
-use walker::*;
+use ast::walker::*;
 use arena::Arena;
 use name::*;
 use error::have_error;

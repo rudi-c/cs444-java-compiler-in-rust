@@ -3,23 +3,17 @@
 
 #[no_link] #[plugin] extern crate dfagen;
 #[no_link] #[plugin] extern crate lalrgen;
-extern crate rbtree;
-extern crate ivar;
 extern crate term;
 
 use std::cell::RefCell;
 
-use ast::CompilationUnit;
+pub use ast::*;
 use parser::make_ast;
 use tokenizer::Tokenizer;
 use weed::weed;
 use span::Span;
 use context::Context;
 use error::ErrorReporter;
-
-macro_rules! matches {
-    ($p: pat, $e: expr) => (if let $p = $e { true } else { false });
-}
 
 pub mod span;
 pub mod file;
@@ -31,18 +25,6 @@ pub mod parser;
 pub mod tokenizer;
 pub mod walker;
 pub mod weed;
-pub mod arena;
-pub mod middle;
-pub mod lang_items;
-pub mod name_resolve;
-pub mod collect_types;
-pub mod collect_members;
-pub mod tycheck;
-pub mod typed_walker;
-pub mod ordering;
-pub mod reachability;
-pub mod uses;
-pub mod eval;
 
 pub fn create_ast(ctx: &RefCell<Context>, filename: &str) -> Option<CompilationUnit> {
     let file_ix = match ctx.borrow_mut().add_file(Path::new(filename)) {

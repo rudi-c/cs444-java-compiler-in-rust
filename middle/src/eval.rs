@@ -1,5 +1,4 @@
 use middle::*;
-use span::Spanned;
 use std::mem::replace;
 
 // Destructively move the String out of a &mut String
@@ -16,9 +15,9 @@ fn grab(s: &mut String) -> String {
 fn reduce_toplevel<'a, 'ast>(expr: &mut TypedExpression<'a, 'ast>) {
     use middle::TypedExpression_::*;
     use middle::Value::*;
-    let &mut Spanned { node: (ref mut expr_, ref ty), .. } = expr;
-    let r = match *expr_ {
-        Prefix(op, box Spanned { node: (Constant(ref inner), _), .. }) => {
+    let &mut TypedExpression { ref mut node, ref ty, .. } = expr;
+    let r = match *node {
+        Prefix(op, box TypedExpression { node: Constant(ref inner), .. }) => {
             use ast::PrefixOperator::*;
             match (op, inner) {
                 (Not, &Bool(v)) => Bool(!v),
@@ -28,8 +27,8 @@ fn reduce_toplevel<'a, 'ast>(expr: &mut TypedExpression<'a, 'ast>) {
                 _ => return,
             }
         }
-        Infix(op, box Spanned { node: (Constant(ref left), _), .. },
-              box Spanned { node: (Constant(ref right), _), span: ref rspan }) => {
+        Infix(op, box TypedExpression { node: Constant(ref left), .. },
+              box TypedExpression { node: Constant(ref right), span: ref rspan, .. }) => {
             use ast::InfixOperator::*;
             match (op, left, right) {
                 (Xor, &Bool(l), &Bool(r)) => Bool(l ^ r),
@@ -71,12 +70,12 @@ fn reduce_toplevel<'a, 'ast>(expr: &mut TypedExpression<'a, 'ast>) {
                 _ => return,
             }
         }
-        Concat(box Spanned { node: (Constant(String(ref mut l)), _), .. },
-               box Spanned { node: (Constant(String(ref mut r)), _), .. }) => {
+        Concat(box TypedExpression { node: Constant(String(ref mut l)), .. },
+               box TypedExpression { node: Constant(String(ref mut r)), .. }) => {
             String(grab(l) + &**r)
         }
-        Cast(_, box Spanned { node: (Constant(ref val), _), .. }) |
-        Widen(box Spanned { node: (Constant(ref val), _), .. }) => {
+        Cast(_, box TypedExpression { node: Constant(ref val), .. }) |
+        Widen(box TypedExpression { node: Constant(ref val), .. }) => {
             // To avoid combinatorial blowup, always convert numberic types to Int
             let val = match val {
                 &Int(v) => Int(v),
@@ -95,7 +94,7 @@ fn reduce_toplevel<'a, 'ast>(expr: &mut TypedExpression<'a, 'ast>) {
                 (_, _) => return
             }
         }
-        ToString(box Spanned { node: (Constant(ref mut inner), _), .. }) => {
+        ToString(box TypedExpression { node: Constant(ref mut inner), .. }) => {
             String(match *inner {
                 Int(v) => format!("{}", v),
                 Short(v) => format!("{}", v),
@@ -126,14 +125,14 @@ fn reduce_toplevel<'a, 'ast>(expr: &mut TypedExpression<'a, 'ast>) {
                    r, ty)
         }
     }
-    *expr_ = Constant(r);
+    *node = Constant(r);
 }
 
 // Replace constants inside the expression in-place.
 pub fn reduce_const_expr<'a, 'ast>(expr: &mut TypedExpression<'a, 'ast>) {
     use middle::TypedExpression_::*;
     // First reduce inner expressions.
-    match expr.node.0 {
+    match expr.node {
         Constant(_) | This | Null => (),
 
         MethodInvocation(ref mut expr, _, ref mut exprs) => {

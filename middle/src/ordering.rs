@@ -33,7 +33,7 @@ impl<'a, 'ast> StatementWalker<'a, 'ast> for Order {
 impl<'a, 'ast> ExpressionWalker<'a, 'ast> for Order {
     fn walk_expression(&mut self, expr: &TypedExpression<'a, 'ast>) {
         use middle::TypedExpression_::*;
-        match expr.0 {
+        match expr.node {
             ThisFieldAccess(field) => {
                 if !self.seen.contains(&field.fq_name) {
                     span_error!(expr.span,
@@ -43,7 +43,7 @@ impl<'a, 'ast> ExpressionWalker<'a, 'ast> for Order {
             }
 
             // Special case: LHS of an assignment is ok.
-            Assignment(box node!((ThisFieldAccess(..), _)), box ref rhs) => {
+            Assignment(box expr!(ThisFieldAccess(..)), box ref rhs) => {
                 self.walk_expression(rhs);
                 // Don't walk normally!
                 return;

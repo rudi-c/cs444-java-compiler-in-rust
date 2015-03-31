@@ -2,17 +2,18 @@
 #![allow(unstable)]
 
 extern crate ast;
+extern crate middle;
 extern crate getopts;
 extern crate rbtree;
 
 use ast::ast::CompilationUnit;
 use ast::context::{Context, CONTEXT};
 use ast::error::{FatalError, ERRORS};
-use ast::arena::Arena;
-use ast::name_resolve::name_resolve;
-use ast::ordering::check_ordering;
-use ast::reachability::check_reachability;
 use ast::{create_ast, create_multi_ast};
+use middle::arena::Arena;
+use middle::name_resolve::name_resolve;
+use middle::ordering::check_ordering;
+use middle::reachability::check_reachability;
 
 use descriptors::emit_descriptor;
 use method::emit_method;

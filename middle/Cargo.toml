@@ -1,6 +1,6 @@
 [package]
 
-name = "emit"
+name = "middle"
 version = "0.0.1"
 authors = ["Geoffry Song <goffrie@gmail.com>"]
 
@@ -8,10 +8,10 @@ authors = ["Geoffry Song <goffrie@gmail.com>"]
 
 path = "../ast"
 
-[dependencies.middle]
-
-path = "../middle"
-
 [dependencies.rbtree]
 
 path = "../rbtree"
+
+[dependencies.ivar]
+
+path = "../ivar"

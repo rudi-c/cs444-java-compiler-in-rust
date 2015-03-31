@@ -71,7 +71,7 @@ fn check_statement<'a, 'ast>(in_maybe: bool, stmt: &TypedStatement<'a, 'ast>) ->
         For(_, Some(ref test), _, box ref stmt) |
         ForDecl(_, Some(ref test), _, box ref stmt) |
         While(ref test, box ref stmt) => {
-            match test.0 {
+            match test.node {
                 TypedExpression_::Constant(Value::Bool(true)) => { check_statement(in_maybe, stmt); false }
                 TypedExpression_::Constant(Value::Bool(false)) => { check_statement(false, stmt); in_maybe }
                 _ => { check_statement(in_maybe, stmt); in_maybe }
