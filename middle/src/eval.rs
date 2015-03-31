@@ -6,18 +6,16 @@ fn grab(s: &mut String) -> String {
     replace(s, String::new())
 }
 
-// Because of a compiler bug, we have to expand this manually...
-// macro_rules! constant {
-//     ($i: pat) => (box ::span::Spanned { node: (::middle::TypedExpression_::Constant($i), _), .. });
-//     ($i: pat, $s: pat) => (box ::span::Spanned { node: (::middle::TypedExpression_::Constant($i), _), span: $s });
-// }
+macro_rules! constant {
+    ($i: pat) => (box TypedExpression { node: TypedExpression_::Constant($i), .. });
+    ($i: pat, $s: pat) => (box TypedExpression { node: TypedExpression_::Constant($i), span: $s, .. });
+}
 
 fn reduce_toplevel<'a, 'ast>(expr: &mut TypedExpression<'a, 'ast>) {
     use middle::TypedExpression_::*;
     use middle::Value::*;
-    let &mut TypedExpression { ref mut node, ref ty, .. } = expr;
-    let r = match *node {
-        Prefix(op, box TypedExpression { node: Constant(ref inner), .. }) => {
+    let r = match expr.node {
+        Prefix(op, constant!(ref inner)) => {
             use ast::PrefixOperator::*;
             match (op, inner) {
                 (Not, &Bool(v)) => Bool(!v),
@@ -27,8 +25,7 @@ fn reduce_toplevel<'a, 'ast>(expr: &mut TypedExpression<'a, 'ast>) {
                 _ => return,
             }
         }
-        Infix(op, box TypedExpression { node: Constant(ref left), .. },
-              box TypedExpression { node: Constant(ref right), span: ref rspan, .. }) => {
+        Infix(op, constant!(ref left), constant!(ref right, ref rspan)) => {
             use ast::InfixOperator::*;
             match (op, left, right) {
                 (Xor, &Bool(l), &Bool(r)) => Bool(l ^ r),
@@ -70,10 +67,10 @@ fn reduce_toplevel<'a, 'ast>(expr: &mut TypedExpression<'a, 'ast>) {
                 _ => return,
             }
         }
-        Concat(box TypedExpression { node: Constant(String(ref mut l)), .. },
-               box TypedExpression { node: Constant(String(ref mut r)), .. }) => {
+        Concat(constant!(String(ref mut l)), constant!(String(ref mut r))) => {
             String(grab(l) + &**r)
         }
+        // Because of a compiler bug (rust#23891), we can't use `constant!` here
         Cast(_, box TypedExpression { node: Constant(ref val), .. }) |
         Widen(box TypedExpression { node: Constant(ref val), .. }) => {
             // To avoid combinatorial blowup, always convert numberic types to Int
@@ -85,7 +82,7 @@ fn reduce_toplevel<'a, 'ast>(expr: &mut TypedExpression<'a, 'ast>) {
                 &Bool(v) => Bool(v),
                 _ => return,
             };
-            match (ty, val) {
+            match (&expr.ty, val) {
                 (&Type::SimpleType(SimpleType::Int), Int(v)) => Int(v),
                 (&Type::SimpleType(SimpleType::Short), Int(v)) => Short(v as i16),
                 (&Type::SimpleType(SimpleType::Char), Int(v)) => Char(v as i16),
@@ -94,7 +91,7 @@ fn reduce_toplevel<'a, 'ast>(expr: &mut TypedExpression<'a, 'ast>) {
                 (_, _) => return
             }
         }
-        ToString(box TypedExpression { node: Constant(ref mut inner), .. }) => {
+        ToString(constant!(ref mut inner)) => {
             String(match *inner {
                 Int(v) => format!("{}", v),
                 Short(v) => format!("{}", v),
@@ -110,7 +107,7 @@ fn reduce_toplevel<'a, 'ast>(expr: &mut TypedExpression<'a, 'ast>) {
         _ => return,
     };
     // sanity check
-    match (&r, ty) {
+    match (&r, &expr.ty) {
         (&Int(_), &Type::SimpleType(SimpleType::Int)) |
         (&Short(_), &Type::SimpleType(SimpleType::Short)) |
         (&Char(_), &Type::SimpleType(SimpleType::Char)) |
@@ -125,7 +122,7 @@ fn reduce_toplevel<'a, 'ast>(expr: &mut TypedExpression<'a, 'ast>) {
                    r, ty)
         }
     }
-    *node = Constant(r);
+    expr.node = Constant(r);
 }
 
 // Replace constants inside the expression in-place.
