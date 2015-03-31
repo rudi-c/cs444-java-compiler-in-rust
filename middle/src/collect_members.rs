@@ -185,8 +185,6 @@ impl<'env, 'a, 'ast> Walker<'ast> for Collector<'env, 'a, 'ast> {
         self.to_populate.push(ToPopulate::Field(field));
         self.insert_field(field_name, field);
 
-        // FIXME: Add the field to env?
-
         // no need to walk deeper
     }
     fn walk_method(&mut self, method_ast: &'ast ast::Method) {

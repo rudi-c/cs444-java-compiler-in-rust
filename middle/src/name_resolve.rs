@@ -341,8 +341,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
 
     pub fn resolve_field_access(&self, span: Span, texpr: TypedExpression<'a, 'ast>, name: &Ident)
             -> Option<(TypedExpression_<'a, 'ast>, Type<'a, 'ast>)> {
-        // FIXME: bad clone
-        match texpr.ty().clone() {
+        match texpr.ty {
             Type::SimpleType(SimpleType::Other(tyref)) => {
                 if let Some(&field) = tyref.fields.get(&name.node) {
                     self.check_field_access_allowed(span, field, tyref);
@@ -361,13 +360,13 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                     None
                 }
             }
-            ref ty @ Type::SimpleType(_) => {
+            Type::SimpleType(_) => {
                 span_error!(span,
                             "primitive type `{}` has no field `{}`",
-                            ty, name);
+                            texpr.ty, name);
                 None
             }
-            ref ty @ Type::ArrayType(_) => {
+            Type::ArrayType(_) => {
                 // FIXME: Use intrinsics (?) or something
                 if name.node == Symbol::from_str("length") {
                     Some((TypedExpression_::ArrayLength(box texpr),
@@ -375,7 +374,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                 } else {
                     span_error!(span,
                                 "array type `{}` has no field `{}`",
-                                ty, name);
+                                texpr.ty, name);
                     None
                 }
             }
@@ -506,8 +505,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
             .collect();
         let signature = MethodSignature { name: name.node, args: arg_types };
 
-        // FIXME: bad clone
-        match texpr.ty().clone() {
+        match texpr.ty {
             Type::SimpleType(SimpleType::Other(tyref)) => {
                 if let Some(&method) = tyref.methods.get(&signature) {
                     self.check_method_access_allowed(span, method, tyref);
@@ -522,10 +520,10 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                     None
                 }
             }
-            ref ty @ Type::SimpleType(_) => {
+            Type::SimpleType(_) => {
                 span_error!(span,
                             "primitive type `{}` has no method `{}`",
-                            ty, name);
+                            texpr.ty, name);
                 None
             }
             Type::ArrayType(_) => {
@@ -805,7 +803,7 @@ fn import_single_type<'a, 'ast>(imported: &QualifiedIdentifier,
             current_env
         },
         // FIXME: Deduplicate this code with `resolve_type_name`
-        // (factor into `resole_fq_type_name` or something)
+        // (factor into `resolve_fq_type_name` or something)
         [init.., ref last] => match resolve_package(toplevel, init) {
             None => current_env,
             Some(package) => match package.contents.borrow().get(&last.node) {
