@@ -189,7 +189,6 @@ pub enum Expression_ {
     Literal(Literal),
     This,
     NewStaticClass(QualifiedIdentifier, Vec<Expression>),
-    NewDynamicClass(Box<Expression>, Ident, Vec<Expression>),
     NewArray(SimpleType, Box<Expression>),
     FieldAccess(Box<Expression>, Ident),
     NamedMethodInvocation(QualifiedIdentifier, Vec<Expression>),

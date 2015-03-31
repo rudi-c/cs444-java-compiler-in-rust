@@ -318,8 +318,6 @@ parser! parse {
     classInstanceCreationExpression: Expression {
         NEW qualifiedIdentifier[q] LParen argumentList[args] RParen =>
             spanned!(Expression_::NewStaticClass(q, args)),
-        primary[expr] Dot NEW identifier[ident] LParen argumentList[args] RParen =>
-            spanned!(Expression_::NewDynamicClass(box expr, ident, args)),
     }
 
     argumentList: Vec<Expression> {

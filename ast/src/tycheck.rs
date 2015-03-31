@@ -491,7 +491,6 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                     dummy_expr_()
                 }
             }
-            NewDynamicClass(box _, _, _) => panic!("dynamic class"),
             NewArray(ref tyname, box ref size) => {
                 let sty = self.env.resolve_simple_type(tyname);
                 let tsize = self.expr(size);

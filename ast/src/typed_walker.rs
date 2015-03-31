@@ -146,7 +146,6 @@ pub fn default_walk_expression<'a, 'ast, W: ExpressionWalker<'a, 'ast>>(walker: 
         Literal(_) => (),
         This => (),
 
-        NewDynamicClass(box ref _expr, _, ref _exprs) => panic!(),
         MethodInvocation(ref expr, _, ref exprs) => {
             if let Some(box ref expr) = *expr {
                 walker.walk_expression(expr);
