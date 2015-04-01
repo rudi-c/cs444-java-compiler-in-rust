@@ -185,7 +185,27 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
             let offset = ctx.field_offsets.get(&field).unwrap();
             println!("mov [ebx + {}], eax   ; set field {}", offset, field.fq_name);
         }
-        // Assignment(..) => panic!("non-lvalue in assignment"),
+        Assignment(box expr!(ArrayAccess(box ref array_expr, box ref index_expr)), box ref rhs) => {
+            emit_expression(ctx, stack, array_expr);
+            check_null();
+            println!("push eax");
+            emit_expression(ctx, stack, index_expr);
+
+            // array (not null) in `ebx`
+            // check index in bounds?
+            // length of array is [ebx+8]
+            println!("cmp eax, [ebx+8]      ; check for array out of bounds");
+            // UNSIGNED compare (if eax is negative, then it will also fail)
+            println!("jae __exception");
+
+            println!("push eax");
+            emit_expression(ctx, stack, rhs);
+
+            println!("pop ebx"); // array index
+            println!("pop ecx"); // array location
+            println!("mov [ecx + 12 + 4 * ebx], eax");
+        }
+        Assignment(..) => panic!("non-lvalue in assignment"),
         ArrayLength(box ref expr) => {
             emit_expression(ctx, stack, expr);
             check_null();
