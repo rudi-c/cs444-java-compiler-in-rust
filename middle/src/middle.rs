@@ -246,16 +246,20 @@ impl<'a, 'ast> fmt::String for MethodSignature<'a, 'ast> {
 pub struct Constructor<'a, 'ast: 'a> {
     pub fq_name: Name,
     pub args: Ivar<Vec<VariableRef<'a, 'ast>>>,
+    pub arg_types: Arguments<'a, 'ast>,
     pub body: Ivar<TypedBlock<'a, 'ast>>,
     pub ast: &'ast ast::Constructor,
 }
 pub type ConstructorRef<'a, 'ast> = &'a Constructor<'a, 'ast>;
 
 impl<'a, 'ast> Constructor<'a, 'ast> {
-    pub fn new(name: String, ast: &'ast ast::Constructor) -> Self {
+    pub fn new(name: String,
+               arg_types: Arguments<'a, 'ast>,
+               ast: &'ast ast::Constructor) -> Self {
         Constructor {
             fq_name: Name::fresh(name),
             args: Ivar::new(),
+            arg_types: arg_types,
             body: Ivar::new(),
             ast: ast,
         }

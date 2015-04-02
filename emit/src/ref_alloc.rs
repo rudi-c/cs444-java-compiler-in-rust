@@ -3,10 +3,10 @@ use mangle::Mangle;
 
 use context::Context;
 use stack::Stack;
-use code::emit_expression;
+use code::{emit_block, emit_expression};
 
-pub fn emit_class_allocator<'a, 'ast>(ctx: &Context<'a, 'ast>,
-                                      tydef: TypeDefinitionRef<'a, 'ast>) {
+fn emit_field_initializers<'a, 'ast>(ctx: &Context<'a, 'ast>,
+                                    tydef: TypeDefinitionRef<'a, 'ast>) {
     emit!("ALLOC{}:", tydef.mangle());
 
     // Prologue
@@ -67,4 +67,30 @@ pub fn emit_class_allocator<'a, 'ast>(ctx: &Context<'a, 'ast>,
     emit!("ret");
 
     emit!("; end class allocator\n");
+}
+
+fn emit_constructor<'a, 'ast>(ctx: &Context<'a, 'ast>,
+                              constructor: ConstructorRef<'a, 'ast>) {
+    emit!("{}:", constructor.mangle());
+    emit!("" ; "begin constructor");
+
+    // Prologue
+    emit!("push ebp");
+    emit!("mov ebp, esp");
+
+    let stack = Stack::new(&**constructor.args, false);
+    emit_block(ctx, &stack, &*constructor.body);
+
+    emit!("mov esp, ebp");
+    emit!("pop ebp");
+    emit!("ret");
+    emit!("; end class constructor\n");
+}
+
+pub fn emit_class_allocator<'a, 'ast>(ctx: &Context<'a, 'ast>,
+                                      tydef: TypeDefinitionRef<'a, 'ast>) {
+    emit_field_initializers(ctx, tydef);
+    for (_, constructor) in tydef.constructors.iter() {
+        emit_constructor(ctx, *constructor);
+    }
 }

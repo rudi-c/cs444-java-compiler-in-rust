@@ -5,8 +5,6 @@ use mangle::Mangle;
 use context::Context;
 use stack::Stack;
 
-use std::cmp;
-
 macro_rules! emit {
     ( $($instr: expr),+ ; $($comment: expr),+ ) => (
         println!("{:<40} ; {}", format!($($instr),+), format!($($comment),+))
@@ -172,7 +170,7 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
 
             emit!("mov [esp+{}], eax", args.len() * 4 ; "store `this` into reserved space");
 
-            emit!("call NEW{}", tydef.mangle());
+            emit!("call {}", constructor.mangle());
 
             emit!("" ; "End allocate {}", tydef.fq_name);
         }
