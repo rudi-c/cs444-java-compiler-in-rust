@@ -11,12 +11,14 @@ use ast::context::{Context, CONTEXT};
 use ast::error::{FatalError, ERRORS};
 use ast::{create_ast, create_multi_ast};
 use middle::arena::Arena;
+use middle::middle::TypeKind;
 use middle::name_resolve::name_resolve;
 use middle::ordering::check_ordering;
 use middle::reachability::check_reachability;
 
 use descriptors::emit_descriptor;
 use method::emit_method;
+use ref_alloc::emit_class_allocator;
 
 use getopts::{getopts, optflag};
 
@@ -30,6 +32,7 @@ pub mod descriptors;
 pub mod stack;
 pub mod code;
 pub mod method;
+pub mod ref_alloc;
 
 fn driver(ctx: &RefCell<Context>) {
     let opts = &[
@@ -101,6 +104,9 @@ fn driver(ctx: &RefCell<Context>) {
     universe.each_type(|tydef| {
         // Emit type descriptors.
         emit_descriptor(&emit_ctx, tydef);
+        if tydef.kind == TypeKind::Class {
+            emit_class_allocator(&emit_ctx, tydef);
+        }
         for method in tydef.method_impls.iter() {
             emit_method(&emit_ctx, *method);
         }

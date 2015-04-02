@@ -1,3 +1,5 @@
+#![macro_use]
+
 use middle::middle::*;
 use mangle::Mangle;
 use context::Context;
@@ -155,6 +157,25 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
         },
         Null => emit!("xor eax, eax"), // eax = 0
         This => emit!("mov eax, [ebp+{}]", stack.this_index() * 4),
+        NewStaticClass(tydef, ref constructor, ref args) => {
+            emit!("" ; "Begin allocate {}", tydef.fq_name);
+
+            emit!("push dword 0" ; "reserve space to store `this`");
+
+            // Generate argument code.
+            for arg in args.iter() {
+                emit_expression(ctx, stack, arg);
+                emit!("push eax");
+            }
+
+            emit!("call ALLOC{}", tydef.mangle());
+
+            emit!("mov [esp+{}], eax", args.len() * 4 ; "store `this` into reserved space");
+
+            emit!("call NEW{}", tydef.mangle());
+
+            emit!("" ; "End allocate {}", tydef.fq_name);
+        }
         Variable(var) => emit!("mov eax, [ebp+{}]", stack.var_index(var.fq_name) * 4
                                ; "variable {}", var.fq_name),
         StaticFieldAccess(field) => emit!("mov eax, [{}]", field.mangle()),
