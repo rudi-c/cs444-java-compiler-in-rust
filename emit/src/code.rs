@@ -174,6 +174,38 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
 
             emit!("" ; "End allocate {}", tydef.fq_name);
         }
+        NewArray(ref ty, box ref expr) => {
+            use middle::middle::SimpleType::*;
+
+            emit!(""; "Begin allocate array of type {}[]", ty);
+            emit_expression(ctx, stack, expr);
+
+            emit!("push eax" ; "save the length of the register");
+
+            match *ty {
+                Byte | Boolean => emit!("lea eax, [eax + 12]"),
+                Char | Short => emit!("lea eax, [eax * 2 + 12]"),
+                Int | Other(..) => emit!("lea eax, [eax * 4 + 12]"),
+            }
+
+            emit!("call __malloc");
+
+            emit!("mov [eax], ARRAYDESC");
+
+            match *ty {
+                Boolean => emit!("mov [eax+4], BOOLEANDESC"),
+                Int => emit!("mov [eax+4], INTDESC"),
+                Short => emit!("mov [eax+4], SHORTDESC"),
+                Char => emit!("mov [eax+4], CHARDESC"),
+                Byte => emit!("mov [eax+4], BYTEDESC"),
+                Other(ref tydef) => emit!("mov [eax+4], DESC{}", tydef.mangle()),
+            }
+
+            emit!("pop ebx");
+            emit!("mov [eax+8], ebx" ; "store length of array");
+
+            emit!(""; "End allocate array of type {}[]", ty);
+        }
         Variable(var) => emit!("mov eax, [ebp+{}]", stack.var_index(var.fq_name) * 4
                                ; "variable {}", var.fq_name),
         StaticFieldAccess(field) => emit!("mov eax, [{}]", field.mangle()),
@@ -205,14 +237,14 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
             emit!("pop ebx");
 
             let offset = ctx.field_offsets.get(&field).unwrap();
-            emit!("mov [ebx + {}], eax", field.fq_name ; "set field {}", offset);
+            emit!("mov [ebx + {}], eax", offset ; "set field {}", field.fq_name);
         }
         Assignment(box expr!(ThisFieldAccess(field)), box ref rhs) => {
             emit_expression(ctx, stack, rhs);
             emit!("mov ebx, [ebp+{}]", stack.this_index() * 4 ; "emit");
 
             let offset = ctx.field_offsets.get(&field).unwrap();
-            emit!("mov [ebx + {}], eax", field.fq_name ; "set field {}", offset);
+            emit!("mov [ebx + {}], eax", offset ; "set field {}", field.fq_name);
         }
         Assignment(box expr!(ArrayAccess(box ref array_expr, box ref index_expr)), box ref rhs) => {
             emit_expression(ctx, stack, array_expr);
