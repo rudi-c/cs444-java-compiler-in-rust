@@ -163,13 +163,13 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
             check_null();
 
             let offset = ctx.field_offsets.get(&field).unwrap();
-            emit!("mov eax, [eax + {}]", offset ; "access field {}", field.fq_name);
+            emit!("mov eax, [eax+{}]", offset ; "access field {}", field.fq_name);
         }
         ThisFieldAccess(field) => {
             emit!("mov eax, [ebp+{}]", stack.this_index() * 4 ; "this");
 
             let offset = ctx.field_offsets.get(&field).unwrap();
-            emit!("mov eax, [eax + {}]", field.fq_name ; "access field {}", offset);
+            emit!("mov eax, [eax+{}]", offset ; "access field {}", field.fq_name);
         }
         Assignment(box expr!(Variable(var)), box ref rhs) => {
             emit_expression(ctx, stack, rhs);
