@@ -3,6 +3,17 @@ use mangle::Mangle;
 use context::Context;
 use stack::Stack;
 
+use std::cmp;
+
+macro_rules! emit {
+    ( $($instr: expr),+ ; $($comment: expr),+ ) => (
+        println!("{:<40} ; {}", format!($($instr),+), format!($($comment),+))
+    );
+    ( $($instr: expr),+ ) => (
+        println!($($instr),+)
+    );
+}
+
 pub fn emit_block<'a, 'ast>(ctx: &Context<'a, 'ast>,
                             stack: &Stack,
                             block: &TypedBlock<'a, 'ast>) {
@@ -21,7 +32,7 @@ pub fn emit_variable<'a, 'ast>(ctx: &Context<'a, 'ast>,
                                stack: &mut Stack,
                                var: &TypedLocalVariable<'a, 'ast>) {
     emit_expression(ctx, stack, &var.initializer);
-    println!("push eax ; variable {}", var.variable.fq_name);
+    emit!("push eax" ; "variable {}", var.variable.fq_name);
     stack.add_var(var.variable.fq_name);
 }
 
@@ -36,38 +47,38 @@ pub fn emit_statement<'a, 'ast>(ctx: &Context<'a, 'ast>,
         If(ref expr, box ref ift, ref iff) => {
             emit_expression(ctx, stack, expr);
             // Is the result zero?
-            println!("test eax, eax");
+            emit!("test eax, eax");
             // If it is (i.e. false), jump to `iff`.
             let false_label = ctx.label();
-            println!("jz L{}", false_label);
+            emit!("jz L{}", false_label);
             // Otherwise, execute `ift`...
             emit_statement(ctx, stack, ift);
             if let Some(box ref iff) = *iff {
                 // then jump over `iff`.
                 let end_label = ctx.label();
-                println!("jmp L{}", end_label);
-                println!("L{}:", false_label);
+                emit!("jmp L{}", end_label);
+                emit!("L{}:", false_label);
                 emit_statement(ctx, stack, iff);
-                println!("L{}:", end_label);
+                emit!("L{}:", end_label);
             } else {
                 // and we're done.
-                println!("L{}:", false_label);
+                emit!("L{}:", false_label);
             }
         }
         While(ref expr, box ref inner) => {
             let top_label = ctx.label();
-            println!("L{}:", top_label);
+            emit!("L{}:", top_label);
             emit_expression(ctx, stack, expr);
             // Is the result zero?
-            println!("test eax, eax");
+            emit!("test eax, eax");
             // If it is (i.e. false), jump to the end.
             let end_label = ctx.label();
-            println!("jz L{}", end_label);
+            emit!("jz L{}", end_label);
             // Otherwise, run the body...
             emit_statement(ctx, stack, inner);
             // and go back to the top.
-            println!("jmp L{}", top_label);
-            println!("L{}:", end_label);
+            emit!("jmp L{}", top_label);
+            emit!("L{}:", end_label);
         }
         For(ref init, ref test, ref update, box ref inner) => {
             if let Some(ref init) = *init {
@@ -75,36 +86,36 @@ pub fn emit_statement<'a, 'ast>(ctx: &Context<'a, 'ast>,
             }
             let top_label = ctx.label();
             let end_label = ctx.label();
-            println!("L{}:", top_label);
+            emit!("L{}:", top_label);
             if let Some(ref test) = *test {
                 emit_expression(ctx, stack, test);
-                println!("test eax, eax");
-                println!("jz L{}", end_label);
+                emit!("test eax, eax");
+                emit!("jz L{}", end_label);
             }
             emit_statement(ctx, stack, inner);
             if let Some(ref update) = *update {
                 emit_expression(ctx, stack, update);
             }
-            println!("jmp L{}", top_label);
-            println!("L{}:", end_label);
+            emit!("jmp L{}", top_label);
+            emit!("L{}:", end_label);
         }
         ForDecl(ref var, ref test, ref update, box ref inner) => {
             stack.scope(|stack| {
                 emit_variable(ctx, stack, var);
                 let top_label = ctx.label();
                 let end_label = ctx.label();
-                println!("L{}:", top_label);
+                emit!("L{}:", top_label);
                 if let Some(ref test) = *test {
                     emit_expression(ctx, stack, test);
-                    println!("test eax, eax");
-                    println!("jz L{}", end_label);
+                    emit!("test eax, eax");
+                    emit!("jz L{}", end_label);
                 }
                 emit_statement(ctx, stack, inner);
                 if let Some(ref update) = *update {
                     emit_expression(ctx, stack, update);
                 }
-                println!("jmp L{}", top_label);
-                println!("L{}:", end_label);
+                emit!("jmp L{}", top_label);
+                emit!("L{}:", end_label);
             });
         }
         Empty => (),
@@ -114,10 +125,10 @@ pub fn emit_statement<'a, 'ast>(ctx: &Context<'a, 'ast>,
             }
             // Result is already in `eax`, if any.
             // Just need to unwind the stack.
-            println!("mov esp, ebp");
-            println!("pop ebp");
+            emit!("mov esp, ebp");
+            emit!("pop ebp");
             // pop arguments off the stack after return
-            println!("ret {}", 4 * stack.args);
+            emit!("ret {}", 4 * stack.args);
         }
         Block(ref block) => emit_block(ctx, stack, block),
     }
@@ -125,8 +136,8 @@ pub fn emit_statement<'a, 'ast>(ctx: &Context<'a, 'ast>,
 
 // Ensure that `eax` is not null.
 pub fn check_null() {
-    println!("test eax, eax     ; check null");
-    println!("jz __exception    ; null exception");
+    emit!("test eax, eax" ; "check null");
+    emit!("jz __exception" ; "null exception");
 }
 
 pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
@@ -135,82 +146,81 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
     use middle::middle::TypedExpression_::*;
     match expr.node {
         Constant(ref val) => match *val {
-            Value::Int(v) => println!("mov eax, {}", v),
-            Value::Short(v) => println!("mov eax, {}", v),
-            Value::Char(v) => println!("mov eax, {}", v),
-            Value::Byte(v) => println!("mov eax, {}", v),
-            Value::Bool(v) => println!("mov eax, {}", if v { 1 } else { 0 }),
-            Value::String(ref v) => println!("; TODO: string literal \"{}\"", v),
+            Value::Int(v) => emit!("mov eax, {}", v),
+            Value::Short(v) => emit!("mov eax, {}", v),
+            Value::Char(v) => emit!("mov eax, {}", v),
+            Value::Byte(v) => emit!("mov eax, {}", v),
+            Value::Bool(v) => emit!("mov eax, {}", if v { 1 } else { 0 }),
+            Value::String(ref v) => emit!("; TODO: string literal \"{}\"", v),
         },
-        Null => println!("xor eax, eax"), // eax = 0
-        This => println!("mov eax, [ebp+{}]", stack.this_index() * 4),
-        Variable(var) => println!("mov eax, [ebp+{}]    ; variable {}",
-                                  stack.var_index(var.fq_name) * 4,
-                                  var.fq_name),
-        StaticFieldAccess(field) => println!("mov eax, [{}]", field.mangle()),
+        Null => emit!("xor eax, eax"), // eax = 0
+        This => emit!("mov eax, [ebp+{}]", stack.this_index() * 4),
+        Variable(var) => emit!("mov eax, [ebp+{}]", stack.var_index(var.fq_name) * 4
+                               ; "variable {}", var.fq_name),
+        StaticFieldAccess(field) => emit!("mov eax, [{}]", field.mangle()),
         FieldAccess(box ref expr, field) => {
             emit_expression(ctx, stack, expr);
             check_null();
 
             let offset = ctx.field_offsets.get(&field).unwrap();
-            println!("mov eax, [eax + {}]   ; access field {}", offset, field.fq_name);
+            emit!("mov eax, [eax + {}]", offset ; "access field {}", field.fq_name);
         }
         ThisFieldAccess(field) => {
-            println!("mov eax, [ebp+{}]     ; this", stack.this_index() * 4);
+            emit!("mov eax, [ebp+{}]", stack.this_index() * 4 ; "this");
 
             let offset = ctx.field_offsets.get(&field).unwrap();
-            println!("mov eax, [eax + {}]   ; access field {}", offset, field.fq_name);
+            emit!("mov eax, [eax + {}]", field.fq_name ; "access field {}", offset);
         }
         Assignment(box expr!(Variable(var)), box ref rhs) => {
             emit_expression(ctx, stack, rhs);
-            println!("mov [ebp+{}], eax", stack.var_index(var.fq_name) * 4);
+            emit!("mov [ebp+{}], eax", stack.var_index(var.fq_name) * 4);
         }
         Assignment(box expr!(StaticFieldAccess(field)), box ref rhs) => {
             emit_expression(ctx, stack, rhs);
-            println!("mov [{}], eax", field.mangle());
+            emit!("mov [{}], eax", field.mangle());
         }
         Assignment(box expr!(FieldAccess(box ref expr, field)), box ref rhs) => {
             emit_expression(ctx, stack, expr);
-            println!("push eax");
+            emit!("push eax");
             emit_expression(ctx, stack, rhs);
-            println!("pop ebx");
+            emit!("pop ebx");
 
             let offset = ctx.field_offsets.get(&field).unwrap();
-            println!("mov [ebx + {}], eax   ; set field {}", offset, field.fq_name);
+            emit!("mov [ebx + {}], eax", field.fq_name ; "set field {}", offset);
         }
         Assignment(box expr!(ThisFieldAccess(field)), box ref rhs) => {
             emit_expression(ctx, stack, rhs);
-            println!("mov ebx, [ebp+{}]     ; this", stack.this_index() * 4);
+            emit!("mov ebx, [ebp+{}]", stack.this_index() * 4 ; "emit");
 
             let offset = ctx.field_offsets.get(&field).unwrap();
-            println!("mov [ebx + {}], eax   ; set field {}", offset, field.fq_name);
+            emit!("mov [ebx + {}], eax", field.fq_name ; "set field {}", offset);
         }
         Assignment(box expr!(ArrayAccess(box ref array_expr, box ref index_expr)), box ref rhs) => {
             emit_expression(ctx, stack, array_expr);
             check_null();
-            println!("push eax");
+            emit!("push eax");
             emit_expression(ctx, stack, index_expr);
 
             // array (not null) in `ebx`
             // check index in bounds?
             // length of array is [ebx+8]
-            println!("cmp eax, [ebx+8]      ; check for array out of bounds");
+            emit!("cmp eax, [ebx+8]" ; "check for array out of bounds");
             // UNSIGNED compare (if eax is negative, then it will also fail)
-            println!("jae __exception");
+            emit!("jae __exception");
 
-            println!("push eax");
+            emit!("push eax");
             emit_expression(ctx, stack, rhs);
 
-            println!("pop ebx"); // array index
-            println!("pop ecx"); // array location
-            println!("mov [ecx + 12 + 4 * ebx], eax");
+            emit!("pop ebx"); // array index
+            emit!("pop ecx"); // array location
+            emit!("mov [ecx + 12 + 4 * ebx], eax");
         }
         Assignment(..) => panic!("non-lvalue in assignment"),
         ArrayLength(box ref expr) => {
             emit_expression(ctx, stack, expr);
             check_null();
             // length is the third field
-            println!("mov eax, [eax+8]");
+            emit!("mov eax, [eax+8]");
         }
         MethodInvocation(ref receiver, ref sig, method, ref args) => {
             if method.is_static {
@@ -221,48 +231,48 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
                     check_null();
                 } else {
                     // implicitly `this`
-                    println!("mov eax, [ebp+{}]", stack.this_index() * 4);
+                    emit!("mov eax, [ebp+{}]", stack.this_index() * 4);
                 }
-                println!("push eax");
+                emit!("push eax");
             }
             for arg in args.iter() {
                 emit_expression(ctx, stack, arg);
-                println!("push eax");
+                emit!("push eax");
             }
             if method.is_static {
                 // No dynamic dispatch: just call the impl.
                 if let Concrete(method_impl) = method.impled {
-                    println!("call {}", method_impl.mangle());
+                    emit!("call {}", method_impl.mangle());
                 } else {
                     panic!("no impl for static method");
                 }
             } else {
                 // Grab the reference to the receiver...
                 // (`args.len()` slots up the stack)
-                println!("mov eax, [esp+{}]", 4 * args.len());
+                emit!("mov eax, [esp+{}]", 4 * args.len());
                 // Look up the type descriptor (first slot).
-                println!("mov eax, [eax]");
+                emit!("mov eax, [eax]");
                 // Now call the method.
                 // Skip three slots, then look up by method index
-                println!("call [eax+12+{}]", 4 * ctx.method_index(sig));
+                emit!("call [eax+12+{}]", 4 * ctx.method_index(sig));
             }
             // Callee pops the stack, nothing to do here.
         }
         ArrayAccess(box ref array, box ref ix) => {
             emit_expression(ctx, stack, array);
             check_null();
-            println!("push eax");
+            emit!("push eax");
             emit_expression(ctx, stack, ix);
-            println!("pop ebx");
+            emit!("pop ebx");
 
             // array (not null) in `ebx`
             // check index in bounds?
             // length of array is [ebx+8]
-            println!("cmp eax, [ebx+8]");
+            emit!("cmp eax, [ebx+8]");
             // UNSIGNED compare (if eax is negative, then it will also fail)
-            println!("jae __exception");
+            emit!("jae __exception");
             // index OK, look up element
-            println!("mov eax, [ebx+12+4*eax]");
+            emit!("mov eax, [ebx+12+4*eax]");
         }
         Prefix(op, box ref expr) => {
             use ast::PrefixOperator::*;
@@ -270,10 +280,10 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
             match op {
                 Not => {
                     // always a boolean
-                    println!("xor eax, 1");
+                    emit!("xor eax, 1");
                 }
                 Minus => {
-                    println!("neg eax");
+                    emit!("neg eax");
                 }
             }
         }
@@ -282,31 +292,31 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
             match op {
                 LazyOr | LazyAnd => {
                     emit_expression(ctx, stack, l);
-                    println!("test eax, eax");
+                    emit!("test eax, eax");
                     let skip = ctx.label();
                     match op {
-                        LazyOr => println!("jnz L{}", skip),
-                        LazyAnd => println!("jz L{}", skip),
+                        LazyOr => emit!("jnz L{}", skip),
+                        LazyAnd => emit!("jz L{}", skip),
                         _ => unreachable!(),
                     }
                     emit_expression(ctx, stack, r);
-                    println!("L{}:", skip);
+                    emit!("L{}:", skip);
                 }
                 _ => {
                     emit_expression(ctx, stack, l);
-                    println!("push eax");
+                    emit!("push eax");
                     emit_expression(ctx, stack, r);
-                    println!("pop ebx");
+                    emit!("pop ebx");
                     match op {
                         LazyOr | LazyAnd => unreachable!(),
-                        Xor => println!("xor eax, ebx"),
-                        EagerOr => println!("or eax, ebx"),
-                        EagerAnd => println!("and eax, ebx"),
+                        Xor => emit!("xor eax, ebx"),
+                        EagerOr => emit!("or eax, ebx"),
+                        EagerAnd => emit!("and eax, ebx"),
                         Equals | NotEquals
                         | LessThan | GreaterThan
                         | LessEqual | GreaterEqual => {
-                            println!("cmp ebx, eax");
-                            println!("set{} al", match op {
+                            emit!("cmp ebx, eax");
+                            emit!("set{} al", match op {
                                 // Equality is also fine for pointers
                                 Equals => "e",
                                 NotEquals => "ne",
@@ -318,22 +328,22 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
                                 GreaterEqual => "ge",
                                 _ => unreachable!(),
                             });
-                            println!("movzx eax, al");
+                            emit!("movzx eax, al");
                         }
                         // These operations are commutative.
-                        Plus => println!("add eax, ebx"),
-                        Mult => println!("imul ebx"),
+                        Plus => emit!("add eax, ebx"),
+                        Mult => emit!("imul ebx"),
                         // These are not. `eax` and `ebx` are in the wrong order
                         Minus | Div | Modulo => {
-                            println!("xchg eax, ebx");
+                            emit!("xchg eax, ebx");
                             match op {
-                                Minus => println!("sub eax, ebx"),
+                                Minus => emit!("sub eax, ebx"),
                                 Div | Modulo => {
-                                    println!("cdq"); // clear out edx
-                                    println!("idiv ebx");
+                                    emit!("cdq"); // clear out edx
+                                    emit!("idiv ebx");
                                     if let Modulo = op {
                                         // remainder in edx
-                                        println!("mov eax, edx");
+                                        emit!("mov eax, edx");
                                     } // otherwise, quotient in eax
                                 }
                                 _ => unreachable!(),
@@ -343,6 +353,6 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
                 }
             }
         }
-        _ => println!("; TODO: expression goes here"),
+        _ => emit!("; TODO: expression goes here"),
     }
 }
