@@ -245,6 +245,7 @@ impl<'a, 'ast> fmt::String for MethodSignature<'a, 'ast> {
 #[derive(Show)]
 pub struct Constructor<'a, 'ast: 'a> {
     pub fq_name: Name,
+    pub origin: TypeDefinitionRef<'a, 'ast>,
     pub args: Ivar<Vec<VariableRef<'a, 'ast>>>,
     pub arg_types: Arguments<'a, 'ast>,
     pub body: Ivar<TypedBlock<'a, 'ast>>,
@@ -254,10 +255,12 @@ pub type ConstructorRef<'a, 'ast> = &'a Constructor<'a, 'ast>;
 
 impl<'a, 'ast> Constructor<'a, 'ast> {
     pub fn new(name: String,
+               tydef: TypeDefinitionRef<'a, 'ast>,
                arg_types: Arguments<'a, 'ast>,
                ast: &'ast ast::Constructor) -> Self {
         Constructor {
             fq_name: Name::fresh(name),
+            origin: tydef,
             args: Ivar::new(),
             arg_types: arg_types,
             body: Ivar::new(),

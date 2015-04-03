@@ -49,3 +49,13 @@ pub fn emit_descriptor<'a, 'ast>(ctx: &Context<'a, 'ast>,
     }
     println!("; end type descriptor\n");
 }
+
+pub fn emit_primitive_descriptors<'a, 'ast>(ctx: &Context<'a, 'ast>) {
+    // TODO
+    emit!("ARRAYDESC:");
+    emit!("BOOLEANDESC:");
+    emit!("INTDESC:");
+    emit!("SHORTDESC:");
+    emit!("CHARDESC:");
+    emit!("BYTEDESC:");
+}

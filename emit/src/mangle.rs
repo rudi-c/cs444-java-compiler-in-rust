@@ -63,7 +63,7 @@ impl<'a, 'ast> Mangle for MethodImpl<'a, 'ast> {
 impl<'a, 'ast> Mangle for Constructor<'a, 'ast> {
     fn mangle(&self) -> String {
         let mut r = format!("NEW");
-        write!(&mut r, "{}", self.fq_name).unwrap();
+        write!(&mut r, "{}", self.origin.fq_name).unwrap();
         for ty in self.arg_types.iter() {
             write!(&mut r, "#{}", ty.mangle()).unwrap();
         }

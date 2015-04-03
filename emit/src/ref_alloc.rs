@@ -19,7 +19,7 @@ fn emit_field_initializers<'a, 'ast>(ctx: &Context<'a, 'ast>,
     emit!("push eax");
 
     // Set pointer to type descriptor.
-    emit!("mov [eax], DESC{}", tydef.mangle());
+    emit!("mov dword [eax], DESC{}", tydef.mangle());
 
     emit!("; Field initializers, first pass");
     for field_name in tydef.ordered_fields.iter() {
@@ -28,16 +28,18 @@ fn emit_field_initializers<'a, 'ast>(ctx: &Context<'a, 'ast>,
         if let Some(ref initializer) = *field.initializer {
             if let TypedExpression_::Constant(ref val) = initializer.node {
                 match *val {
-                    Value::Int(v) => emit!("mov [eax+{}], {}", offset, v),
-                    Value::Short(v) => emit!("mov [eax+{}], {}", offset, v),
-                    Value::Char(v) => emit!("mov [eax+{}], {}", offset, v),
-                    Value::Byte(v) => emit!("mov [eax+{}], {}", offset, v),
-                    Value::Bool(v) => emit!("mov [eax+{}], {}", offset, if v { 1 } else { 0 }),
-                    Value::String(ref v) => emit!("; TODO: string literal \"{}\"", v),
+                    Value::Int(v) => emit!("mov dword [eax+{}], {}", offset, v),
+                    Value::Short(v) => emit!("mov word [eax+{}], {}", offset, v),
+                    Value::Char(v) => emit!("mov word [eax+{}], {}", offset, v),
+                    Value::Byte(v) => emit!("mov byte [eax+{}], {}", offset, v),
+                    Value::Bool(v) => emit!("mov byte [eax+{}], {}", offset, if v { 1 } else { 0 }),
+                    Value::String(ref v) =>
+                        emit!("mov dword [eax+{}], stringstruct#{}", offset,
+                              ctx.string_constants.get(v).unwrap()),
                 }
             }
         } else {
-            emit!("mov [eax+{}], 0", offset);
+            emit!("mov dword [eax+{}], 0", offset);
         }
     }
 

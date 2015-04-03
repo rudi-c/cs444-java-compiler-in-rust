@@ -16,7 +16,7 @@ use middle::name_resolve::name_resolve;
 use middle::ordering::check_ordering;
 use middle::reachability::check_reachability;
 
-use descriptors::emit_descriptor;
+use descriptors::{emit_descriptor, emit_primitive_descriptors};
 use method::emit_method;
 use ref_alloc::emit_class_allocator;
 use strings::output_string_constants;
@@ -29,9 +29,9 @@ use std::rt::unwind;
 
 pub mod context;
 pub mod mangle;
+pub mod code;
 pub mod descriptors;
 pub mod stack;
-pub mod code;
 pub mod method;
 pub mod ref_alloc;
 pub mod strings;
@@ -102,6 +102,12 @@ fn driver(ctx: &RefCell<Context>) {
 
     // All checking done. Start emitting code.
     let emit_ctx = context::Context::create(&universe);
+
+    emit!("extern __exception");
+    emit!("extern __malloc");
+    emit!("extern NATIVEjava.io.OutputStream.nativeWrite");
+
+    emit_primitive_descriptors(&emit_ctx);
 
     universe.each_type(|tydef| {
         // Emit type descriptors.

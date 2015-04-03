@@ -235,7 +235,7 @@ impl<'env, 'a, 'ast> Walker<'ast> for Collector<'env, 'a, 'ast> {
         let args: Vec<_> = ast.params.iter().map(|arg| self.env.resolve_type(&arg.ty)).collect();
         // XXX
         let fq_name = format!("{}.{}", tydef.fq_name, MethodSignature { name: Symbol::from_str("<ctor>"), args: args.clone() });
-        let ctor = self.arena.alloc(Constructor::new(fq_name, args.clone(), ast));
+        let ctor = self.arena.alloc(Constructor::new(fq_name, tydef, args.clone(), ast));
         self.to_populate.push(ToPopulate::Constructor(ctor));
         if let Some(old) = self.constructors.insert(args.clone(), ctor) {
             span_error!(ast.span, "constructor is already defined in `{}`", tydef.fq_name);

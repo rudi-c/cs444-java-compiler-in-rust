@@ -191,14 +191,14 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
 
             emit!("call __malloc");
 
-            emit!("mov [eax], ARRAYDESC");
+            emit!("mov dword [eax], ARRAYDESC");
 
             match *ty {
-                Boolean => emit!("mov [eax+4], BOOLEANDESC"),
-                Int => emit!("mov [eax+4], INTDESC"),
-                Short => emit!("mov [eax+4], SHORTDESC"),
-                Char => emit!("mov [eax+4], CHARDESC"),
-                Byte => emit!("mov [eax+4], BYTEDESC"),
+                Boolean => emit!("mov dword [eax+4], BOOLEANDESC"),
+                Int => emit!("mov dword [eax+4], INTDESC"),
+                Short => emit!("mov dword [eax+4], SHORTDESC"),
+                Char => emit!("mov dword [eax+4], CHARDESC"),
+                Byte => emit!("mov dword [eax+4], BYTEDESC"),
                 Other(ref tydef) => emit!("mov [eax+4], DESC{}", tydef.mangle()),
             }
 
