@@ -11,17 +11,13 @@ use ast::context::{Context, CONTEXT};
 use ast::error::{FatalError, ERRORS};
 use ast::{create_ast, create_multi_ast};
 use middle::arena::Arena;
-use middle::middle::TypeKind;
 use middle::name_resolve::name_resolve;
 use middle::ordering::check_ordering;
 use middle::reachability::check_reachability;
 
-use descriptors::{emit_descriptor, emit_primitive_descriptors};
-use method::emit_method;
-use ref_alloc::emit_class_allocator;
-use strings::output_string_constants;
-
 use getopts::{getopts, optflag};
+
+use emit::emit;
 
 use std::{io, os};
 use std::cell::RefCell;
@@ -30,6 +26,7 @@ use std::rt::unwind;
 pub mod context;
 pub mod mangle;
 pub mod code;
+pub mod emit;
 pub mod descriptors;
 pub mod stack;
 pub mod method;
@@ -101,26 +98,7 @@ fn driver(ctx: &RefCell<Context>) {
     }
 
     // All checking done. Start emitting code.
-    let emit_ctx = context::Context::create(&universe);
-
-    emit!("extern __exception");
-    emit!("extern __malloc");
-    emit!("extern NATIVEjava.io.OutputStream.nativeWrite");
-
-    emit_primitive_descriptors(&emit_ctx);
-
-    universe.each_type(|tydef| {
-        // Emit type descriptors.
-        emit_descriptor(&emit_ctx, tydef);
-        if tydef.kind == TypeKind::Class {
-            emit_class_allocator(&emit_ctx, tydef);
-        }
-        for method in tydef.method_impls.iter() {
-            emit_method(&emit_ctx, *method);
-        }
-    });
-
-    output_string_constants(&emit_ctx.string_constants);
+    emit(&universe);
 }
 
 fn main() {

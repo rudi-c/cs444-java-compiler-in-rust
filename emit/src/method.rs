@@ -16,7 +16,16 @@ pub fn emit_method<'a, 'ast>(ctx: &Context<'a, 'ast>,
         println!("push ebp");
         println!("mov ebp, esp");
         let stack = Stack::new(&**method.args, method.is_static);
-        emit_block(ctx, &stack, body);
+        emit_block(ctx, false, &stack, body);
         println!("; end method\n");
+    }
+}
+
+pub fn emit_entry_method<'a, 'ast>(ctx: &Context<'a, 'ast>,
+                                   method: MethodImplRef<'a, 'ast>) {
+    if let Some(ref body) = *method.body {
+        let stack = Stack::new(&**method.args, method.is_static);
+        emit_block(ctx, true, &stack, body);
+        println!("; end entry method\n");
     }
 }

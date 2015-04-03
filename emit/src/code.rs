@@ -15,6 +15,7 @@ macro_rules! emit {
 }
 
 pub fn emit_block<'a, 'ast>(ctx: &Context<'a, 'ast>,
+                            entry: bool,
                             stack: &Stack,
                             block: &TypedBlock<'a, 'ast>) {
     stack.scope(|stack| {
@@ -22,7 +23,7 @@ pub fn emit_block<'a, 'ast>(ctx: &Context<'a, 'ast>,
         for stmt in block.stmts.iter() {
             match stmt.node {
                 LocalVariable(ref var) => emit_variable(ctx, stack, var),
-                Statement(ref stmt) => emit_statement(ctx, stack, stmt),
+                Statement(ref stmt) => emit_statement(ctx, entry, stack, stmt),
             }
         }
     });
@@ -37,6 +38,7 @@ pub fn emit_variable<'a, 'ast>(ctx: &Context<'a, 'ast>,
 }
 
 pub fn emit_statement<'a, 'ast>(ctx: &Context<'a, 'ast>,
+                                entry: bool,
                                 stack: &Stack,
                                 stmt: &TypedStatement<'a, 'ast>) {
     use middle::middle::TypedStatement_::*;
@@ -52,13 +54,13 @@ pub fn emit_statement<'a, 'ast>(ctx: &Context<'a, 'ast>,
             let false_label = ctx.label();
             emit!("jz L{}", false_label);
             // Otherwise, execute `ift`...
-            emit_statement(ctx, stack, ift);
+            emit_statement(ctx, entry, stack, ift);
             if let Some(box ref iff) = *iff {
                 // then jump over `iff`.
                 let end_label = ctx.label();
                 emit!("jmp L{}", end_label);
                 emit!("L{}:", false_label);
-                emit_statement(ctx, stack, iff);
+                emit_statement(ctx, entry, stack, iff);
                 emit!("L{}:", end_label);
             } else {
                 // and we're done.
@@ -75,7 +77,7 @@ pub fn emit_statement<'a, 'ast>(ctx: &Context<'a, 'ast>,
             let end_label = ctx.label();
             emit!("jz L{}", end_label);
             // Otherwise, run the body...
-            emit_statement(ctx, stack, inner);
+            emit_statement(ctx, entry, stack, inner);
             // and go back to the top.
             emit!("jmp L{}", top_label);
             emit!("L{}:", end_label);
@@ -92,7 +94,7 @@ pub fn emit_statement<'a, 'ast>(ctx: &Context<'a, 'ast>,
                 emit!("test eax, eax");
                 emit!("jz L{}", end_label);
             }
-            emit_statement(ctx, stack, inner);
+            emit_statement(ctx, entry, stack, inner);
             if let Some(ref update) = *update {
                 emit_expression(ctx, stack, update);
             }
@@ -110,7 +112,7 @@ pub fn emit_statement<'a, 'ast>(ctx: &Context<'a, 'ast>,
                     emit!("test eax, eax");
                     emit!("jz L{}", end_label);
                 }
-                emit_statement(ctx, stack, inner);
+                emit_statement(ctx, entry, stack, inner);
                 if let Some(ref update) = *update {
                     emit_expression(ctx, stack, update);
                 }
@@ -123,14 +125,21 @@ pub fn emit_statement<'a, 'ast>(ctx: &Context<'a, 'ast>,
             if let Some(ref expr) = *expr {
                 emit_expression(ctx, stack, expr);
             }
+
             // Result is already in `eax`, if any.
-            // Just need to unwind the stack.
-            emit!("mov esp, ebp");
-            emit!("pop ebp");
-            // pop arguments off the stack after return
-            emit!("ret {}", 4 * stack.args);
+            if entry {
+                emit!("mov ebx, eax");
+                emit!("mov eax, 1");
+                emit!("int 0x80" ; "sys_exit");
+            } else {
+                // Just need to unwind the stack.
+                emit!("mov esp, ebp");
+                emit!("pop ebp");
+                // pop arguments off the stack after return
+                emit!("ret {}", 4 * stack.args);
+            }
         }
-        Block(ref block) => emit_block(ctx, stack, block),
+        Block(ref block) => emit_block(ctx, entry, stack, block),
     }
 }
 
