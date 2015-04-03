@@ -19,6 +19,7 @@ use middle::reachability::check_reachability;
 use descriptors::emit_descriptor;
 use method::emit_method;
 use ref_alloc::emit_class_allocator;
+use strings::output_string_constants;
 
 use getopts::{getopts, optflag};
 
@@ -33,6 +34,7 @@ pub mod stack;
 pub mod code;
 pub mod method;
 pub mod ref_alloc;
+pub mod strings;
 
 fn driver(ctx: &RefCell<Context>) {
     let opts = &[
@@ -111,6 +113,8 @@ fn driver(ctx: &RefCell<Context>) {
             emit_method(&emit_ctx, *method);
         }
     });
+
+    output_string_constants(&emit_ctx.string_constants);
 }
 
 fn main() {

@@ -1,6 +1,8 @@
 use middle::middle::*;
 use middle::lang_items::*;
 
+use strings::collect_constant_strings;
+
 use std::collections::{BTreeSet, HashMap};
 use std::cell::Cell;
 
@@ -12,6 +14,8 @@ pub struct Context<'a, 'ast: 'a> {
 
     pub class_sizes: HashMap<TypeDefinitionRef<'a, 'ast>, u32>,
     pub field_offsets: HashMap<FieldRef<'a, 'ast>, u32>,
+
+    pub string_constants: HashMap<String, u32>,
 }
 
 impl<'a, 'ast> Context<'a, 'ast> {
@@ -32,6 +36,7 @@ impl<'a, 'ast> Context<'a, 'ast> {
             next_label: Cell::new(0),
             class_sizes: HashMap::new(),
             field_offsets: HashMap::new(),
+            string_constants: collect_constant_strings(universe),
         };
 
         context.compute_field_offsets(universe);
