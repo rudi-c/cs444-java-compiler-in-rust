@@ -405,6 +405,21 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
                 }
             }
         }
+        Concat(box ref expr1, box ref expr2) => {
+            emit!("" ; "> begin string concat operation");
+            emit_expression(ctx, stack, expr1);
+            check_null();
+            emit!("push eax");
+
+            emit_expression(ctx, stack, expr2);
+            check_null();
+            emit!("push eax");
+
+            // TODO: Fragile if we change naming scheme. Consider revising.
+            emit!("call METHODjava.lang.String.concat#java.lang.String");
+
+            emit!("" ; "> end string concat operation");
+        }
         _ => emit!("; TODO: expression goes here"),
     }
 }
