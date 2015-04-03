@@ -24,6 +24,7 @@ pub fn emit_method<'a, 'ast>(ctx: &Context<'a, 'ast>,
 pub fn emit_entry_method<'a, 'ast>(ctx: &Context<'a, 'ast>,
                                    method: MethodImplRef<'a, 'ast>) {
     if let Some(ref body) = *method.body {
+        println!("; begin entry method\n");
         let stack = Stack::new(&**method.args, method.is_static);
         emit_block(ctx, true, &stack, body);
         println!("; end entry method\n");
