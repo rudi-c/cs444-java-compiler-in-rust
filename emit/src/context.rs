@@ -76,9 +76,9 @@ impl<'a, 'ast> Context<'a, 'ast> {
                 _ => panic!("class extends multiple types?")
             };
 
-            for field in tydef.ordered_fields.iter() {
+            for field in tydef.nonstatic_fields().iter() {
                 // For now, give every field 4 words.
-                self.field_offsets.insert(*tydef.fields.get(field).unwrap(), class_size);
+                self.field_offsets.insert(*field, class_size);
                 class_size += 4;
             }
 

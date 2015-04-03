@@ -331,6 +331,22 @@ impl<'a, 'ast> TypeDefinition<'a, 'ast> {
                 interface.node.modifiers.iter().any(|spanned| spanned.node == modifier),
         }
     }
+
+    // Returns the nonstatic fields of this type in declaration order.
+    pub fn nonstatic_fields(&self) -> Vec<FieldRef<'a, 'ast>>{
+        self.ordered_fields.iter()
+            .map(|name| *self.fields.get(name).unwrap())
+            .filter(|field| !field.is_static())
+            .collect()
+    }
+
+    // Returns the static fields of this type in declaration order.
+    pub fn static_fields(&self) -> Vec<FieldRef<'a, 'ast>>{
+        self.ordered_fields.iter()
+            .map(|name| *self.fields.get(name).unwrap())
+            .filter(|field| field.is_static())
+            .collect()
+    }
 }
 
 impl<'a, 'ast> PartialEq for TypeDefinitionRef<'a, 'ast> {

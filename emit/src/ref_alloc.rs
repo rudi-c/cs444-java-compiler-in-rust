@@ -22,8 +22,7 @@ fn emit_field_initializers<'a, 'ast>(ctx: &Context<'a, 'ast>,
     emit!("mov dword [eax], DESC{}", tydef.mangle());
 
     emit!("; Field initializers, first pass");
-    for field_name in tydef.ordered_fields.iter() {
-        let field = tydef.fields.get(field_name).unwrap();
+    for field in tydef.nonstatic_fields().iter() {
         let offset = ctx.field_offsets.get(field).unwrap();
         if let Some(ref initializer) = *field.initializer {
             if let TypedExpression_::Constant(ref val) = initializer.node {
@@ -43,9 +42,8 @@ fn emit_field_initializers<'a, 'ast>(ctx: &Context<'a, 'ast>,
         }
     }
 
-    // Initialize fields (second pass).
-    for field_name in tydef.ordered_fields.iter() {
-        let field = tydef.fields.get(field_name).unwrap();
+    emit!("; Field initializers, second pass");
+    for field in tydef.nonstatic_fields().iter() {
         let offset = ctx.field_offsets.get(field).unwrap();
         if let Some(ref initializer) = *field.initializer {
             if let TypedExpression_::Constant(..) = initializer.node {
