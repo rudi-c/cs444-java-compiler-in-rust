@@ -40,9 +40,9 @@ for test in "${TESTCASES[@]}"; do
         MULTI=""
     fi
     if [[ -f "$test" ]]; then
-        "$PROGRAM" $MULTI "${STDLIB[@]}" "$test" > $TEST_ASM_FILE
+        "$PROGRAM" $MULTI "$test" "${STDLIB[@]}" > $TEST_ASM_FILE
     else
-        "$PROGRAM" $MULTI "${STDLIB[@]}" "$test"/**/*.java > $TEST_ASM_FILE
+        "$PROGRAM" $MULTI "$test"/**/*.java "${STDLIB[@]}" > $TEST_ASM_FILE
     fi
     CODE="$?"
     if [[ $CODE != $PASS_CODE ]]; then
