@@ -27,7 +27,7 @@ impl<'a, 'ast> Mangle for SimpleType<'a, 'ast> {
     fn mangle_into(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         use middle::middle::SimpleType::*;
         match *self {
-            Boolean => write!(f, "bool"),
+            Boolean => write!(f, "boolean"),
             Int => write!(f, "int"),
             Short => write!(f, "short"),
             Char => write!(f, "char"),

@@ -466,7 +466,7 @@ impl<'a, 'ast> SimpleType<'a, 'ast> {
 impl<'a, 'ast> fmt::String for SimpleType<'a, 'ast> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
-            &SimpleType::Boolean => write!(f, "bool"),
+            &SimpleType::Boolean => write!(f, "boolean"),
             &SimpleType::Int => write!(f, "int"),
             &SimpleType::Short => write!(f, "short"),
             &SimpleType::Char => write!(f, "char"),
