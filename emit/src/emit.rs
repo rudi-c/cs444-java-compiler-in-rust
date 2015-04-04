@@ -114,13 +114,13 @@ pub fn emit(universe: &Universe) {
 __instanceof:
 test eax, eax
 jz .yes
-mov eax, [eax] ; look up type descriptor
+mov eax, [eax+VPTR] ; look up type descriptor
 .loop:
 test eax, eax
 jz .no
 cmp eax, ebx
 je .yes
-mov eax, [eax+4] ; parent tydesc
+mov eax, [eax+TYDESC.parent] ; parent tydesc
 jmp .loop
 .yes:
 mov eax, 1
@@ -133,17 +133,17 @@ ret
 __instanceof_array:
 test eax, eax
 jz __instanceof.yes
-cmp dword [eax], ARRAYDESC ; check array type descriptor
+cmp dword [eax+VPTR], ARRAYDESC ; check array type descriptor
 jne __instanceof.no
-mov eax, [eax+4] ; look up element type descriptor
+mov eax, [eax+ARRAYLAYOUT.tydesc] ; look up element type descriptor
 jmp __instanceof.loop
 
 ; object in `eax`, interface descriptor in `ebx`
 __instanceof_interface:
 test eax, eax ; null is instanceof anything
 jz .yes
-mov eax, [eax] ; look up type descriptor
-mov eax, [eax+8] ; look up interface list
+mov eax, [eax+VPTR] ; look up type descriptor
+mov eax, [eax+TYDESC.intfs] ; look up interface list
 .loop:
 cmp [eax], dword 0
 jz .no

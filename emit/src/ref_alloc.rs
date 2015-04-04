@@ -15,7 +15,7 @@ fn emit_field_initializers<'a, 'ast>(ctx: &Context<'a, 'ast>,
     emit!("mov ebp, esp");
     let stack = Stack::new(&[], false);
 
-    emit!("mov eax, {}", ctx.class_sizes.get(&tydef).unwrap());
+    emit!("mov eax, LAYOUT{}#_size", tydef.mangle());
     emit!("call __malloc");
     emit!("push eax");
 
@@ -24,24 +24,22 @@ fn emit_field_initializers<'a, 'ast>(ctx: &Context<'a, 'ast>,
 
     emit!("; Field initializers, first pass");
     for field in tydef.nonstatic_fields().iter() {
-        let offset = ctx.field_offsets.get(field).unwrap();
         let field_size = sizeof_ty(&field.ty);
         if let Some(ref initializer) = *field.initializer {
             if let TypedExpression_::Constant(ref val) = initializer.node {
                 emit!("mov {} [eax+{}], {}",
-                      size_name(field_size), offset,
+                      size_name(field_size), field.mangle(),
                       ConstantValue(ctx, val));
             } else {
-                emit!("mov {} [eax+{}], 0", size_name(field_size), offset ; "non-constant");
+                emit!("mov {} [eax+{}], 0", size_name(field_size), field.mangle() ; "non-constant");
             }
         } else {
-            emit!("mov {} [eax+{}], 0", size_name(field_size), offset ; "no initializer");
+            emit!("mov {} [eax+{}], 0", size_name(field_size), field.mangle() ; "no initializer");
         }
     }
 
     emit!("; Field initializers, second pass");
     for field in tydef.nonstatic_fields().iter() {
-        let offset = ctx.field_offsets.get(field).unwrap();
         let field_size = sizeof_ty(&field.ty);
         if let Some(ref initializer) = *field.initializer {
             if let TypedExpression_::Constant(..) = initializer.node {
@@ -51,7 +49,7 @@ fn emit_field_initializers<'a, 'ast>(ctx: &Context<'a, 'ast>,
 
                 // A pointer to the new object should still be at the top of the stack.
                 emit!("mov ebx, [esp]");
-                emit!("mov {} [ebx+{}], {}", size_name(field_size), offset, eax_lo(field_size));
+                emit!("mov {} [ebx+{}], {}", size_name(field_size), field.mangle(), eax_lo(field_size));
             }
         }
     }

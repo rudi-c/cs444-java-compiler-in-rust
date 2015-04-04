@@ -130,7 +130,7 @@ pub fn emit_statement<'a, 'ast>(ctx: &Context<'a, 'ast>,
             emit!("mov esp, ebp");
             emit!("pop ebp");
             // pop arguments off the stack after return
-            emit!("ret {}", 4 * stack.args);
+            emit!("ret 4*{}", stack.args);
         }
         Block(ref block) => emit_block(ctx, stack, block),
     }
@@ -223,7 +223,7 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
     match expr.node {
         Constant(ref val) => emit!("mov eax, {}", ConstantValue(ctx, val)),
         Null => emit!("xor eax, eax"), // eax = 0
-        This => emit!("mov eax, [ebp+{}]", stack.this_index() * 4),
+        This => emit!("mov eax, [ebp+4*{}]", stack.this_index()),
         NewStaticClass(tydef, ref constructor, ref args) => {
             emit!("" ; "Begin allocate {}", tydef.fq_name);
 
@@ -237,7 +237,7 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
 
             emit!("call ALLOC{}", tydef.mangle());
 
-            emit!("mov [esp+{}], eax", args.len() * 4 ; "store `this` into reserved space");
+            emit!("mov [esp+4*{}], eax", args.len() ; "store `this` into reserved space");
 
             emit!("call {}", constructor.mangle());
 
@@ -249,45 +249,43 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
 
             emit!("push eax" ; "save the length of the register");
 
-            emit!("lea eax, [{}*eax + 12]", sizeof_simple_ty(ty));
+            emit!("lea eax, [{}*eax + ARRAYLAYOUT.elements]", sizeof_simple_ty(ty));
 
             emit!("call __malloc");
 
-            emit!("mov dword [eax], ARRAYDESC");
-            emit!("mov dword [eax+4], {}", desc(ty));
+            emit!("mov dword [eax+VPTR], ARRAYDESC");
+            emit!("mov dword [eax+ARRAYLAYOUT.tydesc], {}", desc(ty));
 
             emit!("pop ebx");
-            emit!("mov [eax+8], ebx" ; "store length of array");
+            emit!("mov [eax+ARRAYLAYOUT.len], ebx" ; "store length of array");
 
             emit!(""; "End allocate array of type {}[]", ty);
         }
-        Variable(var) => emit!("mov eax, [ebp+{}]", stack.var_index(var.fq_name) * 4
+        Variable(var) => emit!("mov eax, [ebp+4*{}]", stack.var_index(var.fq_name)
                                ; "variable {}", var.fq_name),
         StaticFieldAccess(field) => emit!("mov eax, dword [{}]", field.mangle()),
         FieldAccess(box ref expr, field) => {
             emit_expression(ctx, stack, expr);
             check_null();
 
-            let offset = ctx.field_offsets.get(&field).unwrap();
             let field_size = sizeof_ty(&field.ty);
             emit!("{} eax, {} [eax+{}]",
                   mov_extend(field_size),
-                  size_name(field_size), offset
+                  size_name(field_size), field.mangle()
                   ; "access field {}", field.fq_name);
         }
         ThisFieldAccess(field) => {
-            emit!("mov eax, [ebp+{}]", stack.this_index() * 4 ; "this");
+            emit!("mov eax, [ebp+4*{}]", stack.this_index() ; "this");
 
-            let offset = ctx.field_offsets.get(&field).unwrap();
             let field_size = sizeof_ty(&field.ty);
             emit!("{} eax, {} [eax+{}]",
                   mov_extend(field_size),
-                  size_name(field_size), offset
+                  size_name(field_size), field.mangle()
                   ; "access field {}", field.fq_name);
         }
         Assignment(box expr!(Variable(var)), box ref rhs) => {
             emit_expression(ctx, stack, rhs);
-            emit!("mov [ebp+{}], eax", stack.var_index(var.fq_name) * 4);
+            emit!("mov [ebp+4*{}], eax", stack.var_index(var.fq_name));
         }
         Assignment(box expr!(StaticFieldAccess(field)), box ref rhs) => {
             emit_expression(ctx, stack, rhs);
@@ -299,21 +297,19 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
             emit_expression(ctx, stack, rhs);
             emit!("pop ebx");
 
-            let offset = ctx.field_offsets.get(&field).unwrap();
             let field_size = sizeof_ty(&field.ty);
             emit!("mov {} [ebx + {}], {}",
-                  size_name(field_size), offset,
+                  size_name(field_size), field.mangle(),
                   eax_lo(field_size)
                   ; "set field {}", field.fq_name);
         }
         Assignment(box expr!(ThisFieldAccess(field)), box ref rhs) => {
             emit_expression(ctx, stack, rhs);
-            emit!("mov ebx, [ebp+{}]", stack.this_index() * 4 ; "emit");
+            emit!("mov ebx, [ebp+4*{}]", stack.this_index() ; "emit");
 
-            let offset = ctx.field_offsets.get(&field).unwrap();
             let field_size = sizeof_ty(&field.ty);
             emit!("mov {} [ebx + {}], {}",
-                  size_name(field_size), offset,
+                  size_name(field_size), field.mangle(),
                   eax_lo(field_size)
                   ; "set field {}", field.fq_name);
         }
@@ -326,8 +322,7 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
             emit!("mov ebx, [esp]");
             // array (not null) in `ebx`
             // check index in bounds?
-            // length of array is [ebx+8]
-            emit!("cmp eax, [ebx+8]" ; "check for array out of bounds");
+            emit!("cmp eax, [ebx+ARRAYLAYOUT.len]" ; "check for array out of bounds");
             // UNSIGNED compare (if eax is negative, then it will also fail)
             emit!("jae __exception");
 
@@ -337,7 +332,7 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
             emit!("pop ebx"); // array index
             emit!("pop ecx"); // array location
             let size = sizeof_array_element(&array_expr.ty);
-            emit!("mov [ecx + 12 + {} * ebx], {}",
+            emit!("mov [ecx + ARRAYLAYOUT.elements + {} * ebx], {}",
                   size,
                   eax_lo(size));
         }
@@ -345,8 +340,7 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
         ArrayLength(box ref expr) => {
             emit_expression(ctx, stack, expr);
             check_null();
-            // length is the third field
-            emit!("mov eax, [eax+8]");
+            emit!("mov eax, [eax+ARRAYLAYOUT.len]");
         }
         MethodInvocation(ref receiver, ref sig, method, ref args) => {
             if method.is_static {
@@ -357,7 +351,7 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
                     check_null();
                 } else {
                     // implicitly `this`
-                    emit!("mov eax, [ebp+{}]", stack.this_index() * 4);
+                    emit!("mov eax, [ebp+4*{}]", stack.this_index());
                 }
                 emit!("push eax");
             }
@@ -375,12 +369,12 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
             } else {
                 // Grab the reference to the receiver...
                 // (`args.len()` slots up the stack)
-                emit!("mov eax, [esp+{}]", 4 * args.len());
+                emit!("mov eax, [esp+4*{}]", args.len());
                 // Look up the type descriptor (first slot).
-                emit!("mov eax, [eax]");
+                emit!("mov eax, [eax+VPTR]");
                 // Now call the method.
                 // Skip three slots, then look up by method index
-                emit!("call [eax+12+{}]", 4 * ctx.method_index(sig)
+                emit!("call [eax+TYDESC.methods+4*{}]", ctx.method_index(sig)
                       ; "method {}", sig);
             }
             // Callee pops the stack, nothing to do here.
@@ -394,13 +388,12 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
 
             // array (not null) in `ebx`
             // check index in bounds?
-            // length of array is [ebx+8]
-            emit!("cmp eax, [ebx+8]");
+            emit!("cmp eax, [ebx+ARRAYLAYOUT.len]");
             // UNSIGNED compare (if eax is negative, then it will also fail)
             emit!("jae __exception");
             // index OK, look up element
             let size = sizeof_array_element(&array.ty);
-            emit!("{} eax, {} [ebx+12+{}*eax]",
+            emit!("{} eax, {} [ebx+ARRAYLAYOUT.elements+{}*eax]",
                   mov_extend(size),
                   size_name(size), size);
         }

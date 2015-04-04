@@ -51,7 +51,6 @@ impl<'a, 'ast> Mangle for Type<'a, 'ast> {
 
 impl<'a, 'ast> Mangle for Field<'a, 'ast> {
     fn mangle_into(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        assert!(self.is_static());
         write!(f, "FIELD{}", self.fq_name)
     }
 }

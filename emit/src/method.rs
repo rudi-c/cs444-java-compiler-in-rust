@@ -22,7 +22,7 @@ pub fn emit_method<'a, 'ast>(ctx: &Context<'a, 'ast>,
         if let Type::Void = method.ret_ty {
             emit!("mov esp, ebp");
             emit!("pop ebp");
-            emit!("ret {}", 4 * stack.args);
+            emit!("ret 4*{}", stack.args);
         }
         emit!("; end method\n");
     }

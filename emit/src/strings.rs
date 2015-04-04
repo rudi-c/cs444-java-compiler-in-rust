@@ -32,13 +32,15 @@ impl<'a, 'ast> ExpressionWalker<'a, 'ast> for StringCollector<'a, 'ast> {
 pub fn output_string_constants(strings: &HashMap<String, u32>) {
     emit!("section .rodata" ; "string constants");
     for (string, label) in strings.iter() {
-        emit!("stringstruct#{}:", label);
-        emit!("dd DESCjava.lang.String");
-        emit!("dd .string");
-        emit!(".string:");
-        emit!("dd ARRAYDESC");
-        emit!("dd CHARDESC");
-        emit!("dd {}", string.chars().count());
+        emit!("stringstruct#{}: istruc LAYOUTjava.lang.String#", label);
+        emit!("at VPTR, dd DESCjava.lang.String");
+        emit!("at FIELDjava.lang.String.chars, dd .string");
+        emit!("iend");
+        emit!(".string: istruc ARRAYLAYOUT");
+        emit!("at VPTR, dd ARRAYDESC");
+        emit!("at ARRAYLAYOUT.tydesc, dd CHARDESC");
+        emit!("at ARRAYLAYOUT.len, dd {}", string.chars().count());
+        emit!("iend");
         for c in string.chars() {
             if c.is_alphanumeric() || c == ' ' {
                 emit!("dw '{}'", c);
