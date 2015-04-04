@@ -21,7 +21,7 @@ STDLIB=("../stdlib/${ASSIGN}.0/"**/*.java)
 if [[ $# > 0 ]]; then
     TESTCASES=("$@")
 else
-    TESTCASES=(../{assignment,custom}_testcases/a${ASSIGN}/J*)
+    TESTCASES=(../{assignment,custom}_testcases/a${ASSIGN}/J*.java)
 fi
 
 LOG=""
@@ -55,6 +55,24 @@ for test in "${TESTCASES[@]}"; do
         if ! nasm -O1 -f elf -g -F dwarf $TEST_ASM_FILE; then
             LOG="${LOG}$test failed at assembly"$'\n'
             FAILURES=$(($FAILURES+1))
+        else
+            ld test.o runtime.o -melf_i386
+            ./a.out > actual_output.txt
+            ACTUAL_EXIT_CODE="$?"
+
+            CLASS_NAME=`basename ${test[0]} .java`
+            sed s/CLASSNAME/"$CLASS_NAME"/g TesterTemplate.java > Tester.java
+            javac "${test[0]}" Tester.java
+            java -classpath `dirname "${test[0]}"`:. Tester > expected_output.txt
+            EXPECTED_EXIT_CODE="$?"
+
+            if [[ $ACTUAL_EXIT_CODE != $EXPECTED_EXIT_CODE ]]; then
+                LOG="${LOG}$test failed: expected exit code $EXPECTED_EXIT_CODE, got exit code $ACTUAL_EXIT_CODE"$'\n'
+                FAILURES=$(($FAILURES+1))
+            elif ! cmp --silent actual_output.txt expected_output.txt; then
+                LOG="${LOG}$test failed: expected output:"$'\n'`cat expected_output.txt`$'\n'"got output"$'\n'`cat actual_output.txt`$'\n'
+                FAILURES=$(($FAILURES+1))
+            fi
         fi
     fi
 done
