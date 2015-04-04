@@ -18,6 +18,10 @@ pub fn emit_method<'a, 'ast>(ctx: &Context<'a, 'ast>,
         emit!("mov ebp, esp");
         let stack = Stack::new(&**method.args, method.is_static);
         emit_block(ctx, false, &stack, body);
+        if let Type::Void = method.ret_ty {
+            emit!("mov esp, ebp");
+            emit!("pop ebp");
+        }
         emit!("; end method\n");
     }
 }
