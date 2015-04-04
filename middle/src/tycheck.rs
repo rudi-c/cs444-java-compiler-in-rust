@@ -383,16 +383,20 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                     box self.stmt(inner))
             }
             ForDecl(ref init, ref test, ref update, box ref inner) => {
+                // FIXME: same as a block
+                let save = self.env.clone();
                 let init_texpr = self.local_variable(init);
                 let test_texpr_opt = test.as_ref().map(|t| self.clean_expr(t));
                 if let Some(ref test_texpr) = test_texpr_opt {
                     expect_bool(test.as_ref().unwrap().span, test_texpr.ty());
                 }
-                TypedStatement_::ForDecl(
+                let ret = TypedStatement_::ForDecl(
                     init_texpr,
                     test_texpr_opt,
                     update.as_ref().map(|u| self.clean_expr(u)),
-                    box self.stmt(inner))
+                    box self.stmt(inner));
+                self.env = save;
+                ret
             }
             Empty => TypedStatement_::Empty,
             Return(ref expr) => {
