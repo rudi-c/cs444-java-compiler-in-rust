@@ -110,54 +110,54 @@ pub fn emit(universe: &Universe) {
     emit!("");
 
     emit!(r"section .text
+__true:
+mov eax, 1
+ret
+
+__false:
+mov eax, 0
+ret
+
 ; expression in `eax`, type descriptor in `ebx`
 ; returns a bool in `eax`
 __instanceof:
 test eax, eax
-jz .yes
+jz __true ; null type is a subtype of everything
 mov eax, [eax+VPTR] ; look up type descriptor
-.loop:
+; fall into __instanceof_tydesc...
+
+; tydesc in `eax` and `ebx`.
+; is `eax` a subtype of `ebx`?
+__instanceof_tydesc:
 test eax, eax
-jz .no
+jz __false
 cmp eax, ebx
-je .yes
+je __true
 mov eax, [eax+TYDESC.parent] ; parent tydesc
-jmp .loop
-.yes:
-mov eax, 1
-ret
-.no:
-mov eax, 0
-ret
+jmp __instanceof_tydesc
 
 ; array expression in `eax`, type descriptor in `ebx`
 __instanceof_array:
 test eax, eax
-jz __instanceof.yes
+jz __true
 cmp dword [eax+VPTR], ARRAYDESC ; check array type descriptor
-jne __instanceof.no
+jne __false
 mov eax, [eax+ARRAYLAYOUT.tydesc] ; look up element type descriptor
-jmp __instanceof.loop
+jmp __instanceof_tydesc
 
 ; object in `eax`, interface descriptor in `ebx`
 __instanceof_interface:
 test eax, eax ; null is instanceof anything
-jz .yes
+jz __true
 mov eax, [eax+VPTR] ; look up type descriptor
 mov eax, [eax+TYDESC.intfs] ; look up interface list
 .loop:
 cmp [eax], dword 0
-jz .no
+jz __false
 cmp [eax], ebx
-je .yes
+je __true
 add eax, 4
 jmp .loop
-.yes:
-mov eax, 1
-ret
-.no:
-mov eax, 0
-ret
 ");
 
     emit_primitive_descriptors(&emit_ctx);
