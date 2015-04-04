@@ -19,9 +19,8 @@ use getopts::{getopts, optflag};
 
 use emit::emit;
 
-use std::{io, os};
+use std::{io, os, thread};
 use std::cell::RefCell;
-use std::rt::unwind;
 
 pub mod context;
 pub mod mangle;
@@ -102,21 +101,21 @@ fn driver(ctx: &RefCell<Context>) {
 }
 
 fn main() {
-    unsafe {
-        let error = match unwind::try(|| CONTEXT.with(|ctx| driver(ctx))) {
-            Err(res) => {
-                if res.is::<FatalError>() {
-                    true
-                } else {
-                    // The compiler had a problem
-                    os::set_exit_status(1);
-                    false
-                }
-            },
-            Ok(_) => ERRORS.with(|v| v.get()) > 0
-        };
-        if error {
-            os::set_exit_status(42);
-        }
+    let error = match thread::Builder::new()
+        .stack_size(64 * 1024 * 1024)
+        .scoped(|| CONTEXT.with(|ctx| driver(ctx))).join() {
+        Err(res) => {
+            if res.is::<FatalError>() {
+                true
+            } else {
+                // The compiler had a problem
+                os::set_exit_status(1);
+                false
+            }
+        },
+        Ok(_) => ERRORS.with(|v| v.get()) > 0
+    };
+    if error {
+        os::set_exit_status(42);
     }
 }
