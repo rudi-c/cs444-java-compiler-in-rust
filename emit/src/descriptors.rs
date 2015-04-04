@@ -90,7 +90,7 @@ pub fn emit_primitive_descriptors<'a, 'ast>(ctx: &Context<'a, 'ast>) {
     emit!("resb LAYOUT{}#_size", ctx.lang_items.object.mangle() ; "inherits from Object");
     emit!(".tydesc: resd 1");
     emit!(".len: resd 1");
-    emit!(".elements: resd 1");
+    emit!(".elements:");
     emit!("endstruc\n");
 
     emit!("align 4,db 0");
