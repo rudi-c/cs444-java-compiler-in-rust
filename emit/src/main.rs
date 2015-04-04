@@ -1,7 +1,7 @@
 #![feature(plugin, box_syntax, advanced_slice_patterns)]
 #![allow(unstable)]
 
-extern crate ast;
+#[macro_use] extern crate ast;
 #[macro_use] extern crate middle;
 extern crate getopts;
 extern crate rbtree;

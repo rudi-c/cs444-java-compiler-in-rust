@@ -51,11 +51,11 @@ for test in "${TESTCASES[@]}"; do
         continue
     fi
 
-    nasm -O1 -f elf -g -F dwarf $TEST_ASM_FILE
-    CODE="$?"
-    if [[ $CODE != $PASS_CODE ]]; then
-        LOG="${LOG}$test failed at assembly"$'\n'
-        FAILURES=$(($FAILURES+1))
+    if [[ $CODE == 0 ]]; then
+        if ! nasm -O1 -f elf -g -F dwarf $TEST_ASM_FILE; then
+            LOG="${LOG}$test failed at assembly"$'\n'
+            FAILURES=$(($FAILURES+1))
+        fi
     fi
 done
 
