@@ -323,11 +323,12 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
         }
         Assignment(box expr!(ArrayAccess(box ref array_expr, box ref index_expr)), box ref rhs) => {
             emit_expression(ctx, stack, array_expr);
-            check_null();
             emit!("push eax");
             emit_expression(ctx, stack, index_expr);
 
             emit!("mov ebx, [esp]");
+            emit!("test ebx, ebx" ; "check null");
+            emit!("jz __exception");
             // array (not null) in `ebx`
             // check index in bounds?
             emit!("cmp eax, [ebx+ARRAYLAYOUT.len]" ; "check for array out of bounds");
@@ -389,10 +390,11 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
         }
         ArrayAccess(box ref array, box ref ix) => {
             emit_expression(ctx, stack, array);
-            check_null();
             emit!("push eax");
             emit_expression(ctx, stack, ix);
             emit!("pop ebx");
+            emit!("test ebx, ebx" ; "check null");
+            emit!("jz __exception");
 
             // array (not null) in `ebx`
             // check index in bounds?
