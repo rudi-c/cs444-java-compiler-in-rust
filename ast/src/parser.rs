@@ -95,7 +95,7 @@ parser! parse {
     }
 
     typeName: SimpleType {
-        qualifiedIdentifier[q] => spanned!(SimpleType_::Other(q)),
+        expressionNameOrType[q] => q.into(),
     }
 
     // Identifiers ($6.7)
@@ -486,14 +486,8 @@ parser! parse {
     }
 
     assignment: Expression {
-        leftHandSide[lhs] Assignment conditionalOrExpression[expr] =>
+        conditionalOrExpression[lhs] Assignment assignmentExpression[expr] =>
             spanned!(Expression_::Assignment(box lhs, box expr)),
-    }
-
-    leftHandSide: Expression {
-        qualifiedIdentifier[q] => spanned!(Expression_::Name(q)),
-        fieldAccess[expr] => expr,
-        arrayAccess[expr] => expr,
     }
 
     // Expressions:
