@@ -325,26 +325,43 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
                   ; "set field {}", field.fq_name);
         }
         Assignment(box expr!(ArrayAccess(box ref array_expr, box ref index_expr)), box ref rhs) => {
+            // NOTE: This is perhaps a bit surprisng. The JLS specifies special handling
+            // for assignment of arrays. In particular, the RHS must be evaluated before
+            // the null check and out of bounds access check.
+
             emit_expression(ctx, stack, array_expr);
             emit!("push eax");
             emit_expression(ctx, stack, index_expr);
+            emit!("push eax");
+            emit_expression(ctx, stack, rhs);
+            emit!("pop edi"); // array index
+            emit!("pop ecx"); // array location
 
-            emit!("mov ebx, [esp]");
-            emit!("test ebx, ebx" ; "check null");
+            emit!("test ecx, ecx" ; "check null");
             emit!("jz __exception");
-            // array (not null) in `ebx`
-            // check index in bounds?
-            emit!("cmp eax, [ebx+ARRAYLAYOUT.len]" ; "check for array out of bounds");
+            emit!("cmp edi, [ecx+ARRAYLAYOUT.len]" ; "check for array out of bounds");
             // UNSIGNED compare (if eax is negative, then it will also fail)
             emit!("jae __exception");
 
-            emit!("push eax");
-            emit_expression(ctx, stack, rhs);
+            // check type compatibility
+            match array_expr.ty {
+                Type::ArrayType(SimpleType::Other(_)) => {
+                    // save a reference to the object
+                    emit!("mov edx, eax");
+                    emit!("mov ebx, [ecx+ARRAYLAYOUT.tydesc]" ; "get array's runtime type");
+                    emit!("call __instanceof");
+                    emit!("test eax, eax");
+                    emit!("jz __exception");
+                    emit!("mov eax, edx");
+                }
+                Type::ArrayType(_) => {
+                    // primitive type: no compatibility check required
+                }
+                _ => panic!("type of array is not array type"),
+            }
 
-            emit!("pop ebx"); // array index
-            emit!("pop ecx"); // array location
             let size = sizeof_array_element(&array_expr.ty);
-            emit!("mov [ecx + ARRAYLAYOUT.elements + {} * ebx], {}",
+            emit!("mov [ecx + ARRAYLAYOUT.elements + {} * edi], {}",
                   size,
                   eax_lo(size));
         }
