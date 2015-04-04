@@ -32,7 +32,8 @@ fn emit_static_field_initializer<'a, 'ast>(ctx: &Context<'a, 'ast>,
 fn emit_entry_point<'a, 'ast>(ctx: &Context<'a, 'ast>,
                               universe: &Universe<'a, 'ast>,
                               method: MethodImplRef<'a, 'ast>) {
-    emit!("; begin entry point");
+    emit!("section .text" ; "begin entry point");
+    emit!("global _start");
     emit!("_start:");
 
     emit!("; emit static field initializers");
@@ -45,7 +46,10 @@ fn emit_entry_point<'a, 'ast>(ctx: &Context<'a, 'ast>,
     emit!("; end emit static field initializers\n");
 
     emit!("call {}", method.mangle() ; "begin program");
-    emit!("jmp __debexit" ; "exit code in eax");
+    emit!("mov ebx, eax" ; "exit code in eax");
+    emit!("mov eax, 1" ; "sys_exit");
+    emit!("int 80h" ; "syscall");
+    emit!("");
 }
 
 fn emit_type<'a, 'ast>(ctx: &Context<'a, 'ast>,
@@ -58,7 +62,7 @@ fn emit_type<'a, 'ast>(ctx: &Context<'a, 'ast>,
     }
 
     // Emit slots for static fields.
-    emit!("; begin static field slots");
+    emit!("section .data" ; "begin static field slots");
     for field in tydef.static_fields().iter() {
         emit!("{}:", field.mangle());
         if let Some(expr!(TypedExpression_::Constant(ref initializer))) = *field.initializer {
@@ -101,11 +105,10 @@ pub fn emit(universe: &Universe) {
     };
     let emit_ctx = Context::create(universe);
 
-    emit!("global _start");
     emit!("extern __exception");
     emit!("extern __malloc");
-    emit!("extern __debexit");
     emit!("extern NATIVEjava.io.OutputStream.nativeWrite");
+    emit!("");
 
     emit_primitive_descriptors(&emit_ctx);
 

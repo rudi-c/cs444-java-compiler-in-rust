@@ -11,12 +11,13 @@ pub fn emit_method<'a, 'ast>(ctx: &Context<'a, 'ast>,
     }
 
     if let Some(ref body) = *method.body {
-        println!("{}:", method.mangle());
+        emit!("section .text" ; "begin method");
+        emit!("{}:", method.mangle());
         // prologue
-        println!("push ebp");
-        println!("mov ebp, esp");
+        emit!("push ebp");
+        emit!("mov ebp, esp");
         let stack = Stack::new(&**method.args, method.is_static);
         emit_block(ctx, false, &stack, body);
-        println!("; end method\n");
+        emit!("; end method\n");
     }
 }

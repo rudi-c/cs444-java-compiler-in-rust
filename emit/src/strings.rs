@@ -30,6 +30,7 @@ impl<'a, 'ast> ExpressionWalker<'a, 'ast> for StringCollector<'a, 'ast> {
 }
 
 pub fn output_string_constants(strings: &HashMap<String, u32>) {
+    emit!("section .rodata" ; "string constants");
     for (string, label) in strings.iter() {
         emit!("stringstruct#{}:", label);
         emit!("dd DESCjava.lang.String");

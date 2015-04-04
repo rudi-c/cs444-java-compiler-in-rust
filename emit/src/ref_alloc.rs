@@ -7,6 +7,7 @@ use code::{emit_block, emit_expression, ConstantValue, sizeof_ty, size_name, eax
 
 fn emit_field_initializers<'a, 'ast>(ctx: &Context<'a, 'ast>,
                                     tydef: TypeDefinitionRef<'a, 'ast>) {
+    emit!("section .text" ; "begin allocator");
     emit!("ALLOC{}:", tydef.mangle());
 
     // Prologue
@@ -69,8 +70,8 @@ fn emit_field_initializers<'a, 'ast>(ctx: &Context<'a, 'ast>,
 
 fn emit_constructor<'a, 'ast>(ctx: &Context<'a, 'ast>,
                               constructor: ConstructorRef<'a, 'ast>) {
+    emit!("section .text" ; "begin constructor");
     emit!("{}:", constructor.mangle());
-    emit!("" ; "begin constructor");
 
     // Prologue
     emit!("push ebp");
