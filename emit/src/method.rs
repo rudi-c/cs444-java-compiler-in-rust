@@ -7,6 +7,7 @@ use code::emit_block;
 pub fn emit_method<'a, 'ast>(ctx: &Context<'a, 'ast>,
                              method: MethodImplRef<'a, 'ast>) {
     if method.is_native {
+        emit!("extern {}", method.mangle());
         return;
     }
 

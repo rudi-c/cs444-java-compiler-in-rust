@@ -106,7 +106,6 @@ pub fn emit(universe: &Universe) {
 
     emit!("extern __exception");
     emit!("extern __malloc");
-    emit!("extern NATIVEjava.io.OutputStream.nativeWrite");
     emit!("");
 
     emit!(r"section .text

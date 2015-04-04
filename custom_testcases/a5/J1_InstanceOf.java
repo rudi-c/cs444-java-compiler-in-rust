@@ -16,7 +16,8 @@ public class J1_InstanceOf {
 
         System.out.println("int[] instanceof char[]");
         if (int_array instanceof char[]) System.out.println("FAIL");
-System.out.println("int[] instanceof Object[]");
+
+        System.out.println("int[] instanceof Object[]");
         if (int_array instanceof Object[]) System.out.println("FAIL");
 
         System.out.println("int[] instanceof Object");
