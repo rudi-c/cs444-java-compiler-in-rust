@@ -33,9 +33,18 @@ pub fn output_string_constants(strings: &HashMap<String, u32>) {
     for (string, label) in strings.iter() {
         emit!("stringstruct#{}:", label);
         emit!("dd DESCjava.lang.String");
-        emit!("dd stringconstant#{}", label);
-        emit!("stringconstant#{}:", label);
-        emit!("db '{}'", string);
+        emit!("dd .string");
+        emit!(".string:");
+        emit!("dd ARRAYDESC");
+        emit!("dd CHARDESC");
+        emit!("dd {}", string.chars().count());
+        for c in string.chars() {
+            if c.is_alphanumeric() || c == ' ' {
+                emit!("dw '{}'", c);
+            } else {
+                emit!("dw {}", c as u32 as i16);
+            }
+        }
         emit!("");
     }
 }
