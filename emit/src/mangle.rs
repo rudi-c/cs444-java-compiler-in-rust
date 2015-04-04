@@ -1,37 +1,48 @@
 use middle::middle::*;
 
-use std::fmt::Writer;
+use std::fmt::{self, Writer};
+
+pub struct Mangled<T>(pub T);
 
 pub trait Mangle {
-    fn mangle(&self) -> String;
+    fn mangle(&self) -> Mangled<&Self> {
+        Mangled(self)
+    }
+    fn mangle_into(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error>;
+}
+
+impl<'a, T: Mangle> fmt::String for Mangled<&'a T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        self.0.mangle_into(f)
+    }
 }
 
 impl<'a, 'ast> Mangle for TypeDefinition<'a, 'ast> {
-    fn mangle(&self) -> String {
-        format!("{}", self.fq_name)
+    fn mangle_into(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "{}", self.fq_name)
     }
 }
 
 impl<'a, 'ast> Mangle for SimpleType<'a, 'ast> {
-    fn mangle(&self) -> String {
+    fn mangle_into(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         use middle::middle::SimpleType::*;
         match *self {
-            Boolean => format!("bool"),
-            Int => format!("int"),
-            Short => format!("short"),
-            Char => format!("char"),
-            Byte => format!("byte"),
-            Other(tydef) => tydef.mangle(),
+            Boolean => write!(f, "bool"),
+            Int => write!(f, "int"),
+            Short => write!(f, "short"),
+            Char => write!(f, "char"),
+            Byte => write!(f, "byte"),
+            Other(tydef) => tydef.mangle_into(f),
         }
     }
 }
 
 impl<'a, 'ast> Mangle for Type<'a, 'ast> {
-    fn mangle(&self) -> String {
+    fn mangle_into(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         use middle::middle::Type::*;
         match *self {
-            SimpleType(ref ty) => ty.mangle(),
-            ArrayType(ref ty) => format!("a@{}", ty.mangle()),
+            SimpleType(ref ty) => ty.mangle_into(f),
+            ArrayType(ref ty) => write!(f, "a@{}", ty.mangle()),
 
             _ => panic!("tried to mangle a bad type {}", *self),
         }
@@ -39,34 +50,34 @@ impl<'a, 'ast> Mangle for Type<'a, 'ast> {
 }
 
 impl<'a, 'ast> Mangle for Field<'a, 'ast> {
-    fn mangle(&self) -> String {
+    fn mangle_into(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         assert!(self.is_static());
-        format!("FIELD{}", self.fq_name)
+        write!(f, "FIELD{}", self.fq_name)
     }
 }
 
 impl<'a, 'ast> Mangle for MethodImpl<'a, 'ast> {
-    fn mangle(&self) -> String {
+    fn mangle_into(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         if self.is_native {
-            format!("NATIVE{}", self.fq_name)
+            write!(f, "NATIVE{}", self.fq_name)
         } else {
-            let mut r = format!("METHOD");
-            write!(&mut r, "{}", self.fq_name).unwrap();
+            try!(write!(f, "METHOD"));
+            try!(write!(f, "{}", self.fq_name));
             for ty in self.arg_types.iter() {
-                write!(&mut r, "#{}", ty.mangle()).unwrap();
+                try!(write!(f, "#{}", ty.mangle()));
             }
-            r
+            Ok(())
         }
     }
 }
 
 impl<'a, 'ast> Mangle for Constructor<'a, 'ast> {
-    fn mangle(&self) -> String {
-        let mut r = format!("NEW");
-        write!(&mut r, "{}", self.origin.fq_name).unwrap();
+    fn mangle_into(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        try!(write!(f, "NEW"));
+        try!(write!(f, "{}", self.origin.fq_name));
         for ty in self.arg_types.iter() {
-            write!(&mut r, "#{}", ty.mangle()).unwrap();
+            try!(write!(f, "#{}", ty.mangle()));
         }
-        r
+        Ok(())
     }
 }
