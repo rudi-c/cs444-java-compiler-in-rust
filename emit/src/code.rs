@@ -16,7 +16,6 @@ macro_rules! emit {
 }
 
 pub fn emit_block<'a, 'ast>(ctx: &Context<'a, 'ast>,
-                            entry: bool,
                             stack: &Stack,
                             block: &TypedBlock<'a, 'ast>) {
     stack.scope(|stack| {
@@ -24,7 +23,7 @@ pub fn emit_block<'a, 'ast>(ctx: &Context<'a, 'ast>,
         for stmt in block.stmts.iter() {
             match stmt.node {
                 LocalVariable(ref var) => emit_variable(ctx, stack, var),
-                Statement(ref stmt) => emit_statement(ctx, entry, stack, stmt),
+                Statement(ref stmt) => emit_statement(ctx, stack, stmt),
             }
         }
     });
@@ -39,7 +38,6 @@ pub fn emit_variable<'a, 'ast>(ctx: &Context<'a, 'ast>,
 }
 
 pub fn emit_statement<'a, 'ast>(ctx: &Context<'a, 'ast>,
-                                entry: bool,
                                 stack: &Stack,
                                 stmt: &TypedStatement<'a, 'ast>) {
     use middle::middle::TypedStatement_::*;
@@ -53,35 +51,35 @@ pub fn emit_statement<'a, 'ast>(ctx: &Context<'a, 'ast>,
             emit!("test eax, eax");
             // If it is (i.e. false), jump to `iff`.
             let false_label = ctx.label();
-            emit!("jz L{}", false_label);
+            emit!("jz .L{}", false_label);
             // Otherwise, execute `ift`...
-            emit_statement(ctx, entry, stack, ift);
+            emit_statement(ctx, stack, ift);
             if let Some(box ref iff) = *iff {
                 // then jump over `iff`.
                 let end_label = ctx.label();
-                emit!("jmp L{}", end_label);
-                emit!("L{}:", false_label);
-                emit_statement(ctx, entry, stack, iff);
-                emit!("L{}:", end_label);
+                emit!("jmp .L{}", end_label);
+                emit!(".L{}:", false_label);
+                emit_statement(ctx, stack, iff);
+                emit!(".L{}:", end_label);
             } else {
                 // and we're done.
-                emit!("L{}:", false_label);
+                emit!(".L{}:", false_label);
             }
         }
         While(ref expr, box ref inner) => {
             let top_label = ctx.label();
-            emit!("L{}:", top_label);
+            emit!(".L{}:", top_label);
             emit_expression(ctx, stack, expr);
             // Is the result zero?
             emit!("test eax, eax");
             // If it is (i.e. false), jump to the end.
             let end_label = ctx.label();
-            emit!("jz L{}", end_label);
+            emit!("jz .L{}", end_label);
             // Otherwise, run the body...
-            emit_statement(ctx, entry, stack, inner);
+            emit_statement(ctx, stack, inner);
             // and go back to the top.
-            emit!("jmp L{}", top_label);
-            emit!("L{}:", end_label);
+            emit!("jmp .L{}", top_label);
+            emit!(".L{}:", end_label);
         }
         For(ref init, ref test, ref update, box ref inner) => {
             if let Some(ref init) = *init {
@@ -89,36 +87,36 @@ pub fn emit_statement<'a, 'ast>(ctx: &Context<'a, 'ast>,
             }
             let top_label = ctx.label();
             let end_label = ctx.label();
-            emit!("L{}:", top_label);
+            emit!(".L{}:", top_label);
             if let Some(ref test) = *test {
                 emit_expression(ctx, stack, test);
                 emit!("test eax, eax");
-                emit!("jz L{}", end_label);
+                emit!("jz .L{}", end_label);
             }
-            emit_statement(ctx, entry, stack, inner);
+            emit_statement(ctx, stack, inner);
             if let Some(ref update) = *update {
                 emit_expression(ctx, stack, update);
             }
-            emit!("jmp L{}", top_label);
-            emit!("L{}:", end_label);
+            emit!("jmp .L{}", top_label);
+            emit!(".L{}:", end_label);
         }
         ForDecl(ref var, ref test, ref update, box ref inner) => {
             stack.scope(|stack| {
                 emit_variable(ctx, stack, var);
                 let top_label = ctx.label();
                 let end_label = ctx.label();
-                emit!("L{}:", top_label);
+                emit!(".L{}:", top_label);
                 if let Some(ref test) = *test {
                     emit_expression(ctx, stack, test);
                     emit!("test eax, eax");
-                    emit!("jz L{}", end_label);
+                    emit!("jz .L{}", end_label);
                 }
-                emit_statement(ctx, entry, stack, inner);
+                emit_statement(ctx, stack, inner);
                 if let Some(ref update) = *update {
                     emit_expression(ctx, stack, update);
                 }
-                emit!("jmp L{}", top_label);
-                emit!("L{}:", end_label);
+                emit!("jmp .L{}", top_label);
+                emit!(".L{}:", end_label);
             });
         }
         Empty => (),
@@ -128,19 +126,13 @@ pub fn emit_statement<'a, 'ast>(ctx: &Context<'a, 'ast>,
             }
 
             // Result is already in `eax`, if any.
-            if entry {
-                emit!("mov ebx, eax");
-                emit!("mov eax, 1");
-                emit!("int 0x80" ; "sys_exit");
-            } else {
-                // Just need to unwind the stack.
-                emit!("mov esp, ebp");
-                emit!("pop ebp");
-                // pop arguments off the stack after return
-                emit!("ret {}", 4 * stack.args);
-            }
+            // Just need to unwind the stack.
+            emit!("mov esp, ebp");
+            emit!("pop ebp");
+            // pop arguments off the stack after return
+            emit!("ret {}", 4 * stack.args);
         }
-        Block(ref block) => emit_block(ctx, entry, stack, block),
+        Block(ref block) => emit_block(ctx, stack, block),
     }
 }
 
@@ -211,6 +203,19 @@ pub fn eax_lo(size: u32) -> &'static str {
     }
 }
 
+pub fn desc(ty: &SimpleType) -> String {
+    use middle::middle::SimpleType::*;
+
+    match *ty {
+        Boolean => format!("BOOLEANDESC"),
+        Int => format!("INTDESC"),
+        Short => format!("SHORTDESC"),
+        Char => format!("CHARDESC"),
+        Byte => format!("BYTEDESC"),
+        Other(ref tydef) => format!("DESC{}", tydef.mangle()),
+    }
+}
+
 pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
                                  stack: &Stack,
                                  expr: &TypedExpression<'a, 'ast>) {
@@ -239,8 +244,6 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
             emit!("" ; "End allocate {}", tydef.fq_name);
         }
         NewArray(ref ty, box ref expr) => {
-            use middle::middle::SimpleType::*;
-
             emit!(""; "Begin allocate array of type {}[]", ty);
             emit_expression(ctx, stack, expr);
 
@@ -251,15 +254,7 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
             emit!("call __malloc");
 
             emit!("mov dword [eax], ARRAYDESC");
-
-            match *ty {
-                Boolean => emit!("mov dword [eax+4], BOOLEANDESC"),
-                Int => emit!("mov dword [eax+4], INTDESC"),
-                Short => emit!("mov dword [eax+4], SHORTDESC"),
-                Char => emit!("mov dword [eax+4], CHARDESC"),
-                Byte => emit!("mov dword [eax+4], BYTEDESC"),
-                Other(ref tydef) => emit!("mov dword [eax+4], DESC{}", tydef.mangle()),
-            }
+            emit!("mov dword [eax+4], {}", desc(ty));
 
             emit!("pop ebx");
             emit!("mov [eax+8], ebx" ; "store length of array");
@@ -385,7 +380,8 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
                 emit!("mov eax, [eax]");
                 // Now call the method.
                 // Skip three slots, then look up by method index
-                emit!("call [eax+12+{}]", 4 * ctx.method_index(sig));
+                emit!("call [eax+12+{}]", 4 * ctx.method_index(sig)
+                      ; "method {}", sig);
             }
             // Callee pops the stack, nothing to do here.
         }
@@ -429,12 +425,12 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
                     emit!("test eax, eax");
                     let skip = ctx.label();
                     match op {
-                        LazyOr => emit!("jnz L{}", skip),
-                        LazyAnd => emit!("jz L{}", skip),
+                        LazyOr => emit!("jnz .L{}", skip),
+                        LazyAnd => emit!("jz .L{}", skip),
                         _ => unreachable!(),
                     }
                     emit_expression(ctx, stack, r);
-                    emit!("L{}:", skip);
+                    emit!(".L{}:", skip);
                 }
                 _ => {
                     emit_expression(ctx, stack, l);
@@ -506,6 +502,34 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
             emit!("call METHODjava.lang.String.concat#java.lang.String");
 
             emit!("" ; "> end string concat operation");
+        }
+        InstanceOf(box ref expr, ref ty) => {
+            emit_expression(ctx, stack, expr);
+            match *ty {
+                Type::SimpleType(ref ty @ SimpleType::Other(&TypeDefinition {
+                                     kind: TypeKind::Interface, ..
+                                 })) => {
+                    emit!("mov ebx, {}", desc(ty));
+                    emit!("call __instanceof_interface");
+                }
+                Type::SimpleType(ref ty) => {
+                    emit!("mov ebx, {}", desc(ty));
+                    emit!("call __instanceof");
+                }
+                Type::ArrayType(ref ty) => {
+                    emit!("mov ebx, {}", desc(ty));
+                    emit!("call __instanceof_array");
+                }
+                _ => panic!("bad type in instanceof")
+            }
+        }
+        Cast(ref ty, box ref expr) => {
+            // TODO: Distinguish between upcasts, downcasts, and primitive casts.
+            emit_expression(ctx, stack, expr);
+            // TODO: Check the cast.
+        }
+        Widen(box ref expr) => {
+            emit_expression(ctx, stack, expr);
         }
         _ => emit!("; TODO: expression goes here"),
     }

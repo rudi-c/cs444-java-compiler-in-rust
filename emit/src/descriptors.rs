@@ -74,8 +74,8 @@ pub fn emit_primitive_descriptors<'a, 'ast>(ctx: &Context<'a, 'ast>) {
 
     macro_rules! prim {
         ($name: ident) => ({
-            emit!("{}DESC:", stringify!($name));
             emit!("align 4,db 0");
+            emit!("{}DESC:", stringify!($name));
             emit!("dd .?name");
             emit!("dd 0");
             emit!("dd 0");

@@ -78,7 +78,7 @@ fn emit_constructor<'a, 'ast>(ctx: &Context<'a, 'ast>,
     emit!("mov ebp, esp");
 
     let stack = Stack::new(&**constructor.args, false);
-    emit_block(ctx, false, &stack, &*constructor.body);
+    emit_block(ctx, &stack, &*constructor.body);
 
     emit!("mov esp, ebp");
     emit!("pop ebp");

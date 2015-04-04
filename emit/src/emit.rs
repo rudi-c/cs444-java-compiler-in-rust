@@ -53,7 +53,6 @@ fn emit_entry_point<'a, 'ast>(ctx: &Context<'a, 'ast>,
 }
 
 fn emit_type<'a, 'ast>(ctx: &Context<'a, 'ast>,
-                       universe: &Universe<'a, 'ast>,
                        tydef: TypeDefinitionRef<'a, 'ast>) {
     // Emit type descriptors.
     emit_descriptor(ctx, tydef);
@@ -110,10 +109,61 @@ pub fn emit(universe: &Universe) {
     emit!("extern NATIVEjava.io.OutputStream.nativeWrite");
     emit!("");
 
+    emit!(r"section .text
+; expression in `eax`, type descriptor in `ebx`
+; returns a bool in `eax`
+__instanceof:
+test eax, eax
+jz .yes
+mov eax, [eax] ; look up type descriptor
+.loop:
+test eax, eax
+jz .no
+cmp eax, ebx
+je .yes
+mov eax, [eax+4] ; parent tydesc
+jmp .loop
+.yes:
+mov eax, 1
+ret
+.no:
+mov eax, 0
+ret
+
+; array expression in `eax`, type descriptor in `ebx`
+__instanceof_array:
+test eax, eax
+jz __instanceof.yes
+cmp dword [eax], ARRAYDESC ; check array type descriptor
+jne __instanceof.no
+mov eax, [eax+4] ; look up element type descriptor
+jmp __instanceof.loop
+
+; object in `eax`, interface descriptor in `ebx`
+__instanceof_interface:
+test eax, eax ; null is instanceof anything
+jz .yes
+mov eax, [eax] ; look up type descriptor
+mov eax, [eax+8] ; look up interface list
+.loop:
+cmp [eax], dword 0
+jz .no
+cmp [eax], ebx
+je .yes
+add eax, 4
+jmp .loop
+.yes:
+mov eax, 1
+ret
+.no:
+mov eax, 0
+ret
+");
+
     emit_primitive_descriptors(&emit_ctx);
 
     universe.each_type(|tydef| {
-        emit_type(&emit_ctx, universe, tydef);
+        emit_type(&emit_ctx, tydef);
     });
 
     emit_entry_point(&emit_ctx, universe, entry_fn);
