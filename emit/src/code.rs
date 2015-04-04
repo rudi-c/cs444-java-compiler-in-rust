@@ -258,7 +258,7 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
                 Short => emit!("mov dword [eax+4], SHORTDESC"),
                 Char => emit!("mov dword [eax+4], CHARDESC"),
                 Byte => emit!("mov dword [eax+4], BYTEDESC"),
-                Other(ref tydef) => emit!("mov [eax+4], DESC{}", tydef.mangle()),
+                Other(ref tydef) => emit!("mov dword [eax+4], DESC{}", tydef.mangle()),
             }
 
             emit!("pop ebx");
