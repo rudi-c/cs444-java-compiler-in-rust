@@ -301,6 +301,9 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
         }
         Assignment(box expr!(FieldAccess(box ref expr, field)), box ref rhs) => {
             emit_expression(ctx, stack, expr);
+            // conceptually, the field reference is evaluated here
+            // (in reality, we do it later)
+            check_null(); // null check before evaluating RHS
             emit!("push eax");
             emit_expression(ctx, stack, rhs);
             emit!("pop ebx");
