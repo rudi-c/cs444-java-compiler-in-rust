@@ -238,8 +238,8 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
             emit!("call ALLOC{}", tydef.mangle());
 
             emit!("mov [esp+4*{}], eax", args.len() ; "store `this` into reserved space");
-
             emit!("call {}", constructor.mangle());
+            emit!("pop eax" ; "recover `this`");
 
             emit!("" ; "End allocate {}", tydef.fq_name);
         }
@@ -462,6 +462,8 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
                             match op {
                                 Minus => emit!("sub eax, ebx"),
                                 Div | Modulo => {
+                                    emit!("test ebx, ebx");
+                                    emit!("jz __exception" ; "division by zero");
                                     emit!("cdq"); // clear out edx
                                     emit!("idiv ebx");
                                     if let Modulo = op {
@@ -480,14 +482,15 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
             emit!("" ; "> begin string concat operation");
             emit_expression(ctx, stack, expr1);
             // null -> "null"
+            let null = ctx.string_constants[*"null"];
             emit!("test eax, eax");
-            emit!("mov ebx, stringstruct#{}", ctx.string_constants[*"null"]);
+            emit!("mov ebx, stringstruct#{}", null);
             emit!("cmovz eax, ebx");
             emit!("push eax");
 
             emit_expression(ctx, stack, expr2);
             emit!("test eax, eax");
-            emit!("mov ebx, stringstruct#{}", ctx.string_constants[*"null"]);
+            emit!("mov ebx, stringstruct#{}", null);
             emit!("cmovz eax, ebx");
             emit!("push eax");
 

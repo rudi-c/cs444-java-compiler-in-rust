@@ -104,6 +104,7 @@ pub fn emit(universe: &Universe) {
     };
     let emit_ctx = Context::create(universe);
 
+    emit!("; vim: ft=nasm");
     emit!("extern __exception");
     emit!("extern __malloc");
     emit!("");

@@ -75,12 +75,14 @@ fn emit_constructor<'a, 'ast>(ctx: &Context<'a, 'ast>,
     emit!("push ebp");
     emit!("mov ebp, esp");
 
-    let stack = Stack::new(&**constructor.args, false);
+    let mut stack = Stack::new(&**constructor.args, false /* not static */);
+    // FIXME: hack: leave `this` on the stack
+    stack.args -= 1;
     emit_block(ctx, &stack, &*constructor.body);
 
     emit!("mov esp, ebp");
     emit!("pop ebp");
-    emit!("ret");
+    emit!("ret 4*{}", stack.args);
     emit!("; end class constructor\n");
 }
 
