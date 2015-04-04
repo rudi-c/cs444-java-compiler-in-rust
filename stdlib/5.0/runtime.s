@@ -1,3 +1,4 @@
+; vim: ft=nasm
 section .text
 
 ; Allocates eax bytes of memory. Pointer to allocated memory returned in eax.
