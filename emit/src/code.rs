@@ -4,6 +4,7 @@ use middle::middle::*;
 use mangle::Mangle;
 use context::Context;
 use stack::Stack;
+use std::fmt;
 
 macro_rules! emit {
     ( $($instr: expr),+ ; $($comment: expr),+ ) => (
@@ -149,20 +150,73 @@ pub fn check_null() {
     emit!("jz __exception" ; "null exception");
 }
 
+pub struct ConstantValue<'a: 'c + 'v, 'ast: 'a, 'c, 'v>(pub &'c Context<'a, 'ast>, pub &'v Value);
+
+impl<'a, 'ast, 'c, 'v> fmt::String for ConstantValue<'a, 'ast, 'c, 'v> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match *self.1 {
+            Value::Int(v) => write!(f, "{}", v),
+            Value::Short(v) => write!(f, "{}", v),
+            Value::Char(v) => write!(f, "{}", v),
+            Value::Byte(v) => write!(f, "{}", v),
+            Value::Bool(v) => write!(f, "{}", if v { 1 } else { 0 }),
+            Value::String(ref v) => write!(f, "stringstruct#{}", self.0.string_constants.get(v).unwrap()),
+        }
+    }
+}
+
+pub fn sizeof_simple_ty<'a, 'ast>(ty: &SimpleType<'a, 'ast>) -> u32 {
+    match *ty {
+        SimpleType::Char | SimpleType::Short => 2,
+        SimpleType::Byte | SimpleType::Boolean => 1,
+        _ => 4,
+    }
+}
+pub fn sizeof_ty<'a, 'ast>(ty: &Type<'a, 'ast>) -> u32 {
+    match *ty {
+        Type::SimpleType(ref simple_ty) => sizeof_simple_ty(simple_ty),
+        _ => 4,
+    }
+}
+pub fn sizeof_array_element<'a, 'ast>(ty: &Type<'a, 'ast>) -> u32 {
+    match *ty {
+        Type::ArrayType(ref simple_ty) => sizeof_simple_ty(simple_ty),
+        _ => panic!("not an array type: {}", ty),
+    }
+}
+pub fn size_name(size: u32) -> &'static str {
+    match size {
+        1 => "byte",
+        2 => "word",
+        4 => "dword",
+        _ => panic!("bad size {}", size),
+    }
+}
+// Return the appropriate `mov` instruction to load
+// from a location of size `size`, to a 32-bit register.
+pub fn mov_extend(size: u32) -> &'static str {
+    match size {
+        4 => "mov",
+        2 | 1 => "movsx",
+        _ => panic!("bad size {}", size),
+    }
+}
+// Return the sub-register of `eax` of size `size`.
+pub fn eax_lo(size: u32) -> &'static str {
+    match size {
+        4 => "eax",
+        2 => "ax",
+        1 => "al",
+        _ => panic!("bad size {}", size),
+    }
+}
+
 pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
                                  stack: &Stack,
                                  expr: &TypedExpression<'a, 'ast>) {
     use middle::middle::TypedExpression_::*;
     match expr.node {
-        Constant(ref val) => match *val {
-            Value::Int(v) => emit!("mov eax, {}", v),
-            Value::Short(v) => emit!("mov eax, {}", v),
-            Value::Char(v) => emit!("mov eax, {}", v),
-            Value::Byte(v) => emit!("mov eax, {}", v),
-            Value::Bool(v) => emit!("mov eax, {}", if v { 1 } else { 0 }),
-            Value::String(ref v) => emit!("mov eax, stringstruct#{}",
-                                          ctx.string_constants.get(v).unwrap()),
-        },
+        Constant(ref val) => emit!("mov eax, {}", ConstantValue(ctx, val)),
         Null => emit!("xor eax, eax"), // eax = 0
         This => emit!("mov eax, [ebp+{}]", stack.this_index() * 4),
         NewStaticClass(tydef, ref constructor, ref args) => {
@@ -192,11 +246,7 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
 
             emit!("push eax" ; "save the length of the register");
 
-            match *ty {
-                Byte | Boolean => emit!("lea eax, [eax + 12]"),
-                Char | Short => emit!("lea eax, [eax * 2 + 12]"),
-                Int | Other(..) => emit!("lea eax, [eax * 4 + 12]"),
-            }
+            emit!("lea eax, [{}*eax + 12]", sizeof_simple_ty(ty));
 
             emit!("call __malloc");
 
@@ -218,19 +268,27 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
         }
         Variable(var) => emit!("mov eax, [ebp+{}]", stack.var_index(var.fq_name) * 4
                                ; "variable {}", var.fq_name),
-        StaticFieldAccess(field) => emit!("mov eax, [{}]", field.mangle()),
+        StaticFieldAccess(field) => emit!("mov eax, dword [{}]", field.mangle()),
         FieldAccess(box ref expr, field) => {
             emit_expression(ctx, stack, expr);
             check_null();
 
             let offset = ctx.field_offsets.get(&field).unwrap();
-            emit!("mov eax, [eax+{}]", offset ; "access field {}", field.fq_name);
+            let field_size = sizeof_ty(&field.ty);
+            emit!("{} eax, {} [eax+{}]",
+                  mov_extend(field_size),
+                  size_name(field_size), offset
+                  ; "access field {}", field.fq_name);
         }
         ThisFieldAccess(field) => {
             emit!("mov eax, [ebp+{}]", stack.this_index() * 4 ; "this");
 
             let offset = ctx.field_offsets.get(&field).unwrap();
-            emit!("mov eax, [eax+{}]", offset ; "access field {}", field.fq_name);
+            let field_size = sizeof_ty(&field.ty);
+            emit!("{} eax, {} [eax+{}]",
+                  mov_extend(field_size),
+                  size_name(field_size), offset
+                  ; "access field {}", field.fq_name);
         }
         Assignment(box expr!(Variable(var)), box ref rhs) => {
             emit_expression(ctx, stack, rhs);
@@ -247,14 +305,22 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
             emit!("pop ebx");
 
             let offset = ctx.field_offsets.get(&field).unwrap();
-            emit!("mov [ebx + {}], eax", offset ; "set field {}", field.fq_name);
+            let field_size = sizeof_ty(&field.ty);
+            emit!("mov {} [ebx + {}], {}",
+                  size_name(field_size), offset,
+                  eax_lo(field_size)
+                  ; "set field {}", field.fq_name);
         }
         Assignment(box expr!(ThisFieldAccess(field)), box ref rhs) => {
             emit_expression(ctx, stack, rhs);
             emit!("mov ebx, [ebp+{}]", stack.this_index() * 4 ; "emit");
 
             let offset = ctx.field_offsets.get(&field).unwrap();
-            emit!("mov [ebx + {}], eax", offset ; "set field {}", field.fq_name);
+            let field_size = sizeof_ty(&field.ty);
+            emit!("mov {} [ebx + {}], {}",
+                  size_name(field_size), offset,
+                  eax_lo(field_size)
+                  ; "set field {}", field.fq_name);
         }
         Assignment(box expr!(ArrayAccess(box ref array_expr, box ref index_expr)), box ref rhs) => {
             emit_expression(ctx, stack, array_expr);
@@ -262,6 +328,7 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
             emit!("push eax");
             emit_expression(ctx, stack, index_expr);
 
+            emit!("mov ebx, [esp]");
             // array (not null) in `ebx`
             // check index in bounds?
             // length of array is [ebx+8]
@@ -274,7 +341,10 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
 
             emit!("pop ebx"); // array index
             emit!("pop ecx"); // array location
-            emit!("mov [ecx + 12 + 4 * ebx], eax");
+            let size = sizeof_array_element(&array_expr.ty);
+            emit!("mov [ecx + 12 + {} * ebx], {}",
+                  size,
+                  eax_lo(size));
         }
         Assignment(..) => panic!("non-lvalue in assignment"),
         ArrayLength(box ref expr) => {
@@ -333,7 +403,10 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
             // UNSIGNED compare (if eax is negative, then it will also fail)
             emit!("jae __exception");
             // index OK, look up element
-            emit!("mov eax, [ebx+12+4*eax]");
+            let size = sizeof_array_element(&array.ty);
+            emit!("{} eax, {} [ebx+12+{}*eax]",
+                  mov_extend(size),
+                  size_name(size), size);
         }
         Prefix(op, box ref expr) => {
             use ast::PrefixOperator::*;
@@ -417,11 +490,16 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
         Concat(box ref expr1, box ref expr2) => {
             emit!("" ; "> begin string concat operation");
             emit_expression(ctx, stack, expr1);
-            check_null();
+            // null -> "null"
+            emit!("test eax, eax");
+            emit!("mov ebx, stringstruct#{}", ctx.string_constants[*"null"]);
+            emit!("cmovz eax, ebx");
             emit!("push eax");
 
             emit_expression(ctx, stack, expr2);
-            check_null();
+            emit!("test eax, eax");
+            emit!("mov ebx, stringstruct#{}", ctx.string_constants[*"null"]);
+            emit!("cmovz eax, ebx");
             emit!("push eax");
 
             // TODO: Fragile if we change naming scheme. Consider revising.

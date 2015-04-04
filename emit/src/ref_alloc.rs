@@ -3,7 +3,7 @@ use mangle::Mangle;
 
 use context::Context;
 use stack::Stack;
-use code::{emit_block, emit_expression};
+use code::{emit_block, emit_expression, ConstantValue, sizeof_ty, size_name, eax_lo};
 
 fn emit_field_initializers<'a, 'ast>(ctx: &Context<'a, 'ast>,
                                     tydef: TypeDefinitionRef<'a, 'ast>) {
@@ -24,27 +24,24 @@ fn emit_field_initializers<'a, 'ast>(ctx: &Context<'a, 'ast>,
     emit!("; Field initializers, first pass");
     for field in tydef.nonstatic_fields().iter() {
         let offset = ctx.field_offsets.get(field).unwrap();
+        let field_size = sizeof_ty(&field.ty);
         if let Some(ref initializer) = *field.initializer {
             if let TypedExpression_::Constant(ref val) = initializer.node {
-                match *val {
-                    Value::Int(v) => emit!("mov dword [eax+{}], {}", offset, v),
-                    Value::Short(v) => emit!("mov word [eax+{}], {}", offset, v),
-                    Value::Char(v) => emit!("mov word [eax+{}], {}", offset, v),
-                    Value::Byte(v) => emit!("mov byte [eax+{}], {}", offset, v),
-                    Value::Bool(v) => emit!("mov byte [eax+{}], {}", offset, if v { 1 } else { 0 }),
-                    Value::String(ref v) =>
-                        emit!("mov dword [eax+{}], stringstruct#{}", offset,
-                              ctx.string_constants.get(v).unwrap()),
-                }
+                emit!("mov {} [eax+{}], {}",
+                      size_name(field_size), offset,
+                      ConstantValue(ctx, val));
+            } else {
+                emit!("mov {} [eax+{}], 0", size_name(field_size), offset ; "non-constant");
             }
         } else {
-            emit!("mov dword [eax+{}], 0", offset);
+            emit!("mov {} [eax+{}], 0", size_name(field_size), offset ; "no initializer");
         }
     }
 
     emit!("; Field initializers, second pass");
     for field in tydef.nonstatic_fields().iter() {
         let offset = ctx.field_offsets.get(field).unwrap();
+        let field_size = sizeof_ty(&field.ty);
         if let Some(ref initializer) = *field.initializer {
             if let TypedExpression_::Constant(..) = initializer.node {
             } else {
@@ -52,7 +49,8 @@ fn emit_field_initializers<'a, 'ast>(ctx: &Context<'a, 'ast>,
                 emit_expression(ctx, &stack, initializer);
 
                 // A pointer to the new object should still be at the top of the stack.
-                emit!("mov [esp+{}], eax", offset);
+                emit!("mov ebx, [esp]");
+                emit!("mov {} [ebx+{}], {}", size_name(field_size), offset, eax_lo(field_size));
             }
         }
     }

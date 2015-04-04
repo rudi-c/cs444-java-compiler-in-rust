@@ -1,7 +1,7 @@
 use middle::middle::*;
 use mangle::Mangle;
 
-use code::emit_expression;
+use code::{emit_expression, ConstantValue, sizeof_ty, size_name, eax_lo};
 use context::Context;
 use descriptors::{emit_descriptor, emit_primitive_descriptors};
 use method::{emit_method, emit_entry_method};
@@ -19,25 +19,18 @@ fn is_entry_method<'a, 'ast>(method: &MethodImplRef<'a, 'ast>) -> bool {
 fn emit_field_initializer<'a, 'ast>(ctx: &Context<'a, 'ast>,
                                     stack: &Stack,
                                     field: FieldRef<'a, 'ast>) {
+    assert!(field.is_static());
     if let Some(ref initializer) = *field.initializer {
         let target = field.mangle();
-        if let TypedExpression_::Constant(ref val) = initializer.node {
-            match *val {
-                Value::Int(v) => emit!("mov dword [{}], {}", target, v),
-                Value::Short(v) => emit!("mov word [{}], {}", target, v),
-                Value::Char(v) => emit!("mov word [{}], {}", target, v),
-                Value::Byte(v) => emit!("mov byte [{}], {}", target, v),
-                Value::Bool(v) => emit!("mov byte [{}], {}", target, if v { 1 } else { 0 }),
-                Value::String(ref v) =>
-                    emit!("mov dword [{}], stringstruct#{}", target,
-                          ctx.string_constants.get(v).unwrap()),
-            }
+        let field_size = sizeof_ty(&field.ty);
+        if let TypedExpression_::Constant(..) = initializer.node {
+            emit!("" ; "initializer omitted for {}", target);
         } else {
             emit!("" ; "emit field initializer {}", field.fq_name);
             emit_expression(ctx, stack, initializer);
-
-            // A pointer to the new object should still be at the top of the stack.
-            emit!("mov [{}], eax", target);
+            emit!("mov {} [{}], {}",
+                  size_name(field_size), target,
+                  eax_lo(field_size));
         }
     }
 }
@@ -73,7 +66,11 @@ fn emit_type<'a, 'ast>(ctx: &Context<'a, 'ast>,
     emit!("; begin static field slots");
     for field in tydef.static_fields().iter() {
         emit!("{}:", field.mangle());
-        emit!("dd 0");
+        if let Some(expr!(TypedExpression_::Constant(ref initializer))) = *field.initializer {
+            emit!("dd {}", ConstantValue(ctx, initializer));
+        } else {
+            emit!("dd 0" ; "non-constant");
+        }
     }
     emit!("; end static field slots\n");
 
