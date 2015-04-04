@@ -46,6 +46,7 @@ pub fn emit_statement<'a, 'ast>(ctx: &Context<'a, 'ast>,
             emit_expression(ctx, stack, expr);
         }
         If(ref expr, box ref ift, ref iff) => {
+            emit!("" ; "> begin if statement");
             emit_expression(ctx, stack, expr);
             // Is the result zero?
             emit!("test eax, eax");
@@ -65,8 +66,10 @@ pub fn emit_statement<'a, 'ast>(ctx: &Context<'a, 'ast>,
                 // and we're done.
                 emit!(".L{}:", false_label);
             }
+            emit!("" ; "> end if statement");
         }
         While(ref expr, box ref inner) => {
+            emit!("" ; "> begin while statement");
             let top_label = ctx.label();
             emit!(".L{}:", top_label);
             emit_expression(ctx, stack, expr);
@@ -80,8 +83,10 @@ pub fn emit_statement<'a, 'ast>(ctx: &Context<'a, 'ast>,
             // and go back to the top.
             emit!("jmp .L{}", top_label);
             emit!(".L{}:", end_label);
+            emit!("" ; "> end while statement");
         }
         For(ref init, ref test, ref update, box ref inner) => {
+            emit!("" ; "> begin for statement");
             if let Some(ref init) = *init {
                 emit_expression(ctx, stack, init);
             }
@@ -99,8 +104,10 @@ pub fn emit_statement<'a, 'ast>(ctx: &Context<'a, 'ast>,
             }
             emit!("jmp .L{}", top_label);
             emit!(".L{}:", end_label);
+            emit!("" ; "> end for statement");
         }
         ForDecl(ref var, ref test, ref update, box ref inner) => {
+            emit!("" ; "> begin for statement");
             stack.scope(|stack| {
                 emit_variable(ctx, stack, var);
                 let top_label = ctx.label();
@@ -118,6 +125,7 @@ pub fn emit_statement<'a, 'ast>(ctx: &Context<'a, 'ast>,
                 emit!("jmp .L{}", top_label);
                 emit!(".L{}:", end_label);
             });
+            emit!("" ; "> end for statement");
         }
         Empty => (),
         Return(ref expr) => {
