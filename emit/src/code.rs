@@ -2,6 +2,7 @@
 
 use middle::middle::*;
 use mangle::Mangle;
+use ast::name::Symbol;
 use context::Context;
 use stack::Stack;
 use std::fmt;
@@ -137,8 +138,7 @@ pub fn emit_statement<'a, 'ast>(ctx: &Context<'a, 'ast>,
             // Just need to unwind the stack.
             emit!("mov esp, ebp");
             emit!("pop ebp");
-            // pop arguments off the stack after return
-            emit!("ret 4*{}", stack.args);
+            emit!("ret 4*{}", stack.args ; "pop {} args off stack after return", stack.args);
         }
         Block(ref block) => emit_block(ctx, stack, block),
     }
@@ -535,6 +535,84 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
         Widen(box ref expr) => {
             emit_expression(ctx, stack, expr);
         }
-        _ => emit!("; TODO: expression goes here"),
+        ToString(box ref expr) => {
+            use middle::middle::SimpleType::*;
+
+            let tostring_signature = MethodSignature {
+                name: Symbol::from_str("toString"),
+                args: vec![],
+            };
+
+            emit!(""; "Begin conversion to string");
+
+            match expr.ty {
+                Type::SimpleType(Other(tydef)) => {
+                    emit_expression(ctx, stack, expr);
+
+                    // eax contains reference type
+                    emit!("test eax, eax" ; "check null");
+
+                    let not_null_label = ctx.label();
+                    let end_label = ctx.label();
+                    emit!("jnz .L{}", not_null_label
+                          ; "use string \"null\" if reference type is null");
+                    emit!("mov eax, {}",
+                          ConstantValue(ctx, &Value::String(String::from_str("null"))));
+                    emit!("jmp .L{}", end_label);
+
+                    emit!(".L{}:", not_null_label);
+
+                    emit!("push eax");
+                    // Look up the type descriptor (first slot).
+                    emit!("mov eax, [eax+VPTR]");
+                    // Now call the method.
+                    emit!("call [eax+TYDESC.methods+4*{}]", ctx.method_index(&tostring_signature)
+                          ; "call toString");
+
+                    emit!(".L{}:", end_label);
+                }
+                Type::SimpleType(ref ty) => {
+                    emit!("" ; " create reference type for primitive conversion to string");
+                    emit!("push dword 0" ; "reserve space to store `this`");
+
+                    emit_expression(ctx, stack, expr);
+                    emit!("push eax");
+
+                    let (boxed_type, use_type) = match *ty {
+                        Boolean => (ctx.lang_items.boolean, Boolean),
+                        Byte | Short | Int => (ctx.lang_items.integer, Int),
+                        Char => (ctx.lang_items.character, Char),
+                        Other(..) => panic!("case should have been previously covered"),
+                    };
+                    let arg_type = Type::SimpleType(use_type);
+                    let constructor = boxed_type.constructors.get(&vec![arg_type]).unwrap();
+
+                    emit!("call ALLOC{}", boxed_type.mangle());
+                    emit!("mov [esp+4], eax" ; "store `this` into reserved space");
+                    emit!("call {}", constructor.mangle());
+                    emit!("pop eax" ; "recover `this`");
+                    check_null();
+
+                    emit!("push eax");
+                    // Look up the type descriptor (first slot).
+                    emit!("mov eax, [eax+VPTR]");
+                    // Now call the method.
+                    emit!("call [eax+TYDESC.methods+4*{}]", ctx.method_index(&tostring_signature)
+                          ; "call toString");
+                }
+                Type::ArrayType(_) => {
+                    // TODO: Java prints out some weird crap, is this supposed to be supported?
+                    // It's not in the reference.
+                }
+                Type::Null => {
+                    emit!("mov eax, {}",
+                          ConstantValue(ctx, &Value::String(String::from_str("null"))));
+                }
+                Type::Void | Type:: Unknown =>
+                    panic!("should not be able to print Void or Unknown"),
+            }
+
+            emit!(""; "End conversion to string");
+        }
     }
 }

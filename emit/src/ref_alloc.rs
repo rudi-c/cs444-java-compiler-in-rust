@@ -82,7 +82,7 @@ fn emit_constructor<'a, 'ast>(ctx: &Context<'a, 'ast>,
 
     emit!("mov esp, ebp");
     emit!("pop ebp");
-    emit!("ret 4*{}", stack.args);
+    emit!("ret 4*{}", stack.args ; "pop {} args off stack after return", stack.args);
     emit!("; end class constructor\n");
 }
 
