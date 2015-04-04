@@ -4,6 +4,7 @@ ASSIGN=$1
 shift
 
 shopt -s globstar
+trap 'wait; echo "interrupted"; exit 1' SIGINT
 
 if [[ "$1" == "--release" ]]; then
     RELEASE="--release"
@@ -21,14 +22,14 @@ STDLIB=("../stdlib/${ASSIGN}.0/"**/*.java)
 if [[ $# > 0 ]]; then
     TESTCASES=("$@")
 else
-    TESTCASES=(../{assignment,custom}_testcases/a${ASSIGN}/J*.java)
+    TESTCASES=(../{assignment,custom}_testcases/a${ASSIGN}/J*)
 fi
 
-LOG=""
-TEST_ASM_FILE="test.s"
-FAILURES=0
+LOG=()
+TEST_ASM_FILE="output/test.s"
 for test in "${TESTCASES[@]}"; do
     echo "running on $test"
+    git clean -Xdqf output
     if [[ "$(basename "$test")" =~ ^Je ]]; then
         PASS_CODE=42
     else
@@ -40,42 +41,40 @@ for test in "${TESTCASES[@]}"; do
         MULTI=""
     fi
     if [[ -f "$test" ]]; then
-        "$PROGRAM" $MULTI "$test" "${STDLIB[@]}" > $TEST_ASM_FILE
+        TESTS=("$test")
     else
-        "$PROGRAM" $MULTI "$test"/**/*.java "${STDLIB[@]}" > $TEST_ASM_FILE
+        TESTS=("$test"/**/*.java)
     fi
+    "$PROGRAM" $MULTI "${TESTS[@]}" "${STDLIB[@]}" > $TEST_ASM_FILE
     CODE="$?"
     if [[ $CODE != $PASS_CODE ]]; then
-        LOG="${LOG}$test expected exit code $PASS_CODE, got $CODE"$'\n'
-        FAILURES=$(($FAILURES+1))
+        LOG+=("$test (compile) expected exit code $PASS_CODE, got $CODE")
         continue
     fi
 
     if [[ $CODE == 0 ]]; then
         if ! nasm -O1 -f elf -g -F dwarf $TEST_ASM_FILE; then
-            LOG="${LOG}$test failed at assembly"$'\n'
-            FAILURES=$(($FAILURES+1))
+            LOG+="$test (assemble) failed at assembly"
         else
-            ld test.o runtime.o -melf_i386
-            ./a.out > actual_output.txt
+            nasm -O1 -f elf -g -F dwarf -o output/runtime.o ../stdlib/5.0/runtime.s || exit $?
+            ld output/test.o output/runtime.o -melf_i386 -o output/a.out || exit $?
+            ./output/a.out > output/actual_output.txt
             ACTUAL_EXIT_CODE="$?"
 
-            CLASS_NAME=`basename ${test[0]} .java`
-            sed s/CLASSNAME/"$CLASS_NAME"/g TesterTemplate.java > Tester.java
-            javac "${test[0]}" Tester.java
-            java -classpath `dirname "${test[0]}"`:. Tester > expected_output.txt
+            CLASS_NAME=`basename ${TESTS[0]} .java`
+            sed s/CLASSNAME/"$CLASS_NAME"/g TesterTemplate.java > output/Tester.java
+            javac -d output "${TESTS[@]}" output/Tester.java
+            java -classpath output Tester > output/expected_output.txt
             EXPECTED_EXIT_CODE="$?"
 
             if [[ $ACTUAL_EXIT_CODE != $EXPECTED_EXIT_CODE ]]; then
-                LOG="${LOG}$test failed: expected exit code $EXPECTED_EXIT_CODE, got exit code $ACTUAL_EXIT_CODE"$'\n'
-                FAILURES=$(($FAILURES+1))
-            elif ! cmp --silent actual_output.txt expected_output.txt; then
-                LOG="${LOG}$test failed: expected output:"$'\n'`cat expected_output.txt`$'\n'"got output"$'\n'`cat actual_output.txt`$'\n'
-                FAILURES=$(($FAILURES+1))
+                LOG+=("$test (run) expected exit code $EXPECTED_EXIT_CODE, got exit code $ACTUAL_EXIT_CODE")
+            elif ! cmp --silent output/actual_output.txt output/expected_output.txt; then
+                LOG+=("$test (run) expected output:"$'\n'"$(<output/expected_output.txt)"$'\n'"got output"$'\n'"$(<output/actual_output.txt)")
             fi
         fi
     fi
 done
 
-echo -n "${LOG}"
-echo "${FAILURES} failures"
+printf '%s\n' "${LOG[@]}"
+echo "${#LOG[@]} failures"
