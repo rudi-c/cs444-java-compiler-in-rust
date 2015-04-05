@@ -2,7 +2,7 @@ use middle::middle::*;
 use mangle::Mangle;
 
 use ast::name::Symbol;
-use code::{emit_expression, ConstantValue, sizeof_ty, size_name, eax_lo};
+use code::{emit_expression, ConstantValue, sizeof_ty, size_name, short_size_name, eax_lo};
 use context::Context;
 use descriptors::{emit_descriptor, emit_primitive_descriptors};
 use method::emit_method;
@@ -64,10 +64,13 @@ fn emit_type<'a, 'ast>(ctx: &Context<'a, 'ast>,
     emit!("section .data" ; "begin static field slots");
     for field in tydef.static_fields().iter() {
         emit!("{}:", field.mangle());
+        let field_size = sizeof_ty(&field.ty);
         if let Some(expr!(TypedExpression_::Constant(ref initializer))) = *field.initializer {
-            emit!("dd {}", ConstantValue(ctx, initializer));
+            emit!("d{} {}",
+                  short_size_name(field_size),
+                  ConstantValue(ctx, initializer));
         } else {
-            emit!("dd 0" ; "non-constant");
+            emit!("d{} 0", short_size_name(field_size) ; "non-constant");
         }
     }
     emit!("; end static field slots\n");
@@ -122,7 +125,7 @@ ret
 ; returns a bool in `eax`
 __instanceof:
 test eax, eax
-jz __true ; null type is a subtype of everything
+jz __false ; null is never instanceof anything
 mov eax, [eax+VPTR] ; look up type descriptor
 ; fall into __instanceof_tydesc...
 
@@ -139,7 +142,7 @@ jmp __instanceof_tydesc
 ; array expression in `eax`, type descriptor in `ebx`
 __instanceof_array:
 test eax, eax
-jz __true
+jz __false ; null is never instanceof anything
 cmp dword [eax+VPTR], ARRAYDESC ; check array type descriptor
 jne __false
 mov eax, [eax+ARRAYLAYOUT.tydesc] ; look up element type descriptor
@@ -147,9 +150,12 @@ jmp __instanceof_tydesc
 
 ; object in `eax`, interface descriptor in `ebx`
 __instanceof_interface:
-test eax, eax ; null is instanceof anything
-jz __true
+test eax, eax
+jz __false ; null is never instanceof anything
 mov eax, [eax+VPTR] ; look up type descriptor
+; fall into __instanceof_tydesc_interface
+
+__instanceof_tydesc_interface:
 mov eax, [eax+TYDESC.intfs] ; look up interface list
 .loop:
 cmp [eax], dword 0

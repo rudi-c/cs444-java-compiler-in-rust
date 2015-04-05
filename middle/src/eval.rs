@@ -71,7 +71,7 @@ fn reduce_toplevel<'a, 'ast>(expr: &mut TypedExpression<'a, 'ast>) {
             String(grab(l) + &**r)
         }
         // Because of a compiler bug (rust#23891), we can't use `constant!` here
-        Cast(_, box TypedExpression { node: Constant(ref val), .. }) |
+        PrimDowncast(box TypedExpression { node: Constant(ref val), .. }) |
         Widen(box TypedExpression { node: Constant(ref val), .. }) => {
             // To avoid combinatorial blowup, always convert numberic types to Int
             let val = match val {
@@ -85,7 +85,7 @@ fn reduce_toplevel<'a, 'ast>(expr: &mut TypedExpression<'a, 'ast>) {
             match (&expr.ty, val) {
                 (&Type::SimpleType(SimpleType::Int), Int(v)) => Int(v),
                 (&Type::SimpleType(SimpleType::Short), Int(v)) => Short(v as i16),
-                (&Type::SimpleType(SimpleType::Char), Int(v)) => Char(v as i16),
+                (&Type::SimpleType(SimpleType::Char), Int(v)) => Char(v as u16),
                 (&Type::SimpleType(SimpleType::Byte), Int(v)) => Byte(v as i8),
                 (&Type::SimpleType(SimpleType::Boolean), Bool(v)) => Bool(v),
                 (_, _) => return
@@ -155,7 +155,8 @@ pub fn reduce_const_expr<'a, 'ast>(expr: &mut TypedExpression<'a, 'ast>) {
         NewArray(_, box ref mut expr)
         | FieldAccess(box ref mut expr, _)
         | Prefix(_, box ref mut expr)
-        | Cast(_, box ref mut expr)
+        | RefDowncast(box ref mut expr)
+        | PrimDowncast(box ref mut expr)
         | Widen(box ref mut expr)
         | ToString(box ref mut expr)
         | ArrayLength(box ref mut expr) => {

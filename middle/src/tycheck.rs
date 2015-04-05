@@ -70,6 +70,14 @@ fn numeric_width<'a, 'ast>(ty: &SimpleType<'a, 'ast>) -> i32 {
     }
 }
 
+#[derive(Show, Copy, Clone, PartialEq, Eq)]
+enum CastKind {
+    RefDown,
+    PrimDown,
+    Up,
+    Invalid,
+}
+
 impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
     // Check that there is a legal widening conversion from `source` to `target`.
     // Emits an error if there is not.
@@ -221,50 +229,79 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
     // TODO: Make sure the marmoset test cases cover every single one of these rules.
     fn check_casting_conversion(&self,
                                 target: &Type<'a, 'ast>,
-                                source: &Type<'a, 'ast>) -> bool {
-        match self.check_widening(target, source) {
-            Ok(_) => { return true }
-            _ => {}
-        };
+                                source: &Type<'a, 'ast>) -> CastKind {
+        if self.check_widening(target, source).is_ok() {
+            return CastKind::Up;
+        }
 
         if self.check_narrowing_conversion(target, source) {
-            return true
+            return CastKind::PrimDown;
         }
 
         match (source, target) {
             (&Type::SimpleType(SimpleType::Other(source_tydef)),
              &Type::SimpleType(SimpleType::Other(target_tydef))) => {
+                // see $5.1.5
                 match (source_tydef.kind, target_tydef.kind) {
                     (TypeKind::Class, TypeKind::Class) => {
-                        self.env.is_subtype(source_tydef, target_tydef) ||
-                        self.env.is_subtype(target_tydef, source_tydef)
+                        if self.env.is_subtype(source_tydef, target_tydef) {
+                            panic!("missed a widening conversion!");
+                        }
+                        // A class type can be cast (by a narrowing conversion) to a subclass.
+                        if self.env.is_subtype(target_tydef, source_tydef) {
+                            CastKind::RefDown
+                        } else {
+                            CastKind::Invalid
+                        }
                     }
                     (TypeKind::Class, TypeKind::Interface) => {
                         if source_tydef.has_modifier(ast::Modifier_::Final) {
-                            self.env.is_subtype(source_tydef, target_tydef)
+                            if self.env.is_subtype(source_tydef, target_tydef) {
+                                // This should never be true - would be caught by `check_widening`
+                                panic!("missed a widening conversion!");
+                            }
+                            CastKind::Invalid
                         } else {
-                            true
+                            // A non-final class type can always be cast to any interface type,
+                            // since a subclass could implement the interface.
+                            CastKind::RefDown
                         }
                     }
                     (TypeKind::Interface, TypeKind::Class) => {
                         if target_tydef.has_modifier(ast::Modifier_::Final) {
-                            // TODO: Check this (not explicitely written in the spec)
-                            self.env.is_subtype(target_tydef, source_tydef)
+                            // If the target class is final, then it must implement the source
+                            // interface; otherwise, the cast could not possibly be valid.
+                            if self.env.is_subtype(target_tydef, source_tydef) {
+                                CastKind::RefDown
+                            } else {
+                                CastKind::Invalid
+                            }
                         } else {
-                            true
+                            // Otherwise, even if the target class does not implement the interface,
+                            // some subclass of the target could. Thus the cast could be valid.
+                            CastKind::RefDown
                         }
                     }
                     (TypeKind::Interface, TypeKind::Interface) => {
-                        // TODO
-                        // Need to check that the interfaces don't have confliciting
-                        // methods (different return types)
-                        true
+                        // If the interfaces are incompatible (i.e. they declare a method with the
+                        // same signature, but a different return type), then no class could
+                        // possibly implement both of them; hence the class could not be valid.
+                        // Otherwise, the cast is allowed.
+                        for (sig, source_method) in source_tydef.methods.iter() {
+                            if let Some(target_method) = target_tydef.methods.get(sig) {
+                                if source_method.ret_ty != target_method.ret_ty {
+                                    return CastKind::Invalid;
+                                }
+                            }
+                        }
+                        CastKind::RefDown
                     }
                 }
             }
-            (&Type::SimpleType(SimpleType::Other(typedef)), &Type::ArrayType(_))
-            | (&Type::ArrayType(_), &Type::SimpleType(SimpleType::Other(typedef))) => {
-                match typedef.kind {
+            // the case of casting an array to Object, Serializable, or Cloneable was already
+            // covered by `check_widening`
+            (&Type::SimpleType(SimpleType::Other(typedef)), &Type::ArrayType(_)) => {
+                if match typedef.kind {
                     TypeKind::Class => {
                         typedef == self.lang_items.object
                     }
@@ -273,23 +310,23 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                         typedef == self.lang_items.serializable ||
                         typedef == self.lang_items.cloneable
                     }
+                } {
+                    CastKind::RefDown
+                } else {
+                    CastKind::Invalid
                 }
             }
 
-            (&Type::ArrayType(ref source_array_ty),
-             &Type::ArrayType(ref target_array_ty)) => {
-                match (source_array_ty, target_array_ty) {
-                    (&SimpleType::Other(_),
-                     &SimpleType::Other(_)) => {
-                        self.check_casting_conversion(&Type::SimpleType(target_array_ty.clone()),
-                                                      &Type::SimpleType(source_array_ty.clone()))
-                    }
-                    _ => {
-                        source_array_ty == target_array_ty
-                    }
-                }
+            (&Type::ArrayType(ref source_array_ty@SimpleType::Other(_)),
+             &Type::ArrayType(ref target_array_ty@SimpleType::Other(_))) => {
+                self.check_casting_conversion(&Type::SimpleType(target_array_ty.clone()),
+                                              &Type::SimpleType(source_array_ty.clone()))
             }
-            _ => false
+            (&Type::ArrayType(ref source_array_ty),
+             &Type::ArrayType(ref target_array_ty)) if source_array_ty == target_array_ty => {
+                panic!("missed widening conversion?");
+            }
+            _ => CastKind::Invalid
         }
     }
 
@@ -585,6 +622,10 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                     span_error!(tyname.span,
                                 "type mismatch: expected reference type, found `{}`", ty);
                 }
+                if self.check_casting_conversion(&ty, tobj.ty()) == CastKind::Invalid {
+                    span_error!(expr.span,
+                                "`instanceof` expression could never be true");
+                }
 
                 (TypedExpression_::InstanceOf(box tobj, ty),
                  Type::SimpleType(SimpleType::Boolean))
@@ -629,8 +670,8 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                             // OK, bool equality
                         } else if lty.is_reference() && rty.is_reference() {
                             // OK, reference equality with casting conversions
-                            if !self.check_casting_conversion(&lty, &rty) &&
-                               !self.check_casting_conversion(&rty, &lty) {
+                            if self.check_casting_conversion(&lty, &rty) == CastKind::Invalid &&
+                               self.check_casting_conversion(&rty, &lty) == CastKind::Invalid {
                                 span_error!(expr.span,
                                             "type mismatch: cannot cast between `{}` and `{}`",
                                             lty, rty);
@@ -686,13 +727,17 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
             Cast(ref target, box ref expr) => {
                 let texpr = self.expr(expr);
                 let target_ty = self.env.resolve_type(target);
-                // TODO distinguish between down and upcasts, for codegen
-                if !self.check_casting_conversion(&target_ty, texpr.ty()) {
-                    span_error!(expr.span,
-                                "type mismatch: cannot cast from `{}` to `{}`",
-                                texpr.ty(), target_ty);
-                }
-                (TypedExpression_::Cast(target_ty.clone(), box texpr), target_ty)
+                (match self.check_casting_conversion(&target_ty, texpr.ty()) {
+                    CastKind::Invalid => {
+                        span_error!(expr.span,
+                                    "type mismatch: cannot cast from `{}` to `{}`",
+                                    texpr.ty(), target_ty);
+                        TypedExpression_::Null
+                    }
+                    CastKind::Up => TypedExpression_::Widen(box texpr),
+                    CastKind::RefDown => TypedExpression_::RefDowncast(box texpr),
+                    CastKind::PrimDown => TypedExpression_::PrimDowncast(box texpr),
+                }, target_ty)
             }
         }
     }
@@ -702,7 +747,7 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
         match *lit {
             Integer(v) => (TypedExpression_::Constant(Value::Int(v as i32)), Type::SimpleType(SimpleType::Int)),
             Boolean(v) => (TypedExpression_::Constant(Value::Bool(v)), Type::SimpleType(SimpleType::Boolean)),
-            Character(v) => (TypedExpression_::Constant(Value::Char(v as u32 as i16)), Type::SimpleType(SimpleType::Char)),
+            Character(v) => (TypedExpression_::Constant(Value::Char(v as u32 as u16)), Type::SimpleType(SimpleType::Char)),
             String(ref v) => (TypedExpression_::Constant(Value::String(v.clone())), Type::object(self.lang_items.string)),
             Null => (TypedExpression_::Null, Type::Null),
         }

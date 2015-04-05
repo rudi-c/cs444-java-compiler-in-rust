@@ -1,7 +1,7 @@
 use middle::middle::*;
 use mangle::Mangle;
 use context::Context;
-use code::sizeof_ty;
+use code::{sizeof_ty, short_size_name};
 
 fn emit_methods<'a, 'ast>(ctx: &Context<'a, 'ast>,
                           tydef: TypeDefinitionRef<'a, 'ast>) {
@@ -66,9 +66,7 @@ pub fn emit_descriptor<'a, 'ast>(ctx: &Context<'a, 'ast>,
                 if field.origin == tydef {
                     let size = sizeof_ty(&field.ty);
                     emit!("alignb {}", size);
-                    emit!("{}: res{} 1", field.mangle(), match size {
-                        1 => "b", 2 => "w", 4 => "d", _ => panic!("bad size")
-                    });
+                    emit!("{}: res{} 1", field.mangle(), short_size_name(size));
                 }
             }
             emit!("endstruc");

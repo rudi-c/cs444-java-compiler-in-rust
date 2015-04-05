@@ -537,7 +537,7 @@ pub type TypedStatement<'a, 'ast> = Spanned<TypedStatement_<'a, 'ast>>;
 pub enum Value {
     Int(i32),
     Short(i16),
-    Char(i16), // a UTF-16 code unit
+    Char(u16), // a UTF-16 code unit
     Byte(i8),
     Bool(bool),
     String(String),
@@ -566,10 +566,13 @@ pub enum TypedExpression_<'a, 'ast: 'a> {
     InstanceOf(Box<TypedExpression<'a, 'ast>>, Type<'a, 'ast>),
     Prefix(ast::PrefixOperator, Box<TypedExpression<'a, 'ast>>),
     Infix(ast::InfixOperator, Box<TypedExpression<'a, 'ast>>, Box<TypedExpression<'a, 'ast>>),
-    Cast(Type<'a, 'ast>, Box<TypedExpression<'a, 'ast>>),
     // String concatenation.
     Concat(Box<TypedExpression<'a, 'ast>>, Box<TypedExpression<'a, 'ast>>),
-    // An implicit widening conversion.
+    // A cast to class, interface, or array type. This may throw an exception.
+    RefDowncast(Box<TypedExpression<'a, 'ast>>),
+    // A narrowing primitive conversion ($5.1.3).
+    PrimDowncast(Box<TypedExpression<'a, 'ast>>),
+    // A widening conversion. Includes casts between primitives and reference upcasts.
     Widen(Box<TypedExpression<'a, 'ast>>),
     // A "string conversion", as described in $15.18.1.1.
     ToString(Box<TypedExpression<'a, 'ast>>),

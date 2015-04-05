@@ -26,6 +26,7 @@ public class J1_Constant_Eval {
         else if (true) while ("AB123" == "A"+"B"+123 && "AB123" == 'A'+"B"+(short)123 && "AB" == (char)65+"B");
         else if (true) while ("AB67" == "AB"+('A'+2) && "ABA2" == "AB"+'A'+2);
         else if (true) while ("-1" == ""+(byte)255);
+        else if (true) while ("32768" == ""+(int)(char)(short)-32768); // `char` is an unsigned type
         else while (true);
     }
 }

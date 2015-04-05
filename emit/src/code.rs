@@ -165,20 +165,20 @@ impl<'a, 'ast, 'c, 'v> fmt::String for ConstantValue<'a, 'ast, 'c, 'v> {
     }
 }
 
-pub fn sizeof_simple_ty<'a, 'ast>(ty: &SimpleType<'a, 'ast>) -> u32 {
+pub fn sizeof_simple_ty(ty: &SimpleType) -> u32 {
     match *ty {
         SimpleType::Char | SimpleType::Short => 2,
         SimpleType::Byte | SimpleType::Boolean => 1,
         _ => 4,
     }
 }
-pub fn sizeof_ty<'a, 'ast>(ty: &Type<'a, 'ast>) -> u32 {
+pub fn sizeof_ty(ty: &Type) -> u32 {
     match *ty {
         Type::SimpleType(ref simple_ty) => sizeof_simple_ty(simple_ty),
         _ => 4,
     }
 }
-pub fn sizeof_array_element<'a, 'ast>(ty: &Type<'a, 'ast>) -> u32 {
+pub fn sizeof_array_element(ty: &Type) -> u32 {
     match *ty {
         Type::ArrayType(ref simple_ty) => sizeof_simple_ty(simple_ty),
         _ => panic!("not an array type: {}", ty),
@@ -192,13 +192,34 @@ pub fn size_name(size: u32) -> &'static str {
         _ => panic!("bad size {}", size),
     }
 }
-// Return the appropriate `mov` instruction to load
-// from a location of size `size`, to a 32-bit register.
-pub fn mov_extend(size: u32) -> &'static str {
+pub fn short_size_name(size: u32) -> char {
     match size {
-        4 => "mov",
-        2 | 1 => "movsx",
+        1 => 'b',
+        2 => 'w',
+        4 => 'd',
         _ => panic!("bad size {}", size),
+    }
+}
+// Return the appropriate `mov` instruction to load
+// from a location of type `ty`, to a 32-bit register.
+pub fn load_simple_ty(ty: &SimpleType) -> &'static str {
+    match *ty {
+        SimpleType::Byte | SimpleType::Short => "movsx",
+        SimpleType::Boolean | SimpleType::Char => "movzx",
+        SimpleType::Int | SimpleType::Other(_) => "mov"
+    }
+}
+pub fn load_array_ty(ty: &Type) -> &'static str {
+    match *ty {
+        Type::ArrayType(ref simple_ty) => load_simple_ty(simple_ty),
+        _ => panic!("non-array type")
+    }
+}
+pub fn load_ty(ty: &Type) -> &'static str {
+    match *ty {
+        Type::SimpleType(ref simple_ty) => load_simple_ty(simple_ty),
+        Type::ArrayType(_) => "mov",
+        Type::Void | Type::Null | Type::Unknown => panic!("non-concrete type")
     }
 }
 // Return the sub-register of `eax` of size `size`.
@@ -271,24 +292,26 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
         }
         Variable(var) => emit!("mov eax, [ebp+4*{}]", stack.var_index(var.fq_name)
                                ; "variable {}", var.fq_name),
-        StaticFieldAccess(field) => emit!("mov eax, dword [{}]", field.mangle()),
+        StaticFieldAccess(field) => {
+            emit!("{} eax, {} [{}]",
+                  load_ty(&field.ty),
+                  size_name(sizeof_ty(&field.ty)), field.mangle());
+        }
         FieldAccess(box ref expr, field) => {
             emit_expression(ctx, stack, expr);
             check_null();
 
-            let field_size = sizeof_ty(&field.ty);
             emit!("{} eax, {} [eax+{}]",
-                  mov_extend(field_size),
-                  size_name(field_size), field.mangle()
+                  load_ty(&field.ty),
+                  size_name(sizeof_ty(&field.ty)), field.mangle()
                   ; "access field {}", field.fq_name);
         }
         ThisFieldAccess(field) => {
             emit!("mov eax, [ebp+4*{}]", stack.this_index() ; "this");
 
-            let field_size = sizeof_ty(&field.ty);
             emit!("{} eax, {} [eax+{}]",
-                  mov_extend(field_size),
-                  size_name(field_size), field.mangle()
+                  load_ty(&field.ty),
+                  size_name(sizeof_ty(&field.ty)), field.mangle()
                   ; "access field {}", field.fq_name);
         }
         Assignment(box expr!(Variable(var)), box ref rhs) => {
@@ -297,7 +320,10 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
         }
         Assignment(box expr!(StaticFieldAccess(field)), box ref rhs) => {
             emit_expression(ctx, stack, rhs);
-            emit!("mov [{}], eax", field.mangle());
+            let field_size = sizeof_ty(&field.ty);
+            emit!("mov {} [{}], {}",
+                  size_name(field_size), field.mangle(),
+                  eax_lo(field_size));
         }
         Assignment(box expr!(FieldAccess(box ref expr, field)), box ref rhs) => {
             emit_expression(ctx, stack, expr);
@@ -424,7 +450,7 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
             // index OK, look up element
             let size = sizeof_array_element(&array.ty);
             emit!("{} eax, {} [ebx+ARRAYLAYOUT.elements+{}*eax]",
-                  mov_extend(size),
+                  load_array_ty(&array.ty),
                   size_name(size), size);
         }
         Prefix(op, box ref expr) => {
@@ -549,13 +575,69 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
                 _ => panic!("bad type in instanceof")
             }
         }
-        Cast(ref ty, box ref expr) => {
-            // TODO: Distinguish between upcasts, downcasts, and primitive casts.
-            emit_expression(ctx, stack, expr);
-            // TODO: Check the cast.
+        RefDowncast(box ref inner_expr) => {
+            emit_expression(ctx, stack, inner_expr);
+            emit!("" ; "check reference downcast");
+            let end = ctx.label();
+            emit!("test eax, eax");
+            emit!("jz .L{}", end ; "null is always fine");
+            match expr.ty {
+                Type::SimpleType(SimpleType::Other(tydef)) => {
+                    // object must be a subtype of `tydef`
+                    emit!("push eax");
+                    emit!("mov ebx, {}", desc(&SimpleType::Other(tydef)));
+                    match tydef.kind {
+                        TypeKind::Class => emit!("call __instanceof"),
+                        TypeKind::Interface => emit!("call __instanceof_interface"),
+                    }
+                    emit!("test eax, eax");
+                    emit!("jz __exception");
+                    emit!("pop eax");
+                }
+                Type::ArrayType(SimpleType::Other(tydef)) => {
+                    emit!("cmp [eax+VPTR], dword ARRAYDESC" ; "check array");
+                    emit!("jne __exception");
+                    emit!("push eax");
+                    emit!("mov eax, [eax+ARRAYLAYOUT.tydesc]");
+                    emit!("mov ebx, {}", desc(&SimpleType::Other(tydef)));
+                    // array element type must be a subtype of `tydef`
+                    match tydef.kind {
+                        TypeKind::Class => emit!("call __instanceof_tydesc"),
+                        TypeKind::Interface => emit!("call __instanceof_tydesc_interface"),
+                    }
+                    emit!("test eax, eax");
+                    emit!("jz __exception");
+                    emit!("pop eax");
+                    // TODO: Handle arrays of interface types :(
+                    // (Need to make interface descriptors recognizable,
+                    // generalize __instanceof)
+                }
+                Type::ArrayType(ref elem_ty) => {
+                    // Cast to a primitive array type.
+                    emit!("cmp [eax+VPTR], dword ARRAYDESC" ; "check array");
+                    emit!("jne __exception");
+                    emit!("mov ebx, [eax+ARRAYLAYOUT.tydesc]");
+                    emit!("cmp ebx, {}", desc(elem_ty) ; "primitive array type: check exact match");
+                    emit!("jne __exception");
+                }
+                _ => panic!("bad RefDowncast to type {}", expr.ty),
+            }
+            emit!(".L{}:", end ; "cast OK");
+        }
+        PrimDowncast(box ref inner_expr) => {
+            emit_expression(ctx, stack, inner_expr);
+            match expr.ty {
+                Type::SimpleType(SimpleType::Byte) => emit!("movsx eax, al" ; "cast to byte"),
+                Type::SimpleType(SimpleType::Char) => emit!("movzx eax, ax" ; "cast to char"),
+                Type::SimpleType(SimpleType::Short) => emit!("movsx eax, ax" ; "cast to short"),
+                Type::SimpleType(SimpleType::Int) => emit!("" ; "(cast to int)"),
+                _ => panic!("bad PrimDowncast to type {}", expr.ty),
+            }
         }
         Widen(box ref expr) => {
             emit_expression(ctx, stack, expr);
+            // no operation: reference types all have the same representation,
+            // while primitive types are already extended to 32 bits
         }
         ToString(box ref expr) => {
             use middle::middle::SimpleType::*;
@@ -568,7 +650,8 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
             emit!(""; "Begin conversion to string");
 
             match expr.ty {
-                Type::SimpleType(Other(tydef)) => {
+                // reference type
+                Type::ArrayType(_) | Type::SimpleType(Other(_)) => {
                     emit_expression(ctx, stack, expr);
 
                     // eax contains reference type
@@ -593,6 +676,7 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
 
                     emit!(".L{}:", end_label);
                 }
+                // primitive type
                 Type::SimpleType(ref ty) => {
                     emit!("" ; " create reference type for primitive conversion to string");
                     emit!("push dword 0" ; "reserve space to store `this`");
@@ -621,10 +705,6 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
                     // Now call the method.
                     emit!("call [eax+TYDESC.methods+4*{}]", ctx.method_index(&tostring_signature)
                           ; "call toString");
-                }
-                Type::ArrayType(_) => {
-                    // TODO: Java prints out some weird crap, is this supposed to be supported?
-                    // It's not in the reference.
                 }
                 Type::Null => {
                     emit!("mov eax, {}",

@@ -168,7 +168,8 @@ pub fn default_walk_expression<'a, 'ast, W: ExpressionWalker<'a, 'ast>>(walker: 
         NewArray(_, box ref expr)
         | FieldAccess(box ref expr, _)
         | Prefix(_, box ref expr)
-        | Cast(_, box ref expr)
+        | RefDowncast(box ref expr)
+        | PrimDowncast(box ref expr)
         | Widen(box ref expr)
         | ToString(box ref expr)
         | ArrayLength(box ref expr) => {
