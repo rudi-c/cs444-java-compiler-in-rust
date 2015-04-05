@@ -373,12 +373,16 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
             match array_expr.ty {
                 Type::ArrayType(SimpleType::Other(_)) => {
                     // save a reference to the object
+                    emit!("test eax, eax");
+                    let skip = ctx.label();
+                    emit!("jz .L{}", skip ; "null is ok");
                     emit!("mov edx, eax");
                     emit!("mov ebx, [ecx+ARRAYLAYOUT.tydesc]" ; "get array's runtime type");
                     emit!("call __instanceof");
                     emit!("test eax, eax");
                     emit!("jz __exception");
                     emit!("mov eax, edx");
+                    emit!(".L{}:", skip);
                 }
                 Type::ArrayType(_) => {
                     // primitive type: no compatibility check required
@@ -567,6 +571,12 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
                 Type::SimpleType(ref ty) => {
                     emit!("mov ebx, {}", desc(ty));
                     emit!("call __instanceof");
+                }
+                Type::ArrayType(ref ty @ SimpleType::Other(&TypeDefinition {
+                                     kind: TypeKind::Interface, ..
+                                 })) => {
+                    emit!("mov ebx, {}", desc(ty));
+                    emit!("call __instanceof_array_interface");
                 }
                 Type::ArrayType(ref ty) => {
                     emit!("mov ebx, {}", desc(ty));

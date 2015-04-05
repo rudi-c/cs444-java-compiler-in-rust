@@ -3,6 +3,8 @@ use mangle::Mangle;
 use context::Context;
 use code::{sizeof_ty, short_size_name};
 
+use std::collections::{HashSet, RingBuf};
+
 fn emit_methods<'a, 'ast>(ctx: &Context<'a, 'ast>,
                           tydef: TypeDefinitionRef<'a, 'ast>) {
     for sig in ctx.all_methods.iter() {
@@ -18,18 +20,47 @@ fn emit_methods<'a, 'ast>(ctx: &Context<'a, 'ast>,
     }
 }
 
+fn emit_interface_list(tydef: TypeDefinitionRef) {
+    let mut set = HashSet::new();
+    let mut deque = RingBuf::new();
+    set.insert(tydef.fq_name);
+    deque.push_back(tydef);
+    while let Some(next) = deque.pop_front() {
+        if next.kind == TypeKind::Interface {
+            emit!("dd DESC{}", next.mangle());
+        }
+        for intf in next.implements.iter().chain(next.extends.iter()) {
+            if set.insert(intf.fq_name) {
+                deque.push_back(*intf);
+            }
+        }
+    }
+    emit!("dd 0");
+}
+
 pub fn emit_descriptor<'a, 'ast>(ctx: &Context<'a, 'ast>,
                                  tydef: TypeDefinitionRef<'a, 'ast>) {
     emit!("section .rodata" ; "begin descriptor");
-    emit!("align 4,db 0");
-    emit!("DESC{}:", tydef.mangle());
+    emit!("align 8,db 0");
     match tydef.kind {
         TypeKind::Interface => {
             emit!("; interface");
-            emit!("db '{}', 0", tydef.fq_name);
+            emit!("dd 0" ; "align interface descriptors to 4 bytes instead of 8");
+            emit!("DESC{}:", tydef.mangle());
+            emit!("istruc TYDESC");
+            emit!("at TYDESC.name, dd .?name");
+            // Interface types can only be cast to `Object`, or other interface types.
+            emit!("at TYDESC.parent, dd DESC{}", ctx.lang_items.object.mangle());
+            emit!("at TYDESC.intfs, dd .?intfs");
+            emit!("iend");
+            emit!(".?name: db '{}', 0", tydef.fq_name);
+            emit!("align 4,db 0");
+            emit!(".?intfs:");
+            emit_interface_list(tydef);
         }
         TypeKind::Class => {
             emit!("; class");
+            emit!("DESC{}:", tydef.mangle());
             emit!("istruc TYDESC");
             emit!("at TYDESC.name, dd .?name");
             let superclass = if tydef.fq_name == ctx.lang_items.object.fq_name {
@@ -52,10 +83,8 @@ pub fn emit_descriptor<'a, 'ast>(ctx: &Context<'a, 'ast>,
             emit!("db '{}', 0", tydef.fq_name);
             emit!("align 4,db 0");
             emit!(".?intfs:");
-            for intf in tydef.implements.iter() {
-                emit!("dd DESC{}", intf.mangle());
-            }
-            emit!("dd 0\n");
+            emit_interface_list(tydef);
+            emit!("");
             emit!("struc LAYOUT{}#", tydef.mangle());
             if let Some(superclass) = superclass {
                 emit!("resb LAYOUT{}#_size", superclass.mangle() ; "parent");

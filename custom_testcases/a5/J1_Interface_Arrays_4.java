@@ -7,6 +7,8 @@ public class J1_Interface_Arrays_4 {
         ((int[])array[0])[3] = 6969;
         array[1] = new char[10];
         array[2] = array;
+        ((Object[]) array)[3] = null;
+        array[4] = null;
         Object[] sup = array;
         System.out.println(sup instanceof Serializable);
         System.out.println(sup instanceof Serializable[]);

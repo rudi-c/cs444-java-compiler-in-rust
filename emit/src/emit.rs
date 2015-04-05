@@ -116,6 +116,8 @@ __instanceof:
 test eax, eax
 jz __false ; null is never instanceof anything
 mov eax, [eax+VPTR] ; look up type descriptor
+test ebx, 04h ; is it actually an interface descriptor?
+jnz __instanceof_tydesc_interface
 ; fall into __instanceof_tydesc...
 
 ; tydesc in `eax` and `ebx`.
@@ -137,6 +139,15 @@ jne __false
 mov eax, [eax+ARRAYLAYOUT.tydesc] ; look up element type descriptor
 jmp __instanceof_tydesc
 
+; array expression in `eax`, interface type descriptor in `ebx`
+__instanceof_array_interface:
+test eax, eax
+jz __false ; null is never instanceof anything
+cmp dword [eax+VPTR], ARRAYDESC ; check array type descriptor
+jne __false
+mov eax, [eax+ARRAYLAYOUT.tydesc] ; look up element type descriptor
+jmp __instanceof_tydesc_interface
+
 ; object in `eax`, interface descriptor in `ebx`
 __instanceof_interface:
 test eax, eax
@@ -146,6 +157,8 @@ mov eax, [eax+VPTR] ; look up type descriptor
 
 __instanceof_tydesc_interface:
 mov eax, [eax+TYDESC.intfs] ; look up interface list
+test eax, eax ; for a primitive type, the list is null
+jz __false
 .loop:
 cmp [eax], dword 0
 jz __false
