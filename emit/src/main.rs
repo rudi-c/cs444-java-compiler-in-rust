@@ -103,7 +103,10 @@ fn driver(ctx: &RefCell<Context>) {
 fn main() {
     let error = match thread::Builder::new()
         .stack_size(64 * 1024 * 1024)
-        .scoped(|| CONTEXT.with(|ctx| driver(ctx))).join() {
+        .scoped(|| {
+            CONTEXT.with(|ctx| driver(ctx));
+            ERRORS.with(|v| v.get())
+        }).join() {
         Err(res) => {
             if res.is::<FatalError>() {
                 true
@@ -113,7 +116,7 @@ fn main() {
                 false
             }
         },
-        Ok(_) => ERRORS.with(|v| v.get()) > 0
+        Ok(num) => num > 0
     };
     if error {
         os::set_exit_status(42);
