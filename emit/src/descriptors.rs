@@ -120,7 +120,7 @@ pub fn emit_primitive_descriptors<'a, 'ast>(ctx: &Context<'a, 'ast>) {
     emit!(".elements:");
     emit!("endstruc\n");
 
-    emit!("align 4,db 0");
+    emit!("align 8,db 0");
     emit!("ARRAYDESC:");
     emit!("istruc TYDESC");
     emit!("at TYDESC.name, dd .?name");
@@ -139,7 +139,7 @@ pub fn emit_primitive_descriptors<'a, 'ast>(ctx: &Context<'a, 'ast>) {
 
     macro_rules! prim {
         ($name: ident) => ({
-            emit!("align 4,db 0");
+            emit!("align 8,db 0");
             emit!("{}DESC:", stringify!($name));
             emit!("istruc TYDESC");
             emit!("at TYDESC.name, dd .?name");

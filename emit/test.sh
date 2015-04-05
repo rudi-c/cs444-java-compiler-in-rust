@@ -53,7 +53,7 @@ for test in "${TESTCASES[@]}"; do
     fi
 
     if [[ $CODE == 0 ]]; then
-        if ! nasm -O1 -f elf -g -F dwarf $TEST_ASM_FILE; then
+        if ! nasm -O1 -f elf -g -F dwarf -Wall $TEST_ASM_FILE; then
             LOG+="$test (assemble) failed at assembly"
         else
             nasm -O1 -f elf -g -F dwarf -o output/runtime.o ../stdlib/5.0/runtime.s || exit $?
