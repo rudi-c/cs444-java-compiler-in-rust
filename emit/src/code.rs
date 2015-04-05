@@ -524,8 +524,21 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
                                 Div | Modulo => {
                                     emit!("test ebx, ebx");
                                     emit!("jz __exception" ; "division by zero");
+                                    // Special case: (-2^31) / (-1) produces a division error,
+                                    // but should instead return (-2^31).
+                                    // Meanwhile, (-2^31) % (-1) should return 0.
+                                    let skip = ctx.label();
+                                    emit!("lea ecx, [2*eax]" ; "ecx = 0 iff eax = -2^31 or 0");
+                                    emit!("lea edx, [ebx+1]" ; "edx = 0 iff ebx = -1");
+                                    emit!("or ecx, edx" ; "ecx = 0 iff both the above hold");
+                                    emit!("jz .L{}", skip ; "in this case, skip the division");
+                                    // If the division is skipped, then -eax = eax, while ebx = -1.
+                                    // Hence `eax` is the correct result of eax / ebx, while edx =
+                                    // 0 is the correct result of eax % ebx.
+                                    // Otherwise, do the division properly.
                                     emit!("cdq"); // clear out edx
                                     emit!("idiv ebx");
+                                    emit!(".L{}:", skip);
                                     if let Modulo = op {
                                         // remainder in edx
                                         emit!("mov eax, edx");
