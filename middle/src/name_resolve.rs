@@ -517,14 +517,14 @@ impl<'a, 'ast> Environment<'a, 'ast> {
                 } else {
                     span_error!(span,
                                 "reference type `{}` has no method `{}`",
-                                tyref.fq_name, name);
+                                tyref.fq_name, signature);
                     None
                 }
             }
             Type::SimpleType(_) => {
                 span_error!(span,
                             "primitive type `{}` has no method `{}`",
-                            texpr.ty, name);
+                            texpr.ty, signature);
                 None
             }
             Type::ArrayType(_) => {
@@ -535,7 +535,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
             Type::Null => {
                 span_error!(span,
                             "`null` has no method `{}`",
-                            name);
+                            signature);
                 None
             }
             Type::Void => {
