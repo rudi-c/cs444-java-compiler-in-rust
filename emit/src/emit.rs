@@ -2,7 +2,7 @@ use middle::middle::*;
 use mangle::Mangle;
 
 use ast::name::Symbol;
-use code::{emit_expression, ConstantValue, sizeof_ty, size_name, short_size_name, eax_lo};
+use code::{emit_expression, sizeof_ty, size_name, short_size_name, eax_lo};
 use context::Context;
 use descriptors::{emit_descriptor, emit_primitive_descriptors};
 use method::emit_method;
@@ -17,15 +17,11 @@ fn emit_static_field_initializer<'a, 'ast>(ctx: &Context<'a, 'ast>,
     if let Some(ref initializer) = *field.initializer {
         let target = field.mangle();
         let field_size = sizeof_ty(&field.ty);
-        if let TypedExpression_::Constant(..) = initializer.node {
-            emit!("" ; "initializer omitted for {}", target);
-        } else {
-            emit!("" ; "emit field initializer {}", field.fq_name);
-            emit_expression(ctx, stack, initializer);
-            emit!("mov {} [{}], {}",
-                  size_name(field_size), target,
-                  eax_lo(field_size));
-        }
+        emit!("" ; "emit field initializer {}", field.fq_name);
+        emit_expression(ctx, stack, initializer);
+        emit!("mov {} [{}], {}",
+              size_name(field_size), target,
+              eax_lo(field_size));
     }
 }
 
@@ -63,15 +59,8 @@ fn emit_type<'a, 'ast>(ctx: &Context<'a, 'ast>,
     // Emit slots for static fields.
     emit!("section .data" ; "begin static field slots");
     for field in tydef.static_fields().iter() {
-        emit!("{}:", field.mangle());
         let field_size = sizeof_ty(&field.ty);
-        if let Some(expr!(TypedExpression_::Constant(ref initializer))) = *field.initializer {
-            emit!("d{} {}",
-                  short_size_name(field_size),
-                  ConstantValue(ctx, initializer));
-        } else {
-            emit!("d{} 0", short_size_name(field_size) ; "non-constant");
-        }
+        emit!("{}: d{} 0", field.mangle(), short_size_name(field_size));
     }
     emit!("; end static field slots\n");
 
