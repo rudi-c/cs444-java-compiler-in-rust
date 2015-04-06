@@ -301,10 +301,9 @@ parser! parse {
     primaryNoNewArray: Expression {
         literal[lit] => spanned!(Expression_::Literal(lit.node)),
         THIS => spanned!(Expression_::This),
-        qualifiedIdentifierHelperDot THIS => {
-            span_error!(span!(), "qualified `this` unsupported");
-            // Produce a regular `this` instead
-            spanned!(Expression_::This)
+        qualifiedIdentifierHelperDot[q] THIS => {
+            let ident = QualifiedIdentifier::new(q);
+            spanned!(Expression_::QualifiedThis(ident))
         },
         LParen expressionNameOrType[expr] RParen => expr.into(),
         LParen expressionNotName[expr] RParen => expr,

@@ -145,7 +145,8 @@ pub fn default_walk_statement<'a, T: Walker<'a>>(walker: &mut T, statement: &'a 
 pub fn default_walk_expression<'a, T: Walker<'a>>(walker: &mut T, expression: &'a Expression) {
     match expression.node {
         Expression_::Literal(_) => (),
-        Expression_::This => (),
+        Expression_::This
+        | Expression_::QualifiedThis(_) => (),
 
         Expression_::MethodInvocation(box ref expr, _, ref exprs) => {
             walker.walk_expression(expr);

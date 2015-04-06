@@ -525,6 +525,19 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                 }
                 (TypedExpression_::This, Type::object(self.env.enclosing_type))
             }
+            QualifiedThis(ref id) => {
+                if let Some(tydef) = self.env.resolve_type_name(&*id.parts) {
+                    if self.require_static {
+                        span_error!(expr.span, "cannot use `this` in static context");
+                    } else if tydef != self.env.enclosing_type {
+                        span_error!(expr.span, "invalid qualified `this`: no such enclosing type");
+                    }
+                    (TypedExpression_::This, Type::object(tydef))
+                } else {
+                    // An error was emitted.
+                    dummy_expr_()
+                }
+            }
             NewStaticClass(ref id, ref args) => {
                 let tydef = self.env.resolve_type_name(&*id.parts);
                 let targs = args.iter().map(|arg| self.expr(arg)).collect();
