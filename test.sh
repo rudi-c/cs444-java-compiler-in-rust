@@ -6,27 +6,21 @@ shift
 shopt -s globstar
 trap 'wait; echo "interrupted"; exit 1' SIGINT
 
-if [[ "$1" == "--release" ]]; then
-    RELEASE="--release"
-    PROGRAM="./target/release/emit"
-    shift
-else
-    RELEASE=""
-    PROGRAM="./target/emit"
-fi
+PROGRAM="./joosc"
 
-cargo build $RELEASE || exit $?
-
-STDLIB=("../stdlib/${ASSIGN}.0/"**/*.java)
+make
+STDLIB=("stdlib/${ASSIGN}.0/"**/*.java)
 
 if [[ $# > 0 ]]; then
     TESTCASES=("$@")
 else
-    TESTCASES=(../{assignment,custom}_testcases/a${ASSIGN}/J*)
+    TESTCASES=({assignment,custom}_testcases/a${ASSIGN}/J*)
 fi
 
 LOG=()
-TEST_ASM_FILE="output/test.s"
+
+ASM_FILE="output/output.s"
+
 for test in "${TESTCASES[@]}"; do
     echo "running on $test"
     git clean -Xdqf output
@@ -45,7 +39,7 @@ for test in "${TESTCASES[@]}"; do
     else
         TESTS=("$test"/**/*.java)
     fi
-    "$PROGRAM" $MULTI "${TESTS[@]}" "${STDLIB[@]}" > $TEST_ASM_FILE
+    "$PROGRAM" $MULTI "${TESTS[@]}" "${STDLIB[@]}"
     CODE="$?"
     if [[ $CODE != $PASS_CODE ]]; then
         LOG+=("$test (compile) expected exit code $PASS_CODE, got $CODE")
@@ -53,11 +47,11 @@ for test in "${TESTCASES[@]}"; do
     fi
 
     if [[ $CODE == 0 ]]; then
-        if ! nasm -O1 -f elf -g -F dwarf -Wall $TEST_ASM_FILE; then
+        if ! nasm -O1 -f elf -g -F dwarf -Wall $ASM_FILE; then
             LOG+="$test (assemble) failed at assembly"
         else
-            nasm -O1 -f elf -g -F dwarf -o output/runtime.o ../stdlib/5.0/runtime.s || exit $?
-            ld output/test.o output/runtime.o -melf_i386 -o output/a.out || exit $?
+            nasm -O1 -f elf -g -F dwarf -o output/runtime.o stdlib/5.0/runtime.s || exit $?
+            ld output/output.o output/runtime.o -melf_i386 -o output/a.out || exit $?
             ./output/a.out > output/actual_output.txt
             ACTUAL_EXIT_CODE="$?"
 
