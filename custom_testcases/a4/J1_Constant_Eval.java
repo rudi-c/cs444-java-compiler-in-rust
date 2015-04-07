@@ -1,7 +1,7 @@
 public class J1_Constant_Eval {
     public J1_Constant_Eval() {}
     public static int test() {
-        if (true) while (1 == 1);
+        if (true) while (1 == 1) return 0;
         else if (true) while (1 != 2);
         else if (true) while (1 < 2);
         else if (true) while (2 <= 2);

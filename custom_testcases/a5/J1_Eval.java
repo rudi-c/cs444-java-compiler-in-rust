@@ -47,6 +47,7 @@ public class J1_Eval {
         System.out.println(""+(byte)id(255));
         System.out.println((int)(char)(short)-id(32768)); // `char` is an unsigned type
         System.out.println((int)(char)(short)id(65535)); // `char` is an unsigned type
+        System.out.println((char)(short)id(65535) < 12312);
         return 0;
     }
     public int id(int a) { return a; }

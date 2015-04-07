@@ -3,7 +3,9 @@
 ASSIGN=$1
 shift
 
+shopt -s nullglob
 shopt -s globstar
+shopt -s extglob
 trap 'wait; echo "interrupted"; exit 1' SIGINT
 
 PROGRAM="./joosc"
@@ -37,7 +39,8 @@ for test in "${TESTCASES[@]}"; do
     if [[ -f "$test" ]]; then
         TESTS=("$test")
     else
-        TESTS=("$test"/**/*.java)
+        # put Main.java first
+        TESTS=("$test"/Main.java "$test"/**/!(Main).java)
     fi
     "$PROGRAM" $MULTI "${TESTS[@]}" "${STDLIB[@]}"
     CODE="$?"
