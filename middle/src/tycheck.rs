@@ -575,20 +575,20 @@ impl<'l, 'a, 'ast> Typer<'l, 'a, 'ast> {
                 self.env.resolve_field_access(expr.span, texpr, name)
                     .unwrap_or_else(dummy_expr_)
             }
-            NamedMethodInvocation(ref _name, ref args) => {
-                let _targs: Vec<_> = args.iter()
+            NamedMethodInvocation(ref name, ref args) => {
+                let targs: Vec<_> = args.iter()
                     .map(|arg| self.expr(arg))
                     .collect();
                 self.env.resolve_named_method_access(expr.span, self.require_static,
-                                                     _name, _targs)
+                                                     name, targs)
                     .unwrap_or_else(dummy_expr_)
             }
-            MethodInvocation(box ref callee, ref _name, ref args) => {
-                let _tcallee = self.expr(callee);
-                let _targs: Vec<_> = args.iter()
+            MethodInvocation(box ref callee, ref name, ref args) => {
+                let tcallee = self.expr(callee);
+                let targs: Vec<_> = args.iter()
                     .map(|arg| self.expr(arg))
                     .collect();
-                self.env.resolve_expr_method_access(expr.span, _tcallee, _name, _targs)
+                self.env.resolve_expr_method_access(expr.span, tcallee, name, targs)
                     .unwrap_or_else(dummy_expr_)
             }
             ArrayAccess(box ref array, box ref ix) => {
