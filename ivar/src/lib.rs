@@ -33,7 +33,6 @@ impl<T> Deref for Ivar<T> {
 
 impl<T: fmt::Show> fmt::Show for Ivar<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        // if let Some(ref inner) = unsafe { *self.inner.get() } {
         if let &Some(ref inner) = unsafe { &*self.inner.get() } {
             inner.fmt(f)
         } else {
