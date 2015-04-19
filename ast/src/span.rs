@@ -1,11 +1,11 @@
 #![macro_use]
-use std::fmt::{Show, Formatter, Error};
+use std::fmt::{Debug, Formatter, Error};
 use std::ops;
 
 pub type Location = u32;
 pub type FileId = usize;
 
-#[derive(Show, Copy, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub struct Span {
     pub lo: Location,
     pub hi: Location,
@@ -55,7 +55,7 @@ macro_rules! node {
     ($x: pat) => ($crate::span::Spanned { span: _, node: $x });
 }
 
-impl<T: Show> Show for Spanned<T> {
+impl<T: Debug> Debug for Spanned<T> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         self.node.fmt(f)
     }

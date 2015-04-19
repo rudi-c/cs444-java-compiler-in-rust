@@ -11,3 +11,7 @@ path = "../dfagen"
 [dependencies.lalrgen]
 
 path = "../lalrgen"
+
+[dependencies.term]
+
+version = "0.2.7"

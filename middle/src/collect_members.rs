@@ -276,8 +276,8 @@ pub fn collect_members<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
     .chain(tydef.implements.iter())
     .chain(tydef.extends.iter()) {
         for (signature, &method) in parent.methods.iter() {
-            collector.inherited_methods.entry(signature.clone()).get()
-                .unwrap_or_else(|v| v.insert(vec![]))
+            collector.inherited_methods.entry(signature.clone())
+                .or_insert(vec![])
                 .push((tydef, method));
         }
         for (&name, &field) in parent.fields.iter() {

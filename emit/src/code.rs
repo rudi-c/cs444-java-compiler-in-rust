@@ -6,6 +6,7 @@ use ast::name::Symbol;
 use context::Context;
 use stack::Stack;
 use std::fmt;
+use std::borrow::ToOwned;
 
 macro_rules! emit {
     ( $($instr: expr),+ ; $($comment: expr),+ ) => (
@@ -152,7 +153,7 @@ pub fn check_null() {
 
 pub struct ConstantValue<'a: 'c + 'v, 'ast: 'a, 'c, 'v>(pub &'c Context<'a, 'ast>, pub &'v Value);
 
-impl<'a, 'ast, 'c, 'v> fmt::String for ConstantValue<'a, 'ast, 'c, 'v> {
+impl<'a, 'ast, 'c, 'v> fmt::Display for ConstantValue<'a, 'ast, 'c, 'v> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self.1 {
             Value::Int(v) => write!(f, "{}", v),
@@ -555,7 +556,7 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
             emit!("" ; "> begin string concat operation");
             emit_expression(ctx, stack, expr1);
             // null -> "null"
-            let null = ctx.string_constants[*"null"];
+            let null = ctx.string_constants["null"];
             emit!("test eax, eax");
             emit!("mov ebx, stringstruct#{}", null);
             emit!("cmovz eax, ebx");
@@ -685,7 +686,7 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
                     emit!("jnz .L{}", not_null_label
                           ; "use string \"null\" if reference type is null");
                     emit!("mov eax, {}",
-                          ConstantValue(ctx, &Value::String(String::from_str("null"))));
+                          ConstantValue(ctx, &Value::String("null".to_owned())));
                     emit!("jmp .L{}", end_label);
 
                     emit!(".L{}:", not_null_label);
@@ -731,7 +732,7 @@ pub fn emit_expression<'a, 'ast>(ctx: &Context<'a, 'ast>,
                 }
                 Type::Null => {
                     emit!("mov eax, {}",
-                          ConstantValue(ctx, &Value::String(String::from_str("null"))));
+                          ConstantValue(ctx, &Value::String("null".to_owned())));
                 }
                 Type::Void | Type:: Unknown =>
                     panic!("should not be able to print Void or Unknown"),

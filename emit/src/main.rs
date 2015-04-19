@@ -1,5 +1,4 @@
-#![feature(plugin, box_syntax, advanced_slice_patterns)]
-#![allow(unstable)]
+#![feature(plugin, box_syntax, box_patterns, slice_patterns, advanced_slice_patterns, exit_status)]
 
 #[macro_use] extern crate ast;
 #[macro_use] extern crate middle;
@@ -15,11 +14,12 @@ use middle::name_resolve::name_resolve;
 use middle::ordering::check_ordering;
 use middle::reachability::check_reachability;
 
-use getopts::{getopts, optflag};
+use getopts::Options;
 
 use emit::emit;
 
-use std::{io, os, thread};
+use std::{io, thread, env};
+use std::io::Write;
 use std::cell::RefCell;
 
 pub mod context;
@@ -33,16 +33,15 @@ pub mod ref_alloc;
 pub mod strings;
 
 fn driver(ctx: &RefCell<Context>) {
-    let opts = &[
-        optflag("v", "verbose", "verbose - print parsing debug info"),
-        optflag("", "multi", "accept concatenated compilation units"),
-    ];
+    let mut opts = Options::new();
+    opts.optflag("v", "verbose", "verbose - print parsing debug info");
+    opts.optflag("", "multi", "accept concatenated compilation units");
 
-    let matches = match getopts(os::args().tail(), opts) {
+    let matches = match opts.parse(&env::args().collect::<Vec<_>>()[1..]) {
         Ok(m) => m,
         Err(f) => {
             writeln!(&mut io::stderr(), "{}", f).unwrap();
-            os::set_exit_status(1);
+            env::set_exit_status(1);
             return
         }
     };
@@ -59,14 +58,14 @@ fn driver(ctx: &RefCell<Context>) {
 
     let mut asts: Vec<CompilationUnit> = vec![];
 
-    for file in matches.free.iter() {
+    for ref file in matches.free.iter() {
         if ctx.borrow().verbose {
             println!("Parsing file {}...", file);
         }
 
         if matches.opt_present("multi") {
-            asts.extend(create_multi_ast(ctx, file.as_slice()).into_iter());
-        } else if let Some(ast) = create_ast(ctx, file.as_slice()) {
+            asts.extend(create_multi_ast(ctx, &file).into_iter());
+        } else if let Some(ast) = create_ast(ctx, &file) {
             asts.push(ast);
         } else {
             return;
@@ -103,22 +102,22 @@ fn driver(ctx: &RefCell<Context>) {
 fn main() {
     let error = match thread::Builder::new()
         .stack_size(64 * 1024 * 1024)
-        .scoped(|| {
+        .spawn(|| {
             CONTEXT.with(|ctx| driver(ctx));
             ERRORS.with(|v| v.get())
-        }).join() {
+        }).unwrap().join() {
         Err(res) => {
             if res.is::<FatalError>() {
                 true
             } else {
                 // The compiler had a problem
-                os::set_exit_status(1);
+                env::set_exit_status(1);
                 false
             }
         },
         Ok(num) => num > 0
     };
     if error {
-        os::set_exit_status(42);
+        env::set_exit_status(42);
     }
 }

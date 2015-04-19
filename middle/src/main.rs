@@ -1,5 +1,4 @@
-#![feature(box_syntax, advanced_slice_patterns)]
-#![allow(unstable)]
+#![feature(box_syntax, advanced_slice_patterns, box_patterns)]
 
 #[macro_use] extern crate ast;
 extern crate rbtree;
@@ -8,7 +7,7 @@ extern crate getopts;
 
 use getopts::{getopts, optflag};
 
-use std::{io, os};
+use std::{old_io, env};
 use std::cell::RefCell;
 use std::rt::unwind;
 
@@ -46,7 +45,7 @@ fn create_ast(ctx: &RefCell<Context>, filename: &str) -> Option<CompilationUnit>
     let file_ix = match ctx.borrow_mut().add_file(Path::new(filename)) {
         Ok(file) => file,
         Err(err) => {
-            println!("error opening {} : {}", filename, err.desc);
+            println!("error opening {} : {}", filename, err.description());
             return None
         }
     };
@@ -92,7 +91,7 @@ fn create_multi_ast(ctx: &RefCell<Context>, filename: &str) -> Vec<CompilationUn
     let file_ix = match ctx.borrow_mut().add_file(Path::new(filename)) {
         Ok(file) => file,
         Err(err) => {
-            println!("error opening {} : {}", filename, err.desc);
+            println!("error opening {} : {}", filename, err.description());
             return vec![]
         }
     };
@@ -138,11 +137,11 @@ fn driver(ctx: &RefCell<Context>) {
         optflag("", "multi", "accept concatenated compilation units"),
     ];
 
-    let matches = match getopts(os::args().tail(), opts) {
+    let matches = match getopts(env::args().collect::<Vec<_>>().tail(), opts) {
         Ok(m) => m,
         Err(f) => {
-            writeln!(&mut io::stderr(), "{}", f).unwrap();
-            os::set_exit_status(1);
+            writeln!(&mut old_io::stderr(), "{}", f).unwrap();
+            env::set_exit_status(1);
             return
         }
     };
@@ -183,7 +182,7 @@ fn driver(ctx: &RefCell<Context>) {
                     }
                 }
                 println!("{:?}", ast);
-                os::set_exit_status(42);
+                env::set_exit_status(42);
             }
             */
     }
@@ -209,14 +208,14 @@ fn main() {
                     true
                 } else {
                     // The compiler had a problem
-                    os::set_exit_status(1);
+                    env::set_exit_status(1);
                     false
                 }
             },
             Ok(_) => ERRORS.with(|v| v.get()) > 0
         };
         if error {
-            os::set_exit_status(42);
+            env::set_exit_status(42);
         }
     }
 }

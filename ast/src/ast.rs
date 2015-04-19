@@ -1,14 +1,14 @@
 use span::Spanned;
 use name::{Ident, QualifiedIdentifier};
 
-#[derive(Show)]
+#[derive(Debug)]
 pub enum ImportDeclaration_ {
     SingleType(QualifiedIdentifier),
     OnDemand(QualifiedIdentifier),
 }
 pub type ImportDeclaration = Spanned<ImportDeclaration_>;
 
-#[derive(Show)]
+#[derive(Debug)]
 pub enum TypeDeclaration_ {
     Class(Class),
     Interface(Interface),
@@ -24,7 +24,7 @@ impl TypeDeclaration {
     }
 }
 
-#[derive(Show)]
+#[derive(Debug)]
 pub struct CompilationUnit {
     pub package: Option<QualifiedIdentifier>,
     pub imports: Vec<ImportDeclaration>,
@@ -37,7 +37,7 @@ impl CompilationUnit {
     }
 }
 
-#[derive(Show)]
+#[derive(Debug)]
 pub struct Class_ {
     pub name: Ident,
     pub modifiers: Vec<Modifier>,
@@ -47,7 +47,7 @@ pub struct Class_ {
 }
 pub type Class = Spanned<Class_>;
 
-#[derive(Show)]
+#[derive(Debug)]
 pub enum ClassBodyDeclaration_ {
     FieldDeclaration(Field),
     MethodDeclaration(Method),
@@ -57,7 +57,7 @@ pub enum ClassBodyDeclaration_ {
 }
 pub type ClassBodyDeclaration = Spanned<ClassBodyDeclaration_>;
 
-#[derive(Show)]
+#[derive(Debug)]
 pub struct Constructor_ {
     pub name: Ident,
     pub modifiers: Vec<Modifier>,
@@ -72,7 +72,7 @@ impl Constructor_ {
     }
 }
 
-#[derive(Show)]
+#[derive(Debug)]
 pub struct Method_ {
     pub name: Ident,
     pub modifiers: Vec<Modifier>,
@@ -88,7 +88,7 @@ impl Method_ {
     }
 }
 
-#[derive(Show)]
+#[derive(Debug)]
 pub struct Field_ {
     pub name: Ident,
     pub modifiers: Vec<Modifier>,
@@ -103,7 +103,7 @@ impl Field_ {
     }
 }
 
-#[derive(Show)]
+#[derive(Debug)]
 pub struct Interface_ {
     pub name: Ident,
     pub modifiers: Vec<Modifier>,
@@ -112,7 +112,7 @@ pub struct Interface_ {
 }
 pub type Interface = Spanned<Interface_>;
 
-#[derive(Show, Hash, PartialEq, Eq, Copy)]
+#[derive(Debug, Hash, PartialEq, Eq, Copy, Clone)]
 pub enum Modifier_ {
     Public,
     Protected,
@@ -124,14 +124,14 @@ pub enum Modifier_ {
 }
 pub type Modifier = Spanned<Modifier_>;
 
-#[derive(Show)]
+#[derive(Debug)]
 pub struct VariableDeclaration_ {
     pub ty: Type,
     pub name: Ident,
 }
 pub type VariableDeclaration = Spanned<VariableDeclaration_>;
 
-#[derive(Show)]
+#[derive(Debug)]
 pub enum Type_ {
     SimpleType(SimpleType),
     ArrayType(SimpleType),
@@ -139,7 +139,7 @@ pub enum Type_ {
 }
 pub type Type = Spanned<Type_>;
 
-#[derive(Show)]
+#[derive(Debug)]
 pub enum SimpleType_ {
     Boolean,
     Int,
@@ -150,27 +150,27 @@ pub enum SimpleType_ {
 }
 pub type SimpleType = Spanned<SimpleType_>;
 
-#[derive(Show)]
+#[derive(Debug)]
 pub struct LocalVariable_ {
     pub variable: VariableDeclaration,
     pub initializer: Expression,
 }
 pub type LocalVariable = Spanned<LocalVariable_>;
 
-#[derive(Show)]
+#[derive(Debug)]
 pub struct Block_ {
     pub stmts: Vec<BlockStatement>,
 }
 pub type Block = Spanned<Block_>;
 
-#[derive(Show)]
+#[derive(Debug)]
 pub enum BlockStatement_ {
     LocalVariable(LocalVariable),
     Statement(Statement),
 }
 pub type BlockStatement = Spanned<BlockStatement_>;
 
-#[derive(Show)]
+#[derive(Debug)]
 pub enum Statement_ {
     Expression(Expression),
     If(Expression, Box<Statement>, Option<Box<Statement>>),
@@ -183,7 +183,7 @@ pub enum Statement_ {
 }
 pub type Statement = Spanned<Statement_>;
 
-#[derive(Show)]
+#[derive(Debug)]
 pub enum Expression_ {
     Literal(Literal),
     This,
@@ -203,7 +203,7 @@ pub enum Expression_ {
 }
 pub type Expression = Spanned<Expression_>;
 
-#[derive(Show)]
+#[derive(Debug)]
 pub enum Literal {
     Integer(i64),
     Boolean(bool),
@@ -212,7 +212,7 @@ pub enum Literal {
     Null,
 }
 
-#[derive(Show, Copy)]
+#[derive(Debug, Copy, Clone)]
 pub enum InfixOperator {
     Xor,
     EagerOr,
@@ -232,7 +232,7 @@ pub enum InfixOperator {
     Modulo,
 }
 
-#[derive(Show, Copy)]
+#[derive(Debug, Copy, Clone)]
 pub enum PrefixOperator {
     Minus,
     Not,

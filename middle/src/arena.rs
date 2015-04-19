@@ -1,7 +1,7 @@
-extern crate arena;
+extern crate typed_arena;
 
 use middle::*;
-use self::arena::TypedArena;
+use self::typed_arena::Arena as TypedArena;
 
 macro_rules! make_arena {
     ($($name: ident: $ty: ident),+) => {

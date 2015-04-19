@@ -1,11 +1,12 @@
-#![feature(plugin, box_syntax, advanced_slice_patterns)]
-#![allow(unstable)]
+#![feature(plugin, box_syntax, box_patterns, advanced_slice_patterns, collections, set_stdio)]
 
-#[no_link] #[plugin] extern crate dfagen;
-#[no_link] #[plugin] extern crate lalrgen;
+#![plugin(dfagen)]
+#![plugin(lalrgen)]
+
 extern crate term;
 
 use std::cell::RefCell;
+use std::path::Path;
 
 pub use ast::*;
 use parser::make_ast;
@@ -27,10 +28,10 @@ pub mod walker;
 pub mod weed;
 
 pub fn create_ast(ctx: &RefCell<Context>, filename: &str) -> Option<CompilationUnit> {
-    let file_ix = match ctx.borrow_mut().add_file(Path::new(filename)) {
+    let file_ix = match ctx.borrow_mut().add_file(Path::new(filename).to_path_buf()) {
         Ok(file) => file,
         Err(err) => {
-            println!("error opening {} : {}", filename, err.desc);
+            println!("error opening {}: {}", filename, err);
             return None
         }
     };
@@ -73,10 +74,10 @@ pub fn create_ast(ctx: &RefCell<Context>, filename: &str) -> Option<CompilationU
 }
 
 pub fn create_multi_ast(ctx: &RefCell<Context>, filename: &str) -> Vec<CompilationUnit> {
-    let file_ix = match ctx.borrow_mut().add_file(Path::new(filename)) {
+    let file_ix = match ctx.borrow_mut().add_file(Path::new(filename).to_path_buf()) {
         Ok(file) => file,
         Err(err) => {
-            println!("error opening {} : {}", filename, err.desc);
+            println!("error opening {}: {}", filename, err);
             return vec![]
         }
     };

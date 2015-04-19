@@ -27,7 +27,7 @@ pub use self::Accessibility::*;
 // Many objects also hold references to their associated AST nodes, hence the 'ast lifetime
 // everywhere.
 
-#[derive(Show, Clone)]
+#[derive(Debug, Clone)]
 pub enum PackageItem<'a, 'ast: 'a> {
     Package(PackageRef<'a, 'ast>),
     TypeDefinition(TypeDefinitionRef<'a, 'ast>),
@@ -51,7 +51,7 @@ impl<'a, 'ast> PackageItem<'a, 'ast> {
     }
 }
 
-#[derive(Show)]
+#[derive(Debug)]
 pub struct Package<'a, 'ast: 'a> {
     pub fq_name: Name,
     pub contents: RefCell<HashMap<Symbol, PackageItem<'a, 'ast>>>
@@ -75,7 +75,7 @@ impl<'a, 'ast> PartialEq for Package<'a, 'ast> {
 
 impl<'a, 'ast> Eq for Package<'a, 'ast> {}
 
-#[derive(Show)]
+#[derive(Debug)]
 pub struct Universe<'a, 'ast: 'a> {
     pub toplevel: PackageRef<'a, 'ast>,
     pub default: PackageRef<'a, 'ast>,
@@ -85,19 +85,19 @@ pub struct Universe<'a, 'ast: 'a> {
 impl<'a, 'ast> Universe<'a, 'ast> {
     pub fn each_type<F: FnMut(TypeDefinitionRef<'a, 'ast>)>(&self, f: F) {
         use typed_walker::{Walker, StatementWalker, ExpressionWalker};
-        struct Find<'a, 'ast: 'a, G>(G);
-        impl<'a, 'ast, G: FnMut(TypeDefinitionRef<'a, 'ast>)> Walker<'a, 'ast> for Find<'a, 'ast, G> {
+        struct Find<G>(G);
+        impl<'a, 'ast, G: FnMut(TypeDefinitionRef<'a, 'ast>)> Walker<'a, 'ast> for Find<G> {
             fn walk_type_definition(&mut self, tydef: TypeDefinitionRef<'a, 'ast>) {
                 self.0(tydef);
             }
         }
-        impl<'a, 'ast, G> StatementWalker<'a, 'ast> for Find<'a, 'ast, G> { }
-        impl<'a, 'ast, G> ExpressionWalker<'a, 'ast> for Find<'a, 'ast, G> { }
+        impl<'a, 'ast, G> StatementWalker<'a, 'ast> for Find<G> { }
+        impl<'a, 'ast, G> ExpressionWalker<'a, 'ast> for Find<G> { }
         Find(f).walk_universe(self);
     }
 }
 
-#[derive(Show)]
+#[derive(Debug)]
 pub struct Field<'a, 'ast: 'a> {
     pub fq_name: Name,
     pub origin: TypeDefinitionRef<'a, 'ast>,
@@ -135,32 +135,32 @@ impl<'a, 'ast> PartialEq for FieldRef<'a, 'ast> {
 
 impl<'a, 'ast> Eq for FieldRef<'a, 'ast> {}
 
-impl<'a, 'ast, H: hash::Hasher + hash::Writer> hash::Hash<H> for Field<'a, 'ast> {
-    fn hash(&self, state: &mut H) {
+impl<'a, 'ast> hash::Hash for Field<'a, 'ast> {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.fq_name.hash(state)
     }
 }
 
 pub type Arguments<'a, 'ast> = Vec<Type<'a, 'ast>>;
-#[derive(Show, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct MethodSignature<'a, 'ast: 'a> {
     pub name: Symbol,
     pub args: Arguments<'a, 'ast>,
 }
 
-#[derive(Show, Clone)]
+#[derive(Debug, Clone)]
 pub enum Impled<'a, 'ast: 'a> {
     Abstract,
     Concrete(MethodImplRef<'a, 'ast>),
 }
 
-#[derive(Show, Clone)]
+#[derive(Debug, Clone)]
 pub enum Accessibility<'a, 'ast: 'a> {
     Protected(TypeDefinitionRef<'a, 'ast>),
     Public,
 }
 
-#[derive(Show)]
+#[derive(Debug)]
 pub struct Method<'a, 'ast: 'a> {
     pub fq_name: Name,
     pub ret_ty: Type<'a, 'ast>,
@@ -195,7 +195,7 @@ impl<'a, 'ast> Method<'a, 'ast> {
 
 // Despite the name, MethodImpls are created even for abstract methods.
 // Each MethodImpl corresponds to one method declaration in the source.
-#[derive(Show)]
+#[derive(Debug)]
 pub struct MethodImpl<'a, 'ast: 'a> {
     pub fq_name: Name,
     pub origin: TypeDefinitionRef<'a, 'ast>,
@@ -232,7 +232,7 @@ impl<'a, 'ast> MethodImpl<'a, 'ast> {
     }
 }
 
-impl<'a, 'ast> fmt::String for MethodSignature<'a, 'ast> {
+impl<'a, 'ast> fmt::Display for MethodSignature<'a, 'ast> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         try!(write!(f, "{}(", self.name));
         for t in self.args.iter() {
@@ -242,7 +242,7 @@ impl<'a, 'ast> fmt::String for MethodSignature<'a, 'ast> {
     }
 }
 
-#[derive(Show)]
+#[derive(Debug)]
 pub struct Constructor<'a, 'ast: 'a> {
     pub fq_name: Name,
     pub origin: TypeDefinitionRef<'a, 'ast>,
@@ -273,13 +273,13 @@ impl<'a, 'ast> Constructor<'a, 'ast> {
     }
 }
 
-#[derive(Show, Copy, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum TypeKind {
     Class,
     Interface,
 }
 
-#[derive(Show)]
+#[derive(Debug)]
 pub struct TypeDefinition<'a, 'ast: 'a> {
     pub fq_name: Name,
     pub kind: TypeKind,
@@ -369,13 +369,13 @@ impl<'a, 'ast> Ord for TypeDefinitionRef<'a, 'ast> {
     }
 }
 
-impl<'a, 'ast, H: hash::Hasher + hash::Writer> hash::Hash<H> for TypeDefinition<'a, 'ast> {
-    fn hash(&self, state: &mut H) {
+impl<'a, 'ast> hash::Hash for TypeDefinition<'a, 'ast> {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.fq_name.hash(state)
     }
 }
 
-#[derive(Show, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Type<'a, 'ast: 'a> {
     SimpleType(SimpleType<'a, 'ast>),
     ArrayType(SimpleType<'a, 'ast>),
@@ -424,7 +424,7 @@ impl<'a, 'ast> Type<'a, 'ast> {
     }
 }
 
-impl<'a, 'ast> fmt::String for Type<'a, 'ast> {
+impl<'a, 'ast> fmt::Display for Type<'a, 'ast> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
             &Type::SimpleType(ref t) => t.fmt(f),
@@ -436,7 +436,7 @@ impl<'a, 'ast> fmt::String for Type<'a, 'ast> {
     }
 }
 
-#[derive(Show, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SimpleType<'a, 'ast: 'a> {
     Boolean,
     Int,
@@ -463,7 +463,7 @@ impl<'a, 'ast> SimpleType<'a, 'ast> {
     }
 }
 
-impl<'a, 'ast> fmt::String for SimpleType<'a, 'ast> {
+impl<'a, 'ast> fmt::Display for SimpleType<'a, 'ast> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
             &SimpleType::Boolean => write!(f, "boolean"),
@@ -476,7 +476,7 @@ impl<'a, 'ast> fmt::String for SimpleType<'a, 'ast> {
     }
 }
 
-#[derive(Show)]
+#[derive(Debug)]
 pub struct VariableDef<'a, 'ast: 'a> {
     pub fq_name: Name,
     pub ty: Type<'a, 'ast>,
@@ -494,27 +494,27 @@ impl<'a, 'ast> VariableDef<'a, 'ast> {
     }
 }
 
-#[derive(Show)]
+#[derive(Debug)]
 pub struct TypedLocalVariable_<'a, 'ast: 'a> {
     pub variable: VariableRef<'a, 'ast>,
     pub initializer: TypedExpression<'a, 'ast>,
 }
 pub type TypedLocalVariable<'a, 'ast> = Spanned<TypedLocalVariable_<'a, 'ast>>;
 
-#[derive(Show)]
+#[derive(Debug)]
 pub enum TypedBlockStatement_<'a, 'ast: 'a> {
     LocalVariable(TypedLocalVariable<'a, 'ast>),
     Statement(TypedStatement<'a, 'ast>),
 }
 pub type TypedBlockStatement<'a, 'ast> = Spanned<TypedBlockStatement_<'a, 'ast>>;
 
-#[derive(Show)]
+#[derive(Debug)]
 pub struct TypedBlock_<'a, 'ast: 'a> {
     pub stmts: Vec<TypedBlockStatement<'a, 'ast>>,
 }
 pub type TypedBlock<'a, 'ast> = Spanned<TypedBlock_<'a, 'ast>>;
 
-#[derive(Show)]
+#[derive(Debug)]
 pub enum TypedStatement_<'a, 'ast: 'a> {
     Expression(TypedExpression<'a, 'ast>),
     If(TypedExpression<'a, 'ast>, Box<TypedStatement<'a, 'ast>>, Option<Box<TypedStatement<'a, 'ast>>>),
@@ -533,7 +533,7 @@ pub enum TypedStatement_<'a, 'ast: 'a> {
 }
 pub type TypedStatement<'a, 'ast> = Spanned<TypedStatement_<'a, 'ast>>;
 
-#[derive(Show, Clone)]
+#[derive(Debug, Clone)]
 pub enum Value {
     Int(i32),
     Short(i16),
@@ -543,7 +543,7 @@ pub enum Value {
     String(String),
 }
 
-#[derive(Show)]
+#[derive(Debug)]
 pub enum TypedExpression_<'a, 'ast: 'a> {
     Constant(Value),
     Null,
@@ -577,7 +577,7 @@ pub enum TypedExpression_<'a, 'ast: 'a> {
     // A "string conversion", as described in $15.18.1.1.
     ToString(Box<TypedExpression<'a, 'ast>>),
 }
-#[derive(Show)]
+#[derive(Debug)]
 pub struct TypedExpression<'a, 'ast: 'a> {
     pub node: TypedExpression_<'a, 'ast>,
     pub ty: Type<'a, 'ast>,

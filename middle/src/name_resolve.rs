@@ -13,14 +13,14 @@ use rbtree::RbMap;
 
 use std::fmt;
 use std::borrow::ToOwned;
-use std::collections::{HashMap, HashSet, RingBuf};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Clone)]
 pub enum Variable<'a, 'ast: 'a> {
     LocalVariable(VariableRef<'a, 'ast>),
     Field(FieldRef<'a, 'ast>),
 }
-impl<'a, 'ast> fmt::Show for Variable<'a, 'ast> {
+impl<'a, 'ast> fmt::Debug for Variable<'a, 'ast> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {
             Variable::LocalVariable(var) => {
@@ -50,7 +50,7 @@ pub struct Environment<'a, 'ast: 'a> {
     pub on_demand_packages: Vec<PackageRef<'a, 'ast>>
 }
 
-impl<'a, 'ast> fmt::Show for Environment<'a, 'ast> {
+impl<'a, 'ast> fmt::Debug for Environment<'a, 'ast> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         try!(writeln!(f, "Environment {{"));
         try!(writeln!(f, "\ttypes:"));
@@ -84,7 +84,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
         if sup == self.lang_items.object {
             return true;
         }
-        let mut q: RingBuf<TypeDefinitionRef<'a, 'ast>> = RingBuf::new();
+        let mut q: VecDeque<TypeDefinitionRef<'a, 'ast>> = VecDeque::new();
         let mut visited: HashSet<TypeDefinitionRef<'a, 'ast>> = HashSet::new();
         q.push_back(sub);
         visited.insert(sub);
@@ -400,7 +400,7 @@ impl<'a, 'ast> Environment<'a, 'ast> {
             -> Option<(TypedExpression_<'a, 'ast>, Type<'a, 'ast>)> {
 
         // ($15.12.1) Rules for handling named methods.
-        match name.parts.as_slice() {
+        match &name.parts[..] {
             [ref ident] => {
                 // "If it is a simple name, that is, just an Identifier,
                 // then the name of the method is the Identifier."
@@ -836,7 +836,7 @@ fn inheritance_topological_sort_search<'a, 'ast>(typedef: TypeDefinitionRef<'a, 
                                                  stack: &mut Vec<Name>,
                                                  sorted: &mut Vec<Name>)
         -> Result<(), ()> {
-    let mut parents = typedef.extends.iter().chain(typedef.implements.iter());
+    let parents = typedef.extends.iter().chain(typedef.implements.iter());
 
     stack.push(typedef.fq_name);
 
@@ -948,7 +948,7 @@ fn build_environments<'a, 'ast>(arena: &'a Arena<'a, 'ast>,
         }
     }
 
-    if let Some(sorted) = inheritance_topological_sort(preprocessed_types.as_slice()) {
+    if let Some(sorted) = inheritance_topological_sort(&preprocessed_types) {
         preprocessed_types = sorted;
     } else {
         return vec![];

@@ -70,7 +70,7 @@ fn numeric_width<'a, 'ast>(ty: &SimpleType<'a, 'ast>) -> i32 {
     }
 }
 
-#[derive(Show, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 enum CastKind {
     RefDown,
     PrimDown,

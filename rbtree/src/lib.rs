@@ -1,7 +1,5 @@
-#![allow(unstable)]
-
-use std::borrow::BorrowFrom;
-use std::fmt::{Show, Formatter, Error};
+use std::borrow::Borrow;
+use std::fmt::{Debug, Formatter, Error};
 use std::rc::Rc;
 use std::cmp::Ordering::*;
 use Node::*;
@@ -34,14 +32,14 @@ impl<K, V> RbMap<K, V> {
         prev
     }
     /// Looks up the given key in the map.
-    pub fn get<'a, Q: ?Sized>(&'a self, k: &Q) -> Option<&'a V> where Q: BorrowFrom<K> + Ord {
+    pub fn get<'a, Q: ?Sized + Ord>(&'a self, k: &Q) -> Option<&'a V> where K: Borrow<Q> {
         self.root.lookup(k)
     }
     /// Removes a key from the map, if it exists.
     /// Returns the new map and the removed element.
     ///
     /// FIXME: Actually implement this.
-    pub fn remove<'a, Q: ?Sized>(&'a self, k: &Q) -> (RbMap<K, V>, Option<&'a (K, V)>) where Q: BorrowFrom<K> + Ord {
+    pub fn remove<'a, Q: ?Sized + Ord>(&'a self, k: &Q) -> (RbMap<K, V>, Option<&'a (K, V)>) where K: Borrow<Q> {
         if let Some((node, prev)) = self.root.remove(k) {
             (RbMap { root: node }, Some(prev))
         } else {
@@ -60,7 +58,7 @@ impl<K, V> Clone for RbMap<K, V> {
     }
 }
 
-impl<K: Show, V: Show> Show for RbMap<K, V> {
+impl<K: Debug, V: Debug> Debug for RbMap<K, V> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         try!(write!(f, "{{"));
         for &(ref key, ref value) in self.iter() {
@@ -101,13 +99,13 @@ impl<'a, K, V> Iterator for RbMapIter<'a, K, V> {
     }
 }
 
-#[derive(Show, Copy, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 enum Color {
     Red,
     Black,
 }
 
-#[derive(Show)]
+#[derive(Debug)]
 enum Node<K, V> {
     Branch(Color, Rc<Node<K, V>>, Rc<(K, V)>, Rc<Node<K, V>>),
     Leaf
@@ -200,9 +198,9 @@ impl<K, V> Node<K, V> {
             Leaf => (Branch(Red, leaf(), Rc::new((k, v)), leaf()), None)
         }
     }
-    fn lookup<'a, Q: ?Sized>(&'a self, k: &Q) -> Option<&'a V> where Q: BorrowFrom<K> + Ord {
+    fn lookup<'a, Q: ?Sized + Ord>(&'a self, k: &Q) -> Option<&'a V> where K: Borrow<Q> {
         match *self {
-            Branch(_, ref l, ref m, ref r) => match k.cmp(BorrowFrom::borrow_from(&m.0)) {
+            Branch(_, ref l, ref m, ref r) => match k.cmp(Borrow::borrow(&m.0)) {
                 Less => l.lookup(k),
                 Greater => r.lookup(k),
                 Equal => Some(&m.1),
@@ -210,7 +208,7 @@ impl<K, V> Node<K, V> {
             Leaf => None,
         }
     }
-    fn remove<'a, Q: ?Sized + BorrowFrom<K>>(&'a self, _k: &Q) -> Option<(Node<K, V>, &'a (K, V))> {
+    fn remove<'a, Q: ?Sized + Ord>(&'a self, _k: &Q) -> Option<(Node<K, V>, &'a (K, V))> where K: Borrow<Q> {
         panic!()
     }
 }

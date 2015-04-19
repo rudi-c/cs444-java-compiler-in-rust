@@ -62,7 +62,7 @@ fn type_package_conflict(tydef: &TypeDefinition) {
 // If a name conflict occurs, this will create a dummy package.
 fn resolve_create_package<'a, 'ast>(arena: &'a Arena<'a, 'ast>, toplevel: PackageRef<'a, 'ast>, id: &[Ident]) -> PackageRef<'a, 'ast> {
     id.iter().enumerate().fold(toplevel, |package, (ix, ident)| {
-        let new = |:| arena.alloc(Package::new(Qualified(id[0..ix+1].iter()).to_string()));
+        let new = || arena.alloc(Package::new(Qualified(id[0..ix+1].iter()).to_string()));
         match package.contents.borrow_mut().entry(ident.node) {
             hash_map::Entry::Occupied(mut v) => {
                 let slot = v.get_mut();

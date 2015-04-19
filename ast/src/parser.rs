@@ -595,7 +595,7 @@ pub fn make_ast<I: Iterator<Item=(Token, Span)>>(tokens: I)
 
 // An intermediate type for parsing. Represents syntax that can be interpreted as
 // either an expression or a type.
-#[derive(Show)]
+#[derive(Debug)]
 enum ExpressionOrType_ {
     Name(QualifiedIdentifier),
 }

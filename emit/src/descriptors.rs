@@ -3,7 +3,7 @@ use mangle::Mangle;
 use context::Context;
 use code::{sizeof_ty, short_size_name};
 
-use std::collections::{HashSet, RingBuf};
+use std::collections::{HashSet, VecDeque};
 
 fn emit_methods<'a, 'ast>(ctx: &Context<'a, 'ast>,
                           tydef: TypeDefinitionRef<'a, 'ast>) {
@@ -22,7 +22,7 @@ fn emit_methods<'a, 'ast>(ctx: &Context<'a, 'ast>,
 
 fn emit_interface_list(tydef: TypeDefinitionRef) {
     let mut set = HashSet::new();
-    let mut deque = RingBuf::new();
+    let mut deque = VecDeque::new();
     set.insert(tydef.fq_name);
     deque.push_back(tydef);
     while let Some(next) = deque.pop_front() {

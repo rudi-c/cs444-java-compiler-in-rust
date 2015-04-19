@@ -19,7 +19,7 @@ fn reduce_toplevel<'a, 'ast>(expr: &mut TypedExpression<'a, 'ast>) {
             use ast::PrefixOperator::*;
             match (op, inner) {
                 (Not, &Bool(v)) => Bool(!v),
-                (Minus, &Int(v)) => Int(-v),
+                (Minus, &Int(v)) => Int(v.wrapping_neg()),
                 (Minus, &Short(_)) |
                 (Minus, &Byte(_)) => panic!("unpromoted Minus operand"),
                 _ => return,
@@ -46,9 +46,9 @@ fn reduce_toplevel<'a, 'ast>(expr: &mut TypedExpression<'a, 'ast>) {
                 (LessEqual, &Int(l), &Int(r)) => Bool(l <= r),
                 (GreaterEqual, &Int(l), &Int(r)) => Bool(l >= r),
 
-                (Plus, &Int(l), &Int(r)) => Int(l + r),
-                (Minus, &Int(l), &Int(r)) => Int(l - r),
-                (Mult, &Int(l), &Int(r)) => Int(l * r),
+                (Plus, &Int(l), &Int(r)) => Int(l.wrapping_add(r)),
+                (Minus, &Int(l), &Int(r)) => Int(l.wrapping_sub(r)),
+                (Mult, &Int(l), &Int(r)) => Int(l.wrapping_mul(r)),
 
                 (Div, &Int(_), &Int(0)) |
                 (Modulo, &Int(_), &Int(0)) => {
@@ -57,12 +57,10 @@ fn reduce_toplevel<'a, 'ast>(expr: &mut TypedExpression<'a, 'ast>) {
                 }
                 (Div, &Int(l), &Int(r)) => {
                     // Explicitly use 2's-complement overflow.
-                    let v = l as i64 / r as i64;
-                    Int(v as i32)
+                    Int(l.wrapping_div(r))
                 }
                 (Modulo, &Int(l), &Int(r)) => {
-                    let v = l as i64 % r as i64;
-                    Int(v as i32)
+                    Int(l.wrapping_rem(r))
                 }
                 _ => return,
             }

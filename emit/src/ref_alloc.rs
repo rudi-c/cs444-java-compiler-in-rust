@@ -5,8 +5,7 @@ use context::Context;
 use stack::Stack;
 use code::{emit_block, emit_expression, sizeof_ty, size_name, eax_lo};
 
-fn emit_allocator<'a, 'ast>(ctx: &Context<'a, 'ast>,
-                            tydef: TypeDefinitionRef<'a, 'ast>) {
+fn emit_allocator<'a, 'ast>(tydef: TypeDefinitionRef<'a, 'ast>) {
     emit!("section .text" ; "begin allocator");
     emit!("ALLOC{}:", tydef.mangle());
 
@@ -77,7 +76,7 @@ fn emit_constructor<'a, 'ast>(ctx: &Context<'a, 'ast>,
 
 pub fn emit_class_allocator<'a, 'ast>(ctx: &Context<'a, 'ast>,
                                       tydef: TypeDefinitionRef<'a, 'ast>) {
-    emit_allocator(ctx, tydef);
+    emit_allocator(tydef);
     let empty: &[Type] = &[];
     let super_constructor = match &**tydef.extends {
         [] if tydef == ctx.lang_items.object => None,

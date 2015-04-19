@@ -3,19 +3,19 @@ use middle::typed_walker::*;
 
 use std::collections::HashMap;
 
-struct StringCollector<'a, 'ast: 'a> {
+struct StringCollector {
     // Map of string constants to their associated label.
     strings: HashMap<String, u32>,
     string_count: u32,
 }
 
-impl<'a, 'ast> Walker<'a, 'ast> for StringCollector<'a, 'ast> {
+impl<'a, 'ast> Walker<'a, 'ast> for StringCollector {
 }
 
-impl<'a, 'ast> StatementWalker<'a, 'ast> for StringCollector<'a, 'ast> {
+impl<'a, 'ast> StatementWalker<'a, 'ast> for StringCollector {
 }
 
-impl<'a, 'ast> ExpressionWalker<'a, 'ast> for StringCollector<'a, 'ast> {
+impl<'a, 'ast> ExpressionWalker<'a, 'ast> for StringCollector {
     fn walk_expression(&mut self, expr: &TypedExpression<'a, 'ast>) {
         match expr.node {
             TypedExpression_::Constant(Value::String(ref string)) => {

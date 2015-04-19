@@ -70,7 +70,7 @@ impl<'a, 'b> Walker<'b> for Weeder<'a, 'b> {
 
         ensure_valid_modifiers(&allowed_modifiers, &field.node.modifiers,
                                field.node.name.span,
-                               format!("field `{}`", field.node.name.node).as_slice());
+                               &format!("field `{}`", field.node.name.node));
 
         default_walk_class_field(self, field);
     }
@@ -83,7 +83,7 @@ impl<'a, 'b> Walker<'b> for Weeder<'a, 'b> {
 
         let modifiers = ensure_valid_modifiers(&allowed_modifiers, &method.node.modifiers,
                                                method.node.name.span,
-                                               format!("method `{}`", method.node.name).as_slice());
+                                               &format!("method `{}`", method.node.name));
 
         // Assignment specs: "An abstract method cannot be static or final"
         if modifiers.contains(&Modifier_::Abstract) {
@@ -142,7 +142,7 @@ impl<'a, 'b> Walker<'b> for Weeder<'a, 'b> {
 
         ensure_valid_modifiers(&allowed_modifiers, &method.node.modifiers,
                                method.node.name.span,
-                               format!("interface method `{}`", method.node.name).as_slice());
+                               &format!("interface method `{}`", method.node.name));
 
         // This should have been taken care of during parsing.
         assert!(method.node.body.is_none());
@@ -165,7 +165,7 @@ impl<'a, 'b> Walker<'b> for Weeder<'a, 'b> {
 
         let modifiers = ensure_valid_modifiers(&allowed_modifiers, &class.node.modifiers,
                                                class.node.name.span,
-                                               format!("class `{}`", class.node.name).as_slice());
+                                               &format!("class `{}`", class.node.name));
 
         // Assignment specs: "A class cannot be both abstract and final."
         if modifiers.contains(&Modifier_::Abstract) &&
@@ -213,14 +213,14 @@ impl<'a, 'b> Walker<'b> for Weeder<'a, 'b> {
 
         ensure_valid_modifiers(&allowed_modifiers, &interface.node.modifiers,
                                interface.node.name.span,
-                               format!("interface `{}`", interface.node.name).as_slice());
+                               &format!("interface `{}`", interface.node.name));
 
         default_walk_interface(self, interface);
     }
 }
 
 fn weed_filename(typename: &Ident, filestem: &str, kind: &str) {
-    if typename.as_slice() != filestem {
+    if typename.as_ref() != filestem {
         span_error!(typename.span, "{} name must match filename `{}`", kind, filestem);
     }
 }

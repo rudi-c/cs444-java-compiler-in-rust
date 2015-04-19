@@ -15,3 +15,7 @@ path = "../middle"
 [dependencies.rbtree]
 
 path = "../rbtree"
+
+[dependencies.getopts]
+
+version = "0.2.9"

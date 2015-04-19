@@ -2,6 +2,7 @@ use std::{fmt, mem};
 use std::borrow::ToOwned;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::convert::AsRef;
 
 use span::{Span, Spanned, IntoSpan};
 
@@ -32,22 +33,22 @@ impl Symbol {
     }
 }
 
-impl Str for Symbol {
-    fn as_slice(&self) -> &str {
+impl AsRef<str> for Symbol {
+    fn as_ref<'a>(&'a self) -> &'a str {
         // This is safe because the String is never mutated or deleted.
         SYMBOL_NAMES.with(|cell| unsafe {
-            mem::copy_lifetime(self, cell.borrow()[self.0 as usize].as_slice())
+            mem::transmute::<&str, &str>(cell.borrow()[self.0 as usize].as_ref())
         })
     }
 }
-impl fmt::Show for Symbol {
+impl fmt::Debug for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        self.as_slice().fmt(f)
+        self.as_ref().fmt(f)
     }
 }
-impl fmt::String for Symbol {
+impl fmt::Display for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        self.as_slice().fmt(f)
+        self.as_ref().fmt(f)
     }
 }
 
@@ -55,7 +56,7 @@ impl fmt::String for Symbol {
 /// refers to a fragment of source code, not to any references generated inside the compiler.
 pub type Ident = Spanned<Symbol>;
 
-impl fmt::String for Ident {
+impl fmt::Display for Ident {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         self.node.fmt(f)
     }
@@ -69,14 +70,14 @@ impl PartialEq for Ident {
 }
 impl Eq for Ident { }
 
-impl Str for Ident {
-    fn as_slice(&self) -> &str { self.node.as_slice() }
+impl AsRef<str> for Ident {
+    fn as_ref(&self) -> &str { self.node.as_ref() }
 }
 
 /// A dotted identifier, such as `a.b.c`. It is possible for a `QualifiedIdentifier` to actually
 /// refer to a field access, e.g. if `a.b` is actually the name of some object and `c` is a field
 /// in that object.
-#[derive(Show, Clone)]
+#[derive(Debug, Clone)]
 pub struct QualifiedIdentifier {
     pub parts: Vec<Ident>,
 }
@@ -94,7 +95,7 @@ impl<'a> IntoSpan for &'a QualifiedIdentifier {
     }
 }
 
-impl fmt::String for QualifiedIdentifier {
+impl fmt::Display for QualifiedIdentifier {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         Qualified(self.parts.iter()).fmt(f)
     }
@@ -103,7 +104,7 @@ impl fmt::String for QualifiedIdentifier {
 // A helper type to print qualified names.
 pub struct Qualified<T>(pub T);
 
-impl<'a, T: Iterator + Clone> fmt::String for Qualified<T> where <T as Iterator>::Item: fmt::String {
+impl<'a, T: Iterator + Clone> fmt::Display for Qualified<T> where <T as Iterator>::Item: fmt::Display {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         for (i, part) in self.0.clone().enumerate() {
             if i != 0 {
@@ -133,12 +134,12 @@ impl Name {
     }
 }
 
-impl fmt::Show for Name {
+impl fmt::Debug for Name {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         NAMES.with(|cell| cell.borrow()[self.0 as usize].fmt(f))
     }
 }
-impl fmt::String for Name {
+impl fmt::Display for Name {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         NAMES.with(|cell| cell.borrow()[self.0 as usize].fmt(f))
     }

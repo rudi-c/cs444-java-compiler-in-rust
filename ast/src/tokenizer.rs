@@ -2,10 +2,9 @@ use span::Span;
 use name::Symbol;
 
 use std::borrow::ToOwned;
-use std::num::FromStrRadix;
 use std::char;
 
-#[derive(Show, Clone)]
+#[derive(Debug, Clone)]
 pub enum Token {
     Identifier(Symbol),
 
@@ -161,7 +160,7 @@ scanner! {
     // Note that Octal, Hex and Long literals are not required in Joos.
     // Negative literals do not exist: the minus sign is a unary operator.
     r#"0|[1-9][0-9]*"# => {
-        (if let Some(i) = text.parse() {
+        (if let Ok(i) = text.parse() {
             Token::IntegerLiteral(i)
         } else {
             Token::SoftError(
@@ -177,7 +176,7 @@ scanner! {
     },
     // Check for unterminated string literals.
     r#""([^"\\]|\\.)*"# => (Token::Error("unterminated string literal".to_owned()), text),
-    r#"'[^'\\]'"# => (Token::CharacterLiteral(text.char_at(1)), text),
+    r#"'[^'\\]'"# => (Token::CharacterLiteral(text.chars().nth(1).unwrap()), text),
 
     r#"'\\[0-7]'"# => unescape_char(text),
     r#"'\\[0-7][0-7]'"# => unescape_char(text),
@@ -239,7 +238,7 @@ scanner! {
 }
 
 fn octal(s: &str) -> char {
-    char::from_u32(FromStrRadix::from_str_radix(s, 8).unwrap()).unwrap()
+    char::from_u32(u32::from_str_radix(s, 8).unwrap()).unwrap()
 }
 
 scanner! {
@@ -258,7 +257,7 @@ scanner! {
     r"\\\\" => Ok('\\'),
     r"\\." => Err(("bad escape sequence".to_owned(), text)),
     r"\\" => Err(("unterminated escape sequence".to_owned(), text)),
-    r"[^\\]" => Ok(text.char_at(0)),
+    r"[^\\]" => Ok(text.chars().next().unwrap()),
 }
 
 fn unescape(mut s: &str) -> Result<String, (String, &str)> {
@@ -272,7 +271,7 @@ fn unescape(mut s: &str) -> Result<String, (String, &str)> {
 
 fn unescape_char(text: &str) -> (Token, &str) {
     match unescape(&text[1..text.len()-1]) {
-        Ok(s) => (Token::CharacterLiteral(s.char_at(0)), text),
+        Ok(s) => (Token::CharacterLiteral(s.chars().next().unwrap()), text),
         Err((e, sp)) => (Token::SoftError(box Token::CharacterLiteral(' '), e), sp),
     }
 }

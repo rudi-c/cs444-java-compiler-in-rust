@@ -6,7 +6,7 @@
 
 use Token::*;
 
-#[derive(Show)]
+#[derive(Debug)]
 enum Token {
     Ident(String),
     IntLit(i64),
@@ -47,26 +47,26 @@ scanner! {
 }
 
 
-#[derive(Show)]
+#[derive(Debug)]
 enum Stmt {
     Expr(Expr),
     If(Expr, Box<Stmt>, Option<Box<Stmt>>),
 }
 
-#[derive(Show)]
+#[derive(Debug)]
 enum Ty {
     Id(String),
     Arr(Box<Ty>),
 }
 
-#[derive(Show)]
+#[derive(Debug)]
 enum Expr {
     Id(String),
     Cast(Ty, Box<Expr>),
     Ix(Box<Expr>, Box<Expr>),
 }
 
-#[derive(Show)]
+#[derive(Debug)]
 enum TyExpr {
     Id(String),
 }

@@ -2,7 +2,8 @@
 
 use file::File;
 use std::cell::RefCell;
-use std::io::IoResult;
+use std::io;
+use std::path::PathBuf;
 
 pub struct Context {
     // All the files being compiled.
@@ -19,7 +20,7 @@ impl Context {
         }
     }
 
-    pub fn add_file<'a>(&'a mut self, path: Path) -> IoResult<usize> {
+    pub fn add_file<'a>(&'a mut self, path: PathBuf) -> io::Result<usize> {
         let ix = self.files.len();
         self.files.push(try!(File::new(path)));
         Ok(ix)

@@ -1,5 +1,4 @@
-#![feature(box_syntax, advanced_slice_patterns)]
-#![allow(unstable)]
+#![feature(box_syntax, box_patterns, slice_patterns, advanced_slice_patterns, core)]
 
 #[macro_use] extern crate ast;
 extern crate rbtree;

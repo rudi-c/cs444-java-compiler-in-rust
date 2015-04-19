@@ -1,6 +1,6 @@
 use middle::middle::*;
 
-use std::fmt::{self, Writer};
+use std::fmt;
 
 pub struct Mangled<T>(pub T);
 
@@ -11,7 +11,7 @@ pub trait Mangle {
     fn mangle_into(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error>;
 }
 
-impl<'a, T: Mangle> fmt::String for Mangled<&'a T> {
+impl<'a, T: Mangle> fmt::Display for Mangled<&'a T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         self.0.mangle_into(f)
     }

@@ -3,7 +3,7 @@ use ast::name::Name;
 use rbtree::RbMap;
 use std::borrow::ToOwned;
 
-#[derive(Show, Clone)]
+#[derive(Debug, Clone)]
 pub struct Stack {
     // The number of variables stored in the local stack frame.
     // This is the number of dwords between `esp` and `ebp`.

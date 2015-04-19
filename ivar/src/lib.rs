@@ -1,4 +1,3 @@
-#![allow(unstable)]
 use std::cell::UnsafeCell;
 use std::ops::Deref;
 use std::{ptr, fmt};
@@ -31,7 +30,7 @@ impl<T> Deref for Ivar<T> {
     }
 }
 
-impl<T: fmt::Show> fmt::Show for Ivar<T> {
+impl<T: fmt::Debug> fmt::Debug for Ivar<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         if let &Some(ref inner) = unsafe { &*self.inner.get() } {
             inner.fmt(f)
@@ -52,14 +51,14 @@ mod test {
         assert!(*var == 123);
     }
 
-    #[test] #[should_fail]
+    #[test] #[should_panic]
     fn test_set_twice() {
         let var: Ivar<i32> = Ivar::new();
         var.set(123);
         var.set(345);
     }
 
-    #[test] #[should_fail]
+    #[test] #[should_panic]
     fn test_read_uninit() {
         let var: Ivar<i32> = Ivar::new();
         *var;
